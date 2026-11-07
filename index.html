@@ -248,7 +248,7 @@
       .intro-strip{min-height:55vh;padding:70px 0}.intro-inner p{font-size:14px}
       .scroll-cue{margin-top:24px}
     }
-    /* Perbaikan alignment hero pembuka: judul benar-benar berada di tengah */
+    
     .hero-inner{width:100%;max-width:900px;margin-left:auto;margin-right:auto;text-align:center}
     .hero-inner h1{display:block;width:100%;max-width:900px;margin:22px auto 18px;text-align:center;letter-spacing:-2.2px}
     .hero-inner .eyebrow{margin-left:auto;margin-right:auto}
@@ -261,6 +261,12 @@
       .hero-inner h1{font-size:clamp(36px,9vw,48px);letter-spacing:-1.7px;margin:18px auto 14px}
       .hero-inner .hero-copy{font-size:14px;line-height:1.75}
     }
+    
+    .action-icon{width:15px;height:15px;display:inline-block;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .scroll-cue span svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .footer-brand small{display:block;margin-top:4px;color:#9eb4a5;font:600 9px "DM Sans",sans-serif;letter-spacing:.25px}
+    .brand-logos img{max-width:105px;max-height:43px}
+    .brand-divider{display:none}
   </style>
 </head>
 <body>
@@ -270,10 +276,9 @@
 <div class="brand-logos">
 <img alt="Logo MaxxiTani" src="assets/logo-maxxi.png"/>
 <span class="brand-divider"></span>
-<img alt="WhatsApp" class="wa-logo" src="assets/logo-wa.jpg"/>
 </div>
 <div>
-<div class="brand-name">TemuTani <span>×</span> MaxxiTani</div>
+<div class="brand-name">TemuTani</div>
 <div class="brand-sub">EKOSISTEM PANGAN DIGITAL</div>
 </div>
 </a>
@@ -286,39 +291,34 @@
 <div class="hero-inner">
 <div class="eyebrow"><i></i> INOVASI DIGITAL UNTUK EKOSISTEM PERTANIAN</div>
 <h1>Terhubung lebih mudah,<br/><span class="accent">bertumbuh bersama.</span></h1>
-<p class="hero-copy">TemuTani menghubungkan petani dengan pembeli dan menghadirkan referensi harga gabah berbasis data. Pilih akses sesuai peran untuk menjelajahi prototipe ekosistem digital TemuTani.</p>
+<p class="hero-copy">TemuTani menghubungkan petani dengan pembeli dan menghadirkan referensi harga gabah berbasis AI. Pilih akses sesuai peran untuk menjelajahi prototipe ekosistem digital TemuTani.</p>
 </div>
 <section aria-labelledby="roleHeading" class="role-section">
 <div class="role-heading">
 <strong id="roleHeading">Pilih dashboard untuk memulai</strong>
-<p>Tiga akses untuk menguji alur stok, penawaran, negosiasi, dan transaksi.</p>
 </div>
 <div class="role-grid">
 <article class="role-card admin">
 <div aria-hidden="true" class="role-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 20 6v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
 <div class="role-title"><h2>Dashboard Admin</h2><span class="role-pill">Master</span></div>
 <p>Pantau seluruh ekosistem: stok, penawaran, negosiasi, dan transaksi lintas kabupaten.</p>
-<a class="role-link" target="_blank" href="referensi_admin/temu_tani_dashboard.html">Buka Dashboard <span>→</span></a>
+<a class="role-link" target="_blank" href="referensi_admin/temu_tani_dashboard.html">Buka Dashboard  <svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
 </article>
 <article class="role-card farmer">
 <div aria-hidden="true" class="role-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21v-8"/><path d="M12 15c-4.5 0-7-2.5-7-6 4.5 0 7 2.5 7 6Z"/><path d="M12 12c0-4.5 2.5-7 6-7 0 4.5-2.5 7-6 7Z"/><path d="M7 21h10"/></svg></div>
 <div class="role-title"><h2>Dashboard Petani</h2></div>
 <p>Kelola stok gabah, tanggapi penawaran pembeli, dan lihat estimasi harga AI.</p>
-<a class="role-link" target="_blank" href="petani.html">Masuk sebagai Petani <span>→</span></a>
+<a class="role-link" target="_blank" href="petani.html">Masuk sebagai Petani  <svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
 </article>
 <article class="role-card buyer">
 <div aria-hidden="true" class="role-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v11H3z"/><path d="M14 10h4l3 3v4h-7z"/><circle cx="7.5" cy="18" r="1.8"/><circle cx="17.5" cy="18" r="1.8"/></svg></div>
 <div class="role-title"><h2>Dashboard Tengkulak</h2></div>
 <p>Jelajahi stok, buat permintaan, ajukan harga, negosiasi, dan catat pembayaran.</p>
-<a class="role-link" target="_blank" href="tengkulak.html">Masuk sebagai Tengkulak <span>→</span></a>
+<a class="role-link" target="_blank" href="tengkulak.html">Masuk sebagai Tengkulak  <svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
 </article>
 </div>
 </section>
 <div class="trust-row">
-<img alt="" aria-hidden="true" src="assets/logo-wa.jpg"/>
-<span>Dirancang untuk mendukung <strong>akses informasi dan posisi tawar petani</strong> melalui ekosistem digital.</span>
-</div>
-<div class="scroll-cue"><span>↓</span> GULIR UNTUK MENGENAL TEMUTANI</div>
 </div>
 </section>
 <section class="section problem" id="tentang">
@@ -392,7 +392,7 @@
 <div class="kicker">Terhubung dalam ekosistem MaxxiTani</div>
 <h2>Teknologi yang mendukung keputusan dari lahan hingga pasar.</h2>
 <p>TemuTani dikembangkan sebagai bagian dari ekosistem MaxxiTani. Integrasi informasi pasar dengan data pertanian dan lingkungan membuka peluang pengambilan keputusan yang lebih menyeluruh.</p>
-<a class="btn btn-secondary" href="#mulai">Kenali inisiatif TemuTani <span>→</span></a>
+<a class="btn btn-secondary" href="#mulai">Kenali inisiatif TemuTani <svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
 </div>
 <div class="ecosystem-points">
 <div class="eco-point"><svg fill="none" height="22" stroke="currentColor" stroke-width="1.8" viewbox="0 0 24 24" width="22"><path d="M3 3v18h18"></path><path d="m6 15 4-5 4 3 5-7"></path></svg><b>Informasi pasar</b><span>Referensi harga dan dinamika penawaran gabah.</span></div>
@@ -404,14 +404,14 @@
 </section><section class="cta" id="mulai">
 <div class="wrap cta-box">
 <div><h2>Bangun pasar gabah yang lebih terbuka bersama TemuTani.</h2><p>Kenali inisiatif TemuTani dalam ekosistem digital MaxxiTani.</p></div>
-<div class="cta-actions"><a class="btn btn-primary" href="#tentang">Kenali TemuTani <span>↗</span></a><a class="btn btn-secondary" href="#beranda">Kembali ke atas ↑</a></div>
+<div class="cta-actions"><a class="btn btn-primary" href="#tentang">Kenali TemuTani <svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a><a class="btn btn-secondary" href="#beranda">Kembali ke atas <svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></a></div>
 </div>
 </section>
 </main>
 <footer>
 <div class="wrap footer-row">
-<div class="footer-brand"><img alt="" src="assets/logo-maxxi.png"/>TemuTani × MaxxiTani</div>
-<div class="footer-note">© 2026 TemuTani × MaxxiTani. Halaman portal prototipe.<br/>Gunakan tombol dashboard sesuai peran Anda.</div>
+<div class="footer-brand"><img alt="" src="assets/logo-maxxi.png"/>TemuTani</div>
+<div class="footer-note">© 2026 TemuTani. Prototipe oleh TemanTani</div>
 </div>
 </footer>
 </body>
