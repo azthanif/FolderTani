@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#174b38">
+<title>Temu Tani — Dashboard Tengkulak</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body data-role="tengkulak">
+<div class="app">
+  <div class="mobile-overlay" id="overlay"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="brand-logo"><img src="assets/logo-maxxi.png" alt="Logo Maxxi Tani"></div>
+      <div><div class="brand-name">Maxxi Tani</div><div class="brand-small">DASHBOARD TEMU TANI</div></div>
+    </div>
+    <div class="nav-label">MENU TENGKULAK</div>
+    <div id="nav" class="nav-items"></div>
+    <div class="side-bottom">
+      <div class="side-panel"><div class="panel-icon"><img src="assets/logo-wa.jpg" alt="WhatsApp"></div><div><h4>Alur WhatsApp</h4><p>Simulasi chatbot Temu Tani</p></div></div>
+      <div class="side-mini">Data simulasi · Prototipe frontend</div>
+      <div class="side-footer"><div class="avatar" id="avatarSide">--</div><div><strong id="userSide">—</strong><small id="regionSide">—</small></div></div>
+      <div class="side-switch">Lihat simulasi: <a href="petani.html">Dashboard Petani</a></div>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:15px">
+        <button class="icon-btn hamburger" id="menuToggle" type="button" aria-label="Buka menu"></button>
+        <div class="breadcrumbs"><span>Dashboard Temu Tani</span><span>/</span><span id="crumb" class="current">Overview</span></div>
+      </div>
+      <div class="topactions">
+        <span class="role-chip" id="roleChip"></span>
+        <button class="icon-btn" id="notifBtn" title="Notifikasi" aria-label="Notifikasi"></button>
+        <div class="top-separator"></div>
+        <div class="top-profile"><div class="avatar" id="avatarTop">--</div><div><strong id="userTop">—</strong><small id="regionTop">—</small></div></div>
+      </div>
+    </header>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+<div class="modal-backdrop" id="modalBackdrop"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+<script src="assets/app.js" defer></script>
+</body></html>
