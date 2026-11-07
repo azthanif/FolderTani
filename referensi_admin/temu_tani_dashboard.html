@@ -1609,7 +1609,8 @@
             ['penawaran', 'handshake', 'Penawaran & Negosiasi'],
             ['harga', 'chart-no-axes-combined', 'Prediksi Harga AI'],
             ['transaksi', 'receipt-text', 'Transaksi Disepakati'],
-            ['aktivitas', 'messages-square', 'Aktivitas Chatbot']
+            ['aktivitas', 'messages-square', 'Aktivitas Chatbot'],
+            ['berita', 'newspaper', 'Berita & Analisis']
         ];
         const formatRupiah = n => 'Rp' + new Intl.NumberFormat('id-ID').format(n);
         const fmtNum = n => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(n);
@@ -2133,6 +2134,17 @@
                 </section>
             `
         }
+        // Terima tinggi aktual halaman berita dari iframe agar hanya dashboard yang scroll.
+        window.addEventListener('message', function (event) {
+            if (event.origin !== window.location.origin) return;
+            const frame = document.getElementById('beritaFrame');
+            if (!frame || event.source !== frame.contentWindow) return;
+            if (event.data && event.data.type === 'berita-frame-height') {
+                const height = Number(event.data.height);
+                if (Number.isFinite(height) && height > 0) frame.style.height = height + 'px';
+            }
+        });
+
         function render() {
             document.getElementById('crumb').textContent = pages.find(p => p[0] === state.page)?.[2] || 'Overview';
             document.getElementById('nav').innerHTML = pages.map(([id, ic, label]) => `
@@ -2140,7 +2152,7 @@
                 <span class="nav-count">${countOffers('Semua Wilayah')}</span>
             ` : ''}</button>
             `).join('');
-            document.getElementById('content').innerHTML = state.page === 'overview' ? overview() : state.page === 'harga' ? hargaPage() : tablePage(state.page);
+            document.getElementById('content').innerHTML = state.page === 'berita' ? `<iframe id="beritaFrame" src="../berita.html" title="Berita & Analisis" scrolling="no" style="display:block;width:100%;height:500px;overflow:hidden;border:0;background:#f5f7f5;"></iframe>` : state.page === 'overview' ? overview() : state.page === 'harga' ? hargaPage() : tablePage(state.page);
             updateTable()
         }
         function go(page) {

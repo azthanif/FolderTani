@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Berita — Temu Tani</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+:root{--dark:#153d30;--dark2:#20543d;--green:#2a815c;--lime:#ddf3b9;--mint:#e7f3eb;--bg:#f5f7f5;--ink:#19352b;--text:#45554e;--muted:#89968f;--line:#e7ebe7;--shadow:0 4px 22px rgba(26,57,37,.045)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:'DM Sans',system-ui,sans-serif}
+button,input{font:inherit}.content{max-width:1500px;margin:auto;padding:34px 38px 56px}
+.eyebrow{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--green);font-weight:800;margin-bottom:8px}
+.heading{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:24px}
+h1,h2,h3,p{margin-top:0}.heading h1{font:800 28px 'Plus Jakarta Sans';letter-spacing:-1px;margin:0 0 8px;color:#193b2c}
+.heading p{font-size:13px;color:#839088;margin:0;line-height:1.6}
+.live-pill{background:#e9f7ed;color:#2e8259;border-radius:30px;padding:8px 12px;font-size:10px;font-weight:800;white-space:nowrap}
+.panel{background:white;border:1px solid var(--line);border-radius:17px;box-shadow:var(--shadow);min-width:0}
+.filter{padding:18px 20px;margin-bottom:18px;display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.field{display:grid;gap:7px}.field label{font-size:10px;font-weight:800;color:#89968f;letter-spacing:.3px}
+.field input{height:40px;border:1px solid var(--line);border-radius:10px;padding:0 11px;color:#40534a;background:#fff;outline:none}
+.field input:focus{border-color:#83b797;box-shadow:0 0 0 3px #e9f5ec}
+.btn{height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--line);background:white;color:#405348;font-size:12px;font-weight:800;cursor:pointer}
+.btn.primary{background:#245e44;color:white;border-color:#245e44}.btn:hover{filter:brightness(.97)}
+.filter-note{font-size:10px;color:#97a39a;margin-left:auto;align-self:center}
+.layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(280px,.85fr);gap:18px;align-items:start}
+.maincol{display:grid;gap:18px;min-width:0}.sidecol{position:sticky;top:18px;min-width:0}
+.section{padding:22px}.section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:17px}
+.section-title{font:800 14px 'Plus Jakarta Sans';margin:0;color:#294535;letter-spacing:-.25px}
+.section-sub{font-size:10px;color:#9ba59f;margin:5px 0 0}
+.latest{overflow:hidden}.latest-top{padding:19px 22px 0;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.tag{display:inline-flex;align-items:center;padding:6px 9px;border-radius:30px;background:#e9f7ed;color:#2e8259;font-size:9px;font-weight:800}
+.latest-body{padding:14px 22px 22px}.latest h2{font:800 21px/1.4 'Plus Jakarta Sans';letter-spacing:-.55px;margin:0 0 11px;color:#203b2d}
+.meta{display:flex;gap:9px;flex-wrap:wrap;font-size:10px;color:#95a198;margin-bottom:15px}
+.article-text{font-size:12px;line-height:1.9;color:#526258;margin:0}
+.ner{padding:1px 4px;border-radius:4px;font-weight:700;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.ner.loc{background:#e5efff;color:#315f9e;border-bottom:2px solid #78a4e8}
+.ner.org{background:#f0e8ff;color:#7046a4;border-bottom:2px solid #b294df}
+.ner.com{background:#fff1d9;color:#98651a;border-bottom:2px solid #e5b65e}
+.ner.act{background:#e3f5e9;color:#28734a;border-bottom:2px solid #81c69a}\n.ner.qty{background:#e5f4f3;color:#24756e;border-bottom:2px solid #79bdb6}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:13px;border-top:1px solid #f0f2ef}
+.legend span{font-size:9px;color:#78877d;display:flex;align-items:center;gap:5px}.swatch{width:9px;height:9px;border-radius:3px;display:inline-block}
+.list-card{overflow:hidden}.list-inner{padding:20px 22px 8px}.news-list{display:grid}
+.news-item{padding:14px 0;border-bottom:1px solid #f0f2f0;display:flex;gap:13px;align-items:flex-start}
+.news-item:last-child{border-bottom:0}.news-date{width:43px;flex-shrink:0;text-align:center;background:#f3f7f2;border-radius:9px;padding:7px 4px;color:#64806d}
+.news-date b{font:800 15px 'Plus Jakarta Sans';display:block;color:#315b40}.news-date small{font-size:8px;text-transform:uppercase;font-weight:800}
+.news-info{min-width:0;flex:1}.news-info button{padding:0;border:0;background:none;text-align:left;color:#304638;font:700 12px/1.55 'DM Sans';cursor:pointer}
+.news-info button:hover{color:#2a815c}.news-info small{display:block;color:#9ba69e;font-size:9px;margin-top:5px}
+.pagination{padding:13px 22px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px;color:#8b9b90;font-size:10px}
+.pages{display:flex;gap:5px}.page-btn{width:29px;height:29px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#75877b;font-size:10px;font-weight:800;cursor:pointer}
+.page-btn.active{background:#eaf5e8;color:#235b42;border-color:#d9eadb}.page-btn:disabled{opacity:.4;cursor:not-allowed}
+.cloud-card{padding:21px;min-height:410px}.cloud-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.cloud-stage{min-height:310px;display:flex;align-content:center;justify-content:center;align-items:center;flex-wrap:wrap;gap:10px 13px;padding:23px 7px 12px;overflow:hidden}
+.word{border:0;background:transparent;padding:2px 3px;cursor:default;font-family:'Plus Jakarta Sans';font-weight:800;line-height:1.15;transition:transform .15s}
+.word:hover{transform:scale(1.08)}.cloud-foot{border-top:1px solid #f0f2ef;padding-top:12px;font-size:9px;color:#9ba69e;line-height:1.6}
+.cloud-empty{font-size:11px;color:#9ba69e;text-align:center}
+.stats{display:flex;gap:8px;margin-top:13px}.stat{background:#f7faf7;border-radius:10px;padding:10px 12px;flex:1}.stat b{font:800 17px 'Plus Jakarta Sans';display:block;color:#294a36}.stat small{font-size:9px;color:#8c9b91}
+.empty{padding:28px;text-align:center;color:#95a198;font-size:12px}
+@media(max-width:950px){.layout{grid-template-columns:1fr}.sidecol{position:static}.cloud-card{min-height:0}.cloud-stage{min-height:230px}}
+@media(max-width:620px){.content{padding:22px 15px 38px}.heading{flex-direction:column}.heading h1{font-size:24px}.filter{align-items:stretch}.field{flex:1;min-width:calc(50% - 8px)}.filter .btn{flex:1}.filter-note{width:100%;margin:0}.section{padding:17px}.latest-top{padding:16px 17px 0}.latest-body{padding:12px 17px 18px}.latest h2{font-size:18px}.list-inner{padding:17px 17px 6px}.pagination{padding:12px 17px}}
+</style>
+</head>
+<body>
+<main class="content">
+  <header class="heading">
+    <div><div class="eyebrow">Pusat Informasi Temu Tani</div><h1>Berita & Isu Pertanian</h1><p>Pantau perkembangan informasi pertanian dan topik yang banyak dibicarakan.</p></div>
+    <span class="live-pill">● PEMANTAUAN BERITA</span>
+  </header>
+  <section class="panel filter" aria-label="Filter rentang tanggal">
+    <div class="field"><label for="dateFrom">DARI TANGGAL</label><input type="date" id="dateFrom"></div>
+    <div class="field"><label for="dateTo">SAMPAI TANGGAL</label><input type="date" id="dateTo"></div>
+    <button class="btn primary" id="applyFilter">Terapkan Filter</button>
+    <button class="btn" id="lastWeek">7 Hari Terakhir</button>
+    <div class="filter-note" id="rangeInfo"></div>
+  </section>
+  <div class="layout">
+    <div class="maincol">
+      <section class="panel latest">
+        <div class="latest-top"><span class="tag">BERITA TERKINI</span><span class="section-sub" id="latestId"></span></div>
+        <div class="latest-body" id="featured"></div>
+      </section>
+      <section class="panel list-card">
+        <div class="list-inner">
+          <div class="section-head"><div><h2 class="section-title">Berita Lainnya</h2><p class="section-sub" id="listSummary">Daftar berita berdasarkan rentang tanggal</p></div><span class="tag" id="totalTag">0 BERITA</span></div>
+          <div class="news-list" id="newsList"></div>
+        </div>
+        <div class="pagination"><span id="pageInfo"></span><div class="pages" id="pages"></div></div>
+      </section>
+    </div>
+    <aside class="sidecol">
+      <section class="panel cloud-card">
+        <div class="cloud-head"><div><h2 class="section-title">Wordcloud Berita</h2><p class="section-sub">Kata yang sering muncul pada berita terpilih</p></div><span class="tag">TOPIK</span></div>
+        <div class="cloud-stage" id="wordCloud"></div>
+        <div class="cloud-foot">Ukuran kata menunjukkan frekuensi kemunculan pada judul dan isi berita dalam rentang tanggal yang dipilih.</div>
+        <div class="stats"><div class="stat"><b id="statNews">0</b><small>Berita</small></div><div class="stat"><b id="statWords">0</b><small>Kata unik</small></div></div>
+      </section>
+    </aside>
+  </div>
+</main>
+<script>
+let NEWS = [];
+const PAGE_SIZE = 5;
+let currentPage = 1;
+let selectedId = null;
+let filtered = [];
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2,'0');
+const fmt = s => { const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}); };
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function parseCSV(text){
+ const rows=[]; let row=[], field='', quoted=false;
+ for(let i=0;i<text.length;i++){
+  const ch=text[i], next=text[i+1];
+  if(quoted){
+   if(ch==='"' && next==='"'){field+='"';i++;}
+   else if(ch==='"'){quoted=false;}
+   else field+=ch;
+  }else{
+   if(ch==='"' && field.length===0) quoted=true;
+   else if(ch===','){row.push(field);field='';}
+   else if(ch==='\n'){row.push(field);rows.push(row);row=[];field='';}
+   else if(ch==='\r'){/* ignore CR; LF ends row */}
+   else field+=ch;
+  }
+ }
+ if(field.length || row.length){row.push(field);rows.push(row);}
+ if(!rows.length) return [];
+ const headers=rows.shift().map((v,i)=>i===0?v.replace(/^\uFEFF/,'').trim():v.trim());
+ return rows.filter(r=>r.some(v=>v.trim()!=='')).map(r=>{
+  const obj={}; headers.forEach((key,i)=>obj[key]=(r[i]??'').trim()); return obj;
+ });
+}
+async function loadNewsCSV(){
+ const response=await fetch('./berita.csv',{cache:'no-store'});
+ if(!response.ok) throw new Error(`HTTP ${response.status} saat membaca berita.csv`);
+ const csv=await response.text();
+ const rows=parseCSV(csv);
+ NEWS=rows.map((r,i)=>{
+  let entities=[];
+  try{entities=JSON.parse(r.ner_results||'[]');if(!Array.isArray(entities))entities=[];}catch(e){console.warn('ner_results tidak valid pada baris',i+2,e);}
+  return {
+   id:r.id||String(i+1),tanggal:(r.tanggal||'').slice(0,10),kabupaten:r.kabupaten||'',
+   sumber:r.sumber||'',kategori:r.kategori||'',judul:r.judul||'',isi:r.isi||'',
+   status_data:r.status_data||'',ner_results:entities
+  };
+ }).filter(n=>n.tanggal && n.judul);
+ if(!NEWS.length) throw new Error('berita.csv berhasil dibaca, tetapi tidak ada baris berita yang valid.');
+}
+function setDefaultDates(){
+ const dates=NEWS.map(n=>n.tanggal).filter(Boolean).sort();
+ const max=dates[dates.length-1] || new Date().toISOString().slice(0,10);
+ const end=new Date(max+'T00:00:00'); const start=new Date(end); start.setDate(start.getDate()-6);
+ $('dateFrom').value=`${start.getFullYear()}-${pad(start.getMonth()+1)}-${pad(start.getDate())}`;
+ $('dateTo').value=max;
+}
+const nerClass = {
+ 'GPE':'loc','LOC':'loc',
+ 'ORG':'org','NOR':'org',
+ 'PRD':'com',
+ 'EVT':'act',
+ 'QTY':'qty'
+};
+function highlight(text, entities){
+ const source = String(text ?? '');
+ const matches = [];
+ (entities || []).forEach(entity => {
+  const word = String(entity.word || '').trim();
+  const type = nerClass[entity.entity] || 'other';
+  if(!word) return;
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const re = new RegExp(escaped,'gi');
+  let match;
+  while((match=re.exec(source))!==null){
+   matches.push({start:match.index,end:match.index+match[0].length,type,score:entity.score});
+   if(match[0].length===0) re.lastIndex++;
+  }
+ });
+ matches.sort((a,b)=>a.start-b.start || (b.end-b.start)-(a.end-a.start));
+ let out='', pos=0;
+ matches.forEach(m=>{
+  if(m.start<pos) return;
+  const score = Number.isFinite(Number(m.score)) ? ` title="NER: ${esc(m.type.toUpperCase())} · confidence ${Number(m.score).toFixed(2)}"` : '';
+  out += esc(source.slice(pos,m.start))+`<mark class="ner ${m.type}"${score}>${esc(source.slice(m.start,m.end))}</mark>`;
+  pos=m.end;
+ });
+ return out+esc(source.slice(pos));
+}
+function renderFeature(){
+ const item=filtered.find(n=>n.id===selectedId)||filtered[0];
+ if(!item){$('featured').innerHTML='<div class="empty">Tidak ada berita pada rentang tanggal ini.</div>';$('latestId').textContent='';return;}
+ selectedId=item.id;
+ $('latestId').textContent=item.id;
+ $('featured').innerHTML=`<h2>${highlight(item.judul,item.ner_results)}</h2><div class="meta"><span>◷ ${fmt(item.tanggal)}</span><span>⌖ ${esc(item.kabupaten)}</span><span>▤ ${esc(item.kategori)}</span><span>✦ ${esc(item.sumber)}</span></div><p class="article-text">${highlight(item.isi,item.ner_results)}</p><div class="legend"><span><i class="swatch" style="background:#78a4e8"></i>Lokasi (GPE/LOC)</span><span><i class="swatch" style="background:#b294df"></i>Organisasi/Tokoh (ORG/NOR)</span><span><i class="swatch" style="background:#e5b65e"></i>Produk (PRD)</span><span><i class="swatch" style="background:#81c69a"></i>Peristiwa (EVT)</span><span><i class="swatch" style="background:#79bdb6"></i>Kuantitas (QTY)</span></div>`;
+}
+function renderList(){
+ const others=filtered.filter(n=>n.id!==selectedId);
+ const totalPages=Math.max(1,Math.ceil(others.length/PAGE_SIZE));currentPage=Math.min(currentPage,totalPages);
+ const start=(currentPage-1)*PAGE_SIZE;const page=others.slice(start,start+PAGE_SIZE);
+ $('totalTag').textContent=`${others.length} BERITA`;
+ $('listSummary').textContent=`${others.length} berita lain dalam rentang tanggal terpilih`;
+ $('newsList').innerHTML=page.length?page.map(n=>{const d=new Date(n.tanggal+'T00:00:00');return `<article class="news-item"><div class="news-date"><b>${pad(d.getDate())}</b><small>${d.toLocaleDateString('id-ID',{month:'short'})}</small></div><div class="news-info"><button type="button" data-id="${esc(n.id)}">${esc(n.judul)}</button><small>${esc(n.kabupaten)} · ${esc(n.kategori)} · ${fmt(n.tanggal)}</small></div></article>`}).join(''):'<div class="empty">Belum ada berita lainnya pada periode ini.</div>';
+ $('pageInfo').textContent=others.length?`Menampilkan ${start+1}–${Math.min(start+PAGE_SIZE,others.length)} dari ${others.length} berita`:'Tidak ada berita lainnya';
+ $('pages').innerHTML=`<button class="page-btn" data-page="${currentPage-1}" ${currentPage===1?'disabled':''}>‹</button>`+Array.from({length:totalPages},(_,i)=>`<button class="page-btn ${currentPage===i+1?'active':''}" data-page="${i+1}">${i+1}</button>`).join('')+`<button class="page-btn" data-page="${currentPage+1}" ${currentPage===totalPages?'disabled':''}>›</button>`;
+}
+function renderCloud(){
+ const stop=new Set(('yang dan di ke dari untuk pada dengan dalam sebagai atau agar ini itu oleh akan dapat lebih juga menjadi terhadap saat setelah sebelum karena jika serta para suatu tidak perlu secara dapat bahwa adalah mulai sejumlah wilayah hasil kondisi informasi artikel berita petani padi kabupaten kecamatan').split(' '));
+ const counts={};
+ filtered.forEach(n=>(n.judul+' '+n.isi).toLowerCase().match(/[a-zA-ZÀ-ÿ]{3,}/g)?.forEach(w=>{if(!stop.has(w))counts[w]=(counts[w]||0)+1;}));
+ const top=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,34);const max=top[0]?.[1]||1;const min=top[top.length-1]?.[1]||1;
+ const colors=['#287b55','#568cba','#b47b35','#8b69b0','#4c9a8b','#c16c63'];
+ $('wordCloud').innerHTML=top.length?top.map(([w,c],i)=>`<span class="word" title="${c} kali" style="font-size:${Math.round(12+(c-min)/(max-min||1)*19)}px;color:${colors[i%colors.length]}">${esc(w)}</span>`).join(''):'<div class="cloud-empty">Tidak ada kata untuk ditampilkan.</div>';
+ $('statNews').textContent=filtered.length;$('statWords').textContent=Object.keys(counts).length;
+}
+function applyFilter(){
+ const from=$('dateFrom').value,to=$('dateTo').value;
+ if(!from||!to){alert('Pilih tanggal awal dan akhir terlebih dahulu.');return;}
+ if(from>to){alert('Tanggal awal tidak boleh melebihi tanggal akhir.');return;}
+ filtered=NEWS.filter(n=>n.tanggal>=from&&n.tanggal<=to).sort((a,b)=>b.tanggal.localeCompare(a.tanggal)||b.id.localeCompare(a.id));
+ selectedId=filtered[0]?.id||null;currentPage=1;
+ $('rangeInfo').textContent=`${fmt(from)} – ${fmt(to)} · ${filtered.length} berita`;
+ renderFeature();renderList();renderCloud();
+}
+$('applyFilter').addEventListener('click',applyFilter);
+$('lastWeek').addEventListener('click',()=>{setDefaultDates();applyFilter();});
+$('newsList').addEventListener('click',e=>{const b=e.target.closest('button[data-id]');if(!b)return;selectedId=b.dataset.id;currentPage=1;renderFeature();renderList();});
+$('pages').addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(!b||b.disabled)return;currentPage=Number(b.dataset.page);renderList();});
+(async function init(){
+ try{
+  await loadNewsCSV();
+  setDefaultDates();
+  applyFilter();
+ }catch(error){
+  console.error(error);
+  $('rangeInfo').textContent='Gagal memuat berita.csv';
+  $('featured').innerHTML=`<div class="empty"><b>Data berita belum dapat dimuat.</b><br>${esc(error.message)}<br>`;
+  $('newsList').innerHTML='';
+  $('wordCloud').innerHTML='<div class="cloud-empty">Wordcloud akan tampil setelah CSV berhasil dimuat.</div>';
+  $('statNews').textContent='0';$('statWords').textContent='0';
+ }
+})();
+
+// Kirim tinggi konten ke dashboard induk agar iframe tidak memiliki scrollbar sendiri.
+(function syncFrameHeight(){
+ function sendHeight(){
+  if(window.parent === window) return;
+  const height=Math.ceil(Math.max(
+   document.documentElement.scrollHeight,
+   document.body.scrollHeight,
+   document.documentElement.getBoundingClientRect().height
+  ));
+  window.parent.postMessage({type:'berita-frame-height',height},location.origin);
+ }
+ if('ResizeObserver' in window){
+  const ro=new ResizeObserver(sendHeight);
+  ro.observe(document.documentElement);
+  ro.observe(document.body);
+ }
+ const mo=new MutationObserver(sendHeight);
+ mo.observe(document.body,{childList:true,subtree:true,attributes:true,characterData:true});
+ window.addEventListener('load',sendHeight);
+ window.addEventListener('resize',sendHeight);
+ requestAnimationFrame(sendHeight);
+ setTimeout(sendHeight,150);
+})();
+</script>
+</body></html>
