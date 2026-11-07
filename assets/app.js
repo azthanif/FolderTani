@@ -44,7 +44,7 @@ const fmtTime = v => v ? new Date(v).toLocaleString('id-ID',{day:'numeric',month
 const now = () => new Date().toISOString();
 const uid = prefix => prefix + '-' + Math.random().toString(36).slice(2,7).toUpperCase();
 const pageDefs = IS_FARMER ? [
- ['overview','dashboard','Overview'],['stok','wheat','Stok Gabah'],['penawaran','handshake','Penawaran & Negosiasi'],['harga','chart','Prediksi Harga AI'],['transaksi','history','Transaksi Disepakati']
+ ['overview','dashboard','Overview'],['stok','wheat','Stok Gabah'],['penawaran','handshake','Penawaran & Negosiasi'],['harga','chart','Prediksi Harga AI'],['transaksi','history','Transaksi Disepakati'],['berita','document','Berita & Analisis']
 ] : [
  ['overview','dashboard','Overview'],['stok','wheat','Stok Gabah'],['penawaran','handshake','Penawaran & Negosiasi'],['transaksi','history','Transaksi Disepakati']
 ];
@@ -156,11 +156,22 @@ function transactionsPage(){const tx=myTransactions();const list=filtered(tx,t=>
  `<div class="kpi-grid">${kpi('check','Total Kesepakatan',tx.length,'Transaksi milik Anda')}${kpi('wallet','Sudah Dibayar',tx.filter(t=>t.payment==='Sudah Dibayar').length,'Dikonfirmasi petani','lime')}${kpi('clock','Belum Dibayar',tx.filter(t=>t.payment==='Belum Dibayar').length,'Menunggu pembayaran','gold')}${kpi('activity','Menunggu Verifikasi',tx.filter(t=>t.payment==='Menunggu Verifikasi').length,'Pembeli mengaku sudah membayar','blue')}</div>`+
  `<div class="info-strip">${ico('info',17)} ${IS_FARMER?'Konfirmasi pembayaran diterima hanya ketika dana benar-benar masuk ke rekening Anda.':'Tombol “Saya Sudah Transfer” tidak memindahkan dana. Petani harus mengonfirmasi pembayaran setelah dana diterima.'}</div>`+filters('transaksi')+trxTable(list);
 }
+// Sinkronkan tinggi iframe berita agar halaman petani hanya memakai scrollbar utama.
+window.addEventListener('message',function(event){
+ if(event.origin!==window.location.origin)return;
+ const frame=document.getElementById('beritaFrame');
+ if(!frame||event.source!==frame.contentWindow)return;
+ if(event.data&&event.data.type==='berita-frame-height'){
+  const height=Number(event.data.height);
+  if(Number.isFinite(height)&&height>0)frame.style.height=Math.max(300,height)+'px';
+ }
+});
+
 function render(){
  const page=pageDefs.some(p=>p[0]===ui.page)?ui.page:'overview';
  document.getElementById('crumb').textContent=pageDefs.find(p=>p[0]===page)[2];
  document.getElementById('nav').innerHTML=pageDefs.map(p=>`<button class="nav-link ${page===p[0]?'active':''}" type="button" data-act="navigate" data-id="${p[0]}">${ico(p[1],18)}${p[2]}${p[0]==='penawaran'&&myOffers().filter(o=>IS_FARMER?o.status==='Menunggu Petani':o.status==='Penawaran Balik').length?`<span class="nav-count">${myOffers().filter(o=>IS_FARMER?o.status==='Menunggu Petani':o.status==='Penawaran Balik').length}</span>`:''}</button>`).join('');
- document.getElementById('content').innerHTML=page==='overview'?overview():page==='stok'?stocksPage():page==='penawaran'?offersPage():page==='transaksi'?transactionsPage():aiPage();
+ document.getElementById('content').innerHTML=page==='berita'?`<iframe id="beritaFrame" src="berita.html" title="Berita & Analisis" scrolling="no" style="display:block;width:100%;height:500px;overflow:hidden;border:0;background:#f5f7f5;"></iframe>`:page==='overview'?overview():page==='stok'?stocksPage():page==='penawaran'?offersPage():page==='transaksi'?transactionsPage():aiPage();
  document.getElementById('notifBtn').innerHTML=ico('bell',17)+`<span class="notification-dot"></span>`;
  document.getElementById('menuToggle').innerHTML=ico('menu',19);
  const label=IS_FARMER?myFarmer().name:'Pembeli WhatsApp';const small=IS_FARMER?'Kabupaten Garut':'Guest • Semua wilayah';
