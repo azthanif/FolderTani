@@ -1,4 +1,3 @@
-/* TEMU TANI • Dashboard Petani / Tengkulak | Data DEMO lokal, bukan API/otorisasi produksi */
 'use strict';
 const role = document.body.dataset.role;
 const IS_FARMER = role === 'petani';

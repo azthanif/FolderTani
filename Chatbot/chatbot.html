@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#202c33">
   <meta name="description" content="Prototipe chatbot Temu Tani untuk petani dan tengkulak.">
   <title> Temu Tani | Chatbot WhatsApp (Simulasi)</title>
-  <link rel="icon" type="image/png" href="assets/logo-temutani.png">
+  <link rel="icon" type="image/png" href="../assets/logo-temutani.png">
   <style>
     
 :root {
@@ -872,7 +872,7 @@ button:disabled {
           class="head-logo"
           id="avatarSwitch">
           <img
-              src="assets/logo-temutani.png"
+              src="../assets/logo-temutani.png"
               alt="Logo Temu Tani"
               class="profile-logo">
       </button>
@@ -1563,16 +1563,16 @@ button:disabled {
 /* Kembali ke dashboard yang membuka chatbot (?from=petani|tengkulak|admin). */
 (function () {
     var map = {
-        petani: ['../petani.html', 'Dashboard Petani'],
-        tengkulak: ['../tengkulak.html', 'Dashboard Tengkulak'],
-        admin: ['../referensi_admin/temu_tani_dashboard.html', 'Dashboard Admin']
+        petani: ['../dashboard/petani.html', 'Dashboard Petani'],
+        tengkulak: ['../dashboard/tengkulak.html', 'Dashboard Tengkulak'],
+        admin: ['../dashboard/admin.html', 'Dashboard Admin']
     };
     var from = new URLSearchParams(location.search).get('from');
     if (!map[from]) {
         var ref = document.referrer || '';
         if (/petani\.html/.test(ref)) from = 'petani';
         else if (/tengkulak\.html/.test(ref)) from = 'tengkulak';
-        else if (/temu_tani_dashboard\.html/.test(ref)) from = 'admin';
+        else if (/admin\.html/.test(ref)) from = 'admin';
     }
     try {
         if (map[from]) sessionStorage.setItem('temutani_chat_from', from);

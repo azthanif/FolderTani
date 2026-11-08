@@ -1295,7 +1295,7 @@
             <div class="brand">
                 <div class="brand-logo">
                     <img
-                        src="logo-temutani-bg.png"
+                        src="../assets/logo-temutani-bg.png"
                         alt="Logo TemuTani"
                     />
                 </div>
@@ -1315,7 +1315,7 @@
             <div class="nav-items" id="nav"></div>
 
             <div class="side-bottom">
-                <a class="side-panel" href="../Chatbot/chatbot.html?from=admin" title="Simulasi chatbot WhatsApp"><div class="panel-icon"><img src="logo-wa.jpg" alt="WhatsApp"></div><div><h4>Alur WhatsApp</h4><p>Simulasi chatbot Temu Tani</p></div></a>
+                <a class="side-panel" href="../Chatbot/chatbot.html?from=admin" title="Simulasi chatbot WhatsApp"><div class="panel-icon"><img src="../assets/logo-wa.jpg" alt="WhatsApp"></div><div><h4>Alur WhatsApp</h4><p>Simulasi chatbot Temu Tani</p></div></a>
 
                 <a class="side-footer" href="../index.html" title="Keluar ke halaman utama" aria-label="Keluar ke halaman utama">
                     <div class="avatar">A1</div>
@@ -2150,7 +2150,7 @@
                 <span class="nav-count">${countOffers('Semua Wilayah')}</span>
             ` : ''}</button>
             `).join('');
-            document.getElementById('content').innerHTML = state.page === 'berita' ? `<iframe id="beritaFrame" src="../berita.html" title="Berita & Analisis" scrolling="no" style="display:block;width:100%;height:500px;overflow:hidden;border:0;background:#f5f7f5;"></iframe>` : state.page === 'overview' ? overview() : state.page === 'harga' ? hargaPage() : tablePage(state.page);
+            document.getElementById('content').innerHTML = state.page === 'berita' ? `<iframe id="beritaFrame" src="berita.html" title="Berita & Analisis" scrolling="no" style="display:block;width:100%;height:500px;overflow:hidden;border:0;background:#f5f7f5;"></iframe>` : state.page === 'overview' ? overview() : state.page === 'harga' ? hargaPage() : tablePage(state.page);
             updateTable()
         }
         function go(page) {
