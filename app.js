@@ -31,7 +31,9 @@ const SVG = {
  users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
  document:'<path d="M5 2h10l4 4v16H5zM15 2v5h4M8 12h8M8 16h8"/>',
  spark:'<path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5L12 2Z"/>',
- phone:'<path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2ZM10 18h4"/>'
+ phone:'<path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2ZM10 18h4"/>',
+ sprout:'<path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 1 1.1 4c-1.9-.1-3.5-.8-4.5-1.7"/>',
+ truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'
 };
 const ico = (name, size=18) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SVG[name] || SVG.info}</svg>`;
 const esc = x => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -177,7 +179,7 @@ function render(){
  for(const key of ['userSide','userTop'])document.getElementById(key).textContent=label;
  for(const key of ['regionSide','regionTop'])document.getElementById(key).textContent=small;
  for(const key of ['avatarSide','avatarTop'])document.getElementById(key).textContent=IS_FARMER?'AH':'TG';
- document.getElementById('roleChip').textContent=IS_FARMER?'🌾 Petani':'🚚 Tengkulak';
+ document.getElementById('roleChip').innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:0px;">${IS_FARMER ? SVG.sprout : SVG.truck}</svg>${IS_FARMER ? 'Petani' : 'Tengkulak'}`;
 }
 function modal(title,subtitle,html){document.getElementById('modal').innerHTML=`<div class="modal-top"><div><h2>${title}</h2><p>${subtitle||''}</p></div><button type="button" class="icon-btn" aria-label="Tutup" data-act="closeModal">${ico('close')}</button></div><div class="modal-body">${html}</div>`;document.getElementById('modalBackdrop').classList.add('show');}
 function closeModal(){document.getElementById('modalBackdrop').classList.remove('show');}
