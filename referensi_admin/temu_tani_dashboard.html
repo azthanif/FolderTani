@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#174b38" />
     <title>Temu Tani • Admin</title>
-    <link rel="icon" type="image/png" href="../assets/logo-maxxi.png">
+    <link rel="icon" type="image/png" href="../assets/logo-temutani.png">
 
     <style>
         @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
@@ -1295,16 +1295,16 @@
             <div class="brand">
                 <div class="brand-logo">
                     <img
-                        src="logo-maxxi.png"
-                        alt="Logo Maxxi Tani"
+                        src="logo-temutani-bg.png"
+                        alt="Logo TemuTani"
                     />
                 </div>
                 <div>
                     <div class="brand-name">
-                        Maxxi Tani<span style="color:#b9de91"></span>
+                        TemuTani<span style="color:#b9de91"></span>
                     </div>
                     <div class="brand-small">
-                        DASHBOARD TEMU TANI
+                        Administrator
                     </div>
                 </div>
             </div>
@@ -1315,17 +1315,7 @@
             <div class="nav-items" id="nav"></div>
 
             <div class="side-bottom">
-                <a class="side-panel" href="../Chatbot/chatbot.html?from=admin" title="Buka simulasi chatbot WhatsApp">
-                    <div class="panel-icon">
-                        <img
-                            src="logo-wa.jpg"
-                            alt="Logo WhatsApp"
-                        />
-                    </div>
-                    <div>
-                        <h4>Terintegrasi WhatsApp</h4>
-                    </div>
-                </a>
+                <a class="side-panel" href="../Chatbot/chatbot.html?from=admin" title="Simulasi chatbot WhatsApp"><div class="panel-icon"><img src="logo-wa.jpg" alt="WhatsApp"></div><div><h4>Alur WhatsApp</h4><p>Simulasi chatbot Temu Tani</p></div></a>
 
                 <a class="side-footer" href="../index.html" title="Keluar ke halaman utama" aria-label="Keluar ke halaman utama">
                     <div class="avatar">A1</div>
@@ -1898,7 +1888,7 @@
                         <td>
                             <strong>${s.id}</strong>
                         </td>
-                        <td>${person(s.farmer, 'Petani Maxxi Tani')}</td>
+                        <td>${person(s.farmer, 'Petani')}</td>
                         <td>${s.location}</td>
                         <td>${s.type}</td>
                         <td>
@@ -2233,7 +2223,7 @@
             let x;
             if (type === 'stock') {
                 x = stocks.find(s => s.id === id);
-                showModal(`Detail Stok · ${id}`, 'Listing stok dari petani Maxxi Tani', detailsGrid([
+                showModal(`Detail Stok · ${id}`, 'Listing stok dari petani', detailsGrid([
                     ['NAMA PETANI', x.farmer],
                     ['KABUPATEN', x.location],
                     ['JENIS GABAH', x.type],
