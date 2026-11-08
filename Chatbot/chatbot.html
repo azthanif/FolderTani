@@ -799,10 +799,43 @@ button:disabled {
   }
 }
 
+/* Tombol kembali ke dashboard asal (di luar bingkai ponsel) */
+.back-dash {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 15px 9px 11px;
+  border-radius: 999px;
+  background: rgba(32,44,51,.92);
+  border: 1px solid rgba(255,255,255,.12);
+  color: #e9edef;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(0,0,0,.4);
+  transition: background .15s, border-color .15s;
+}
+.back-dash:hover { background: #2a3942; border-color: rgba(255,255,255,.22); }
+.back-dash:focus-visible { outline: 2px solid #00a884; outline-offset: 2px; }
+.back-dash svg { flex-shrink: 0; }
+@media (max-width:760px) {
+  .app { padding-top: 56px !important; }
+  .phone { max-height: calc(100dvh - 64px) !important; }
+  .back-dash { top: 10px; left: 50%; transform: translateX(-50%); }
+}
+
 </style>
-  
+
 </head>
 <body>
+  <a class="back-dash" id="backDash" href="../index.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg><span id="backDashLabel">Kembali ke Beranda</span></a>
   <div class="app">
     <main aria-label="Simulasi chatbot WhatsApp Maxxi Tani · Temu Tani" class="phone">
      <div class="statusbar">
@@ -1526,6 +1559,30 @@ button:disabled {
     render();
 })();
 
+</script>
+<script>
+/* Kembali ke dashboard yang membuka chatbot (?from=petani|tengkulak|admin). */
+(function () {
+    var map = {
+        petani: ['../petani.html', 'Dashboard Petani'],
+        tengkulak: ['../tengkulak.html', 'Dashboard Tengkulak'],
+        admin: ['../referensi_admin/temu_tani_dashboard.html', 'Dashboard Admin']
+    };
+    var from = new URLSearchParams(location.search).get('from');
+    if (!map[from]) {
+        var ref = document.referrer || '';
+        if (/petani\.html/.test(ref)) from = 'petani';
+        else if (/tengkulak\.html/.test(ref)) from = 'tengkulak';
+        else if (/temu_tani_dashboard\.html/.test(ref)) from = 'admin';
+    }
+    try {
+        if (map[from]) sessionStorage.setItem('temutani_chat_from', from);
+        else from = sessionStorage.getItem('temutani_chat_from');
+    } catch (e) {}
+    if (!map[from]) return;
+    document.getElementById('backDash').href = map[from][0];
+    document.getElementById('backDashLabel').textContent = 'Kembali ke ' + map[from][1];
+})();
 </script>
 </body>
 </html>

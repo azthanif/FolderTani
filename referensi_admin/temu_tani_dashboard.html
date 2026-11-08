@@ -228,6 +228,12 @@
             color: #aec9b6;
             margin-top: 3px;
         }
+        a.side-panel, a.side-footer { color: inherit; text-decoration: none; cursor: pointer; transition: background .15s, border-color .15s; }
+        a.side-panel:hover { background: #2d6449; border-color: #4a8060; }
+        a.side-footer { margin: 13px 0 0; padding: 6px 7px; border-radius: 12px; }
+        a.side-footer:hover { background: rgba(255,255,255,.08); }
+        .logout-ico { margin-left: auto; color: #aec9b6; flex-shrink: 0; }
+        a.side-footer:hover .logout-ico { color: #fff; }
         .main {
             margin-left: 258px;
             width: calc(100% - 258px);
@@ -1309,7 +1315,7 @@
             <div class="nav-items" id="nav"></div>
 
             <div class="side-bottom">
-                <div class="side-panel">
+                <a class="side-panel" href="../Chatbot/chatbot.html?from=admin" title="Buka simulasi chatbot WhatsApp">
                     <div class="panel-icon">
                         <img
                             src="logo-wa.jpg"
@@ -1319,15 +1325,16 @@
                     <div>
                         <h4>Terintegrasi WhatsApp</h4>
                     </div>
-                </div>
+                </a>
 
-                <div class="side-footer">
+                <a class="side-footer" href="../index.html" title="Keluar ke halaman utama" aria-label="Keluar ke halaman utama">
                     <div class="avatar">A1</div>
                     <div>
                         <strong>Admin 1</strong>
                     <!-- <small>Temu Tani · Demo</small> -->
                     </div>
-                </div>
+                    <svg class="logout-ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 17l5-5-5-5M20 12H9M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7"/></svg>
+                </a>
             </div>
         </aside>
 
