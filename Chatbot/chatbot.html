@@ -1000,15 +1000,21 @@ button:disabled {
         try { localStorage.setItem(FKEY, JSON.stringify(state)); } catch {}
     }
     // Bersihkan tombol lama yang sudah tidak dipakai dari riwayat tersimpan.
-    const existingChats = [
-        ...(state.chats?.buyer || []),
-        ...Object.values(state.chats?.farmer || {}).flat()
+    // Perbarui juga pilihan menu pada percakapan lama yang tersimpan di browser.
+    // Dengan begitu, "Lihat Penawaran" tersedia tanpa perlu reset data simulasi.
+    const existingChatGroups = [
+        { role: 'buyer', messages: state.chats?.buyer || [] },
+        { role: 'farmer', messages: Object.values(state.chats?.farmer || {}).flat() }
     ];
-    for (const message of existingChats) {
-        if (message.tag === 'STATUS PENAWARAN') {
-            message.buttons = [{ label: 'Menu Utama', action: 'home', data: {}, kind: 'secondary' }];
-        } else if (message.buttons?.length) {
-            message.buttons = message.buttons.filter(option => option.label !== 'Lihat Stok Saya');
+    for (const { role, messages } of existingChatGroups) {
+        for (const message of messages) {
+            if (!message.answered && ['MENU LAYANAN', 'MENU UTAMA', 'PILIH MENU'].includes(message.tag)) {
+                message.buttons = menuButtons(role);
+            } else if (message.tag === 'STATUS PENAWARAN') {
+                message.buttons = [{ label: 'Menu Utama', action: 'home', data: {}, kind: 'secondary' }];
+            } else if (message.buttons?.length) {
+                message.buttons = message.buttons.filter(option => option.label !== 'Lihat Stok Saya');
+            }
         }
     }
     try { localStorage.setItem(FKEY, JSON.stringify(state)); } catch {}
@@ -1043,7 +1049,11 @@ button:disabled {
     catch { } }
     // --- Tombol balasan dan menu awal ---
     function btn(label, action, data = {}, kind = 'normal') { return { label, action, data, kind }; }
-    function menuButtons(role = state.role) { return role === 'farmer' ? [btn('Update Stok Gabah', 'farmer_stock'), btn('Lihat Prediksi Harga Wajar Gabah', 'farmer_ai')] : [btn('Lihat Stok Gabah', 'buyer_view_region'), btn('Ajukan Penawaran', 'buyer_offer_start')]; }
+    function menuButtons(role = state.role) {
+        return role === 'farmer'
+            ? [btn('Update Stok Gabah', 'farmer_stock'), btn('Lihat Prediksi Harga Wajar Gabah', 'farmer_ai'), btn('Lihat Penawaran', 'farmer_view_offers')]
+            : [btn('Lihat Stok Gabah', 'buyer_view_region'), btn('Ajukan Penawaran', 'buyer_offer_start'), btn('Lihat Penawaran', 'buyer_open_requests')];
+    }
     function showWelcome(role = state.role, farmerId = myId(), greeting = false) { const who = role === 'farmer' ? getFarmer(farmerId) : null; const title = greeting ? (role === 'farmer' ? `Halo, ${who?.name?.split(' · ')[1] || 'Bapak/Ibu'}! 🌾\nSelamat datang di **TemuTani**.\n\n` : 'Halo! Selamat datang di **TemuTani**. 🌾\n\n') : ''; bot(title + 'Silakan pilih layanan yang ingin digunakan melalui tombol di bawah. Jika pesan Anda tidak dikenali, ketik **MENU** untuk menampilkan pilihan kembali.', menuButtons(role), role, { farmerId, tag: 'MENU LAYANAN' }); }
     function ensureWelcome(role = state.role, farmerId = myId()) { if (!chatFor(role, farmerId).length)
         showWelcome(role, farmerId, true); }
@@ -1135,8 +1145,9 @@ button:disabled {
             case 'buyer_open_requests':
                 showMyOffers();
                 break;
-            case 'farmer_pending':
-                showFarmerPending();
+            case 'farmer_view_offers':
+            case 'farmer_pending': // Kompatibilitas dengan tombol dari riwayat lama.
+                showFarmerOffers();
                 break;
             case 'buyer_more_candidates':
                 showCandidateList(data.requestId);
@@ -1349,7 +1360,11 @@ button:disabled {
     }
     function showMyOffers() {
         setFlow({ step: null });
-        let msg = '**Ringkasan Penawaran Anda**\n\n';
+        let msg = '**Daftar Penawaran Anda**\n\n';
+        const buttons = [];
+        if (!state.offers.length) {
+            msg += 'Belum ada penawaran yang dikirim.\n';
+        }
         for (const offer of state.offers) {
             const status = {
                 FARMER_TURN: 'Menunggu respons petani',
@@ -1359,16 +1374,47 @@ button:disabled {
             msg += `**${offer.id}** • ${getFarmer(offer.farmerId).short}\n` +
                 `${kg(offer.qtyKg)} • Harga terakhir: ${money(offer.currentPrice)}/kg\n` +
                 `Status: ${status}\n`;
+            if (offer.status === 'BUYER_TURN') {
+                buttons.push(btn(`Setuju ${offer.id}`, 'buyer_accept', { offerId: offer.id }));
+                buttons.push(btn(`Tawar Balik ${offer.id}`, 'buyer_counter', { offerId: offer.id }));
+            }
             if (offer.status === 'AGREED') {
                 const contact = contactForFarmer(offer.farmerId);
                 msg += `Kontak WA petani${contact.demo ? ' (contoh)' : ''}: **${contact.label}**\n`;
             }
             msg += '\n';
         }
-        if (!state.offers.length) msg += 'Belum ada penawaran yang dikirim.\n';
-        bot(msg, [btn('Menu Utama', 'home', {}, 'secondary')], 'buyer', { tag: 'STATUS PENAWARAN' });
+        buttons.push(btn('Menu Utama', 'home', {}, 'secondary'));
+        bot(msg, buttons, 'buyer', { tag: 'DAFTAR PENAWARAN' });
     }
-    function showFarmerPending() { setFlow({ step: null }); const pending = state.offers.filter(o => o.farmerId === myId() && o.status === 'FARMER_TURN'); const msg = pending.length ? `Ada ${pending.length} penawaran yang menunggu respons Anda.` : 'Belum ada penawaran yang perlu direspons.'; bot(msg, [...pending.flatMap(o => [btn(`Setuju ${o.id}`, 'farmer_accept', { offerId: o.id }), btn(`Tawar balik ${o.id}`, 'farmer_counter', { offerId: o.id })]), btn('Menu Utama', 'home', {}, 'secondary')], 'farmer', { tag: 'PENAWARAN' }); }
+    function showFarmerOffers() {
+        setFlow({ step: null });
+        const offers = state.offers.filter(o => o.farmerId === myId());
+        let msg = '**Daftar Penawaran Masuk**\n\n';
+        const buttons = [];
+        if (!offers.length) {
+            msg += 'Belum ada penawaran yang masuk.\n';
+        }
+        for (const offer of offers) {
+            const status = {
+                FARMER_TURN: 'Menunggu respons Anda',
+                BUYER_TURN: 'Menunggu respons tengkulak',
+                AGREED: 'Harga telah disepakati'
+            }[offer.status] || offer.status;
+            const jenis = getStock(offer.stockId)?.type || 'GKP';
+            msg += `**${offer.id}** • ${jenis} • ${kg(offer.qtyKg)}\n` +
+                `Harga terakhir: ${money(offer.currentPrice)}/kg\n` +
+                `Status: ${status}\n`;
+            if (offer.status === 'FARMER_TURN') {
+                msg += `Referensi harga wajar AI (simulasi): ${money(pred(offer.region, jenis))}/kg\n`;
+                buttons.push(btn(`Setuju ${offer.id}`, 'farmer_accept', { offerId: offer.id }));
+                buttons.push(btn(`Tawar Balik ${offer.id}`, 'farmer_counter', { offerId: offer.id }));
+            }
+            msg += '\n';
+        }
+        buttons.push(btn('Menu Utama', 'home', {}, 'secondary'));
+        bot(msg, buttons, 'farmer', { tag: 'DAFTAR PENAWARAN' });
+    }
     function completeAgreement(offer, actor) {
         const stock = getStock(offer.stockId);
         if (!stock || stockAvailable(stock) < offer.qtyKg) {
