@@ -1,9 +1,10 @@
 'use strict';
 /*
- * Temu Tani — skrip dashboard terpadu.
+ * Temu Tani — skrip dashboard terpadu (frontend untuk backend FastAPI).
  *  - Shell dashboard (body[data-role]): admin.html, petani.html, tengkulak.html
  *  - Konten iframe (html[data-page]) : harga.html, berita.html
- * Setiap halaman hanya menjalankan init miliknya (lihat bagian 8).
+ * Semua data & aturan bisnis ada di server (/api/...). File ini hanya merender
+ * tampilan dan mengirim aksi pengguna ke API. Setiap halaman menjalankan init miliknya (bagian 8).
  */
 
 /* ========== 1. Utilitas bersama ========== */
@@ -85,9 +86,44 @@ const esc = x => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({'&':'&amp
 const formatRupiah = n => 'Rp' + new Intl.NumberFormat('id-ID').format(n);
 const fmtNum = n => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(n);
 
+/* ---------- Klien API (FastAPI) ---------- */
+// Frontend disajikan oleh FastAPI pada origin yang sama, jadi cukup path '/api'.
+// Bila frontend di-host terpisah, set window.TEMUTANI_API_BASE = 'https://domain-api' sebelum app.js.
+const API_BASE = (window.TEMUTANI_API_BASE || '').replace(/\/$/, '') + '/api';
+class ApiError extends Error {
+    constructor(message, status) { super(message); this.status = status; }
+}
+// Identitas demo dikirim lewat header. Ini SIMULASI, bukan autentikasi (lihat README).
+async function api(path, { method = 'GET', body, role, user } = {}) {
+    const headers = { 'Accept': 'application/json' };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (role) headers['X-Demo-Role'] = role;
+    if (user) headers['X-Demo-User'] = user;
+    let res;
+    try {
+        res = await fetch(API_BASE + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' });
+    } catch (e) {
+        throw new ApiError('Server Temu Tani tidak dapat dihubungi. Pastikan FastAPI sedang berjalan.', 0);
+    }
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* respons tanpa JSON */ }
+    if (!res.ok) {
+        const detail = data && data.detail;
+        throw new ApiError(typeof detail === 'string' ? detail : `Permintaan gagal (HTTP ${res.status}).`, res.status);
+    }
+    return data;
+}
+function apiErrorHTML(error, what = 'data') {
+    return `<div class="card section-card"><div class="empty-state"><div><strong>Gagal memuat ${esc(what)}</strong>${esc(error.message)}<br><small>Jalankan server dengan <code>uvicorn backend.main:app --reload</code> lalu buka <code>http://localhost:8000</code>.</small></div></div></div>`;
+}
+
 // Tanggal "hari ini" menurut WIB (GMT+7), dinormalkan ke 00:00 UTC agar aman dihitung per hari.
-// Prototipe ini tidak memiliki server, jadi jam perangkat dikonversi ke GMT+7.
+// Bila data harga sudah dimuat, tanggal acuan mengikuti server (asOf) agar konsisten dengan seri prediksi.
 function todayWIB() {
+    if (PRICE_META.asOf) {
+        const [y, m, d] = PRICE_META.asOf.split('-').map(Number);
+        return new Date(Date.UTC(y, m - 1, d));
+    }
     const d = new Date(Date.now() + 7 * 3600 * 1000);
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
@@ -100,6 +136,11 @@ const FRAME_PAGES = {
     harga: { id: 'hargaFrame', src: 'harga.html', title: 'Prediksi Harga AI' }
 };
 function frameHTML(page, query = '') {
+    // Iframe harga perlu tahu peran agar API bisa membatasi akses (petani dikunci ke wilayahnya).
+    if (page === 'harga') {
+        const role = document.body.dataset.role || 'admin';
+        query += (query ? '&' : '?') + 'role=' + encodeURIComponent(role);
+    }
     const f = FRAME_PAGES[page];
     return `<iframe id="${f.id}" src="${f.src}${query}" title="${f.title}" scrolling="no" style="display:block;width:100%;height:500px;overflow:hidden;border:0;background:#f5f7f5;"></iframe>`;
 }
@@ -128,35 +169,20 @@ function postFrameHeight(page, height) {
 }
 
 /* ========== 3. Prediksi harga (overview admin & harga.html) ========== */
-const priceData = {
-    Garut: {
-        current: 7100,
-        previous: 6980,
-        actual: [6750, 6830, 6780, 6900, 6960, 6930, 7040, 7020, 7100, 7090, 7160, 7100],
-        predicted: [6780, 6810, 6840, 6880, 6910, 6960, 6980, 7020, 7040, 7070, 7080, 7100]
-    }, Sukabumi: {
-        current: 7040,
-        previous: 6900,
-        actual: [6680, 6710, 6760, 6740, 6830, 6880, 6850, 6960, 6910, 6990, 6970, 7040],
-        predicted: [6690, 6740, 6750, 6780, 6820, 6850, 6870, 6910, 6940, 6970, 7000, 7040]
-    }
-};
-const HISTORY_DAYS = 30;   // riwayat harian sampai hari ini
-const FORECAST_DAYS = 7;   // prakiraan AI setelah hari ini
-// Titik acuan di atas dipadatkan menjadi seri harian (interpolasi linier) yang berakhir hari ini,
-// lalu estimasi AI diperpanjang 7 hari ke depan mengikuti tren 7 hari terakhir.
-function dailySeries(anchors, days) {
-    return Array.from({ length: days }, (_, i) => {
-        const t = i * (anchors.length - 1) / (days - 1), k = Math.floor(t), f = t - k;
-        const a = anchors[k], b = anchors[Math.min(k + 1, anchors.length - 1)];
-        return Math.round(a + (b - a) * f);
-    });
-}
-for (const d of Object.values(priceData)) {
-    d.actualDaily = dailySeries(d.actual, HISTORY_DAYS);
-    d.predictedDaily = dailySeries(d.predicted, HISTORY_DAYS);
-    const last = d.predictedDaily[HISTORY_DAYS - 1], slope = (last - d.predictedDaily[HISTORY_DAYS - 8]) / 7;
-    d.forecast = Array.from({ length: FORECAST_DAYS }, (_, i) => Math.round(last + slope * (i + 1)));
+// Data harga kini berasal dari GET /api/prices (seri harian + prakiraan dihitung di server).
+// Bentuk per wilayah: { current, previous, actualDaily[30], predictedDaily[30], forecast[7] }.
+let priceData = {};
+const PRICE_META = { asOf: null, hpp: 6500 };
+let HISTORY_DAYS = 30;   // riwayat harian sampai hari ini (ditimpa nilai server)
+let FORECAST_DAYS = 7;   // prakiraan AI setelah hari ini (ditimpa nilai server)
+async function loadPrices(role) {
+    const res = await api('/prices', { role });
+    priceData = res.regions || {};
+    PRICE_META.asOf = res.asOf;
+    PRICE_META.hpp = res.hpp;
+    HISTORY_DAYS = res.historyDays;
+    FORECAST_DAYS = res.forecastDays;
+    return res;
 }
 let state = { page: 'overview', area: 'Semua Wilayah', query: '', status: 'Semua Status', type: 'Semua Jenis', period: '30 Hari', chartPeriod: '30H' };
 let renderPage = () => {};
@@ -272,7 +298,7 @@ function hargaPage() {
                 <span class="c-label">HARGA PASAR PEMBANDING</span><strong>${formatRupiah(d.previous)}<span class="kpi-unit">/kg</span></strong><small>Harga historis</small>
             </div>
             <div class="card price-card">
-                <span class="c-label"> HARGA ACUAN GKP </span><strong>${formatRupiah(6500)}<span class="kpi-unit">/kg</span></strong><small>Harga Pembelian Pemerintah</small>
+                <span class="c-label"> HARGA ACUAN GKP </span><strong>${formatRupiah(PRICE_META.hpp)}<span class="kpi-unit">/kg</span></strong><small>Harga Pembelian Pemerintah</small>
             </div>
         </div>
         <div class="section-grid">
@@ -336,9 +362,9 @@ function hargaPage() {
             <td>
                 <strong>${formatRupiah(v.current)}/kg</strong>
             </td>
-            <td>${formatRupiah(6500)}/kg</td>
+            <td>${formatRupiah(PRICE_META.hpp)}/kg</td>
             <td>
-                <span style="color:#29825c;font-weight:800">+${formatRupiah(v.current - 6500)}</span>
+                <span style="color:#29825c;font-weight:800">+${formatRupiah(v.current - PRICE_META.hpp)}</span>
             </td>
         </tr>
     `).join('')}</tbody>
@@ -349,141 +375,13 @@ function hargaPage() {
 }
 
 /* ========== 4. Dashboard admin ========== */
-function initAdmin() {
-    const stocks = [
-        { id: 'STK-001', farmer: 'Pak Asep Hidayat', location: 'Garut', type: 'GKP', volume: 5.0, harvest: '04 Nov 2026', status: 'Tersedia', offers: 3 },
-        { id: 'STK-002', farmer: 'Bu Siti Aminah', location: 'Sukabumi', type: 'GKP', volume: 8.5, harvest: '07 Nov 2026', status: 'Dalam Negosiasi', offers: 2 },
-        { id: 'STK-003', farmer: 'Pak Dedi Suhendra', location: 'Garut', type: 'GKP', volume: 3.2, harvest: '01 Nov 2026', status: 'Tersedia', offers: 1 },
-        { id: 'STK-004', farmer: 'Bu Ratna Mulyani', location: 'Sukabumi', type: 'GKP', volume: 6.0, harvest: '12 Nov 2026', status: 'Tersedia', offers: 0 },
-        { id: 'STK-005', farmer: 'Pak Jajang Kurnia', location: 'Garut', type: 'GKG', volume: 4.8, harvest: '27 Okt 2026', status: 'Terjual', offers: 4 },
-        { id: 'STK-006', farmer: 'Bu Nia Kartika', location: 'Sukabumi', type: 'GKP', volume: 7.5, harvest: '08 Nov 2026', status: 'Dalam Negosiasi', offers: 2 },
-        { id: 'STK-007', farmer: 'Pak Agus Setiawan', location: 'Garut', type: 'GKP', volume: 2.5, harvest: '11 Nov 2026', status: 'Tersedia', offers: 1 },
-        { id: 'STK-008', farmer: 'Bu Lina Fitriani', location: 'Sukabumi', type: 'GKP', volume: 9.0, harvest: '09 Nov 2026', status: 'Tersedia', offers: 0 }
-    ];
-    const offers = [
-        {
-            id: 'OFF-208',
-            buyer: 'Pembeli 08••91',
-            location: 'Garut',
-            farmer: 'Pak Asep Hidayat',
-            stock: 'STK-001',
-            volume: 5,
-            price: 6925,
-            ai: 7100,
-            status: 'Menunggu',
-            date: '31 Okt 2026',
-            time: '10:42',
-            history: [['Penawaran dikirim', '31 Okt 2026 · 10:42', 'Rp6.925/kg'], ['Diteruskan ke petani', '31 Okt 2026 · 10:43', 'Harga wajar Rp7.100/kg']]
-        },
-        {
-            id: 'OFF-207',
-            buyer: 'Pembeli 03••74',
-            location: 'Sukabumi',
-            farmer: 'Bu Siti Aminah',
-            stock: 'STK-002',
-            volume: 8.5,
-            price: 6950,
-            ai: 7040,
-            status: 'Penawaran Balik',
-            date: '31 Okt 2026',
-            time: '10:15',
-            counter: 7100,
-            history: [['Penawaran dikirim', '31 Okt 2026 · 10:15', 'Rp6.950/kg'], ['Petani ajukan penawaran balik', '31 Okt 2026 · 10:21', 'Rp7.100/kg']]
-        },
-        {
-            id: 'OFF-206',
-            buyer: 'Pembeli 06••27',
-            location: 'Garut',
-            farmer: 'Pak Dedi Suhendra',
-            stock: 'STK-003',
-            volume: 3.2,
-            price: 7050,
-            ai: 7100,
-            status: 'Disetujui',
-            date: '30 Okt 2026',
-            time: '15:32',
-            history: [['Penawaran dikirim', '30 Okt 2026 · 15:32', 'Rp7.050/kg'], ['Petani menyetujui', '30 Okt 2026 · 16:04', 'Kesepakatan Rp7.050/kg']]
-        },
-        {
-            id: 'OFF-205',
-            buyer: 'Pembeli 09••63',
-            location: 'Sukabumi',
-            farmer: 'Bu Nia Kartika',
-            stock: 'STK-006',
-            volume: 7.5,
-            price: 6725,
-            ai: 7040,
-            status: 'Menunggu',
-            date: '30 Okt 2026',
-            time: '13:18',
-            history: [['Penawaran dikirim', '30 Okt 2026 · 13:18', 'Rp6.725/kg'], ['Diteruskan ke petani', '30 Okt 2026 · 13:19', 'Harga wajar Rp7.040/kg']]
-        },
-        {
-            id: 'OFF-204',
-            buyer: 'Pembeli 05••84',
-            location: 'Garut',
-            farmer: 'Pak Asep Hidayat',
-            stock: 'STK-001',
-            volume: 4,
-            price: 6700,
-            ai: 7100,
-            status: 'Ditolak',
-            date: '29 Okt 2026',
-            time: '11:25',
-            history: [['Penawaran dikirim', '29 Okt 2026 · 11:25', 'Rp6.700/kg'], ['Petani menolak', '29 Okt 2026 · 11:41', 'Penawaran ditolak']]
-        },
-        {
-            id: 'OFF-203',
-            buyer: 'Pembeli 07••16',
-            location: 'Garut',
-            farmer: 'Pak Jajang Kurnia',
-            stock: 'STK-005',
-            volume: 4.8,
-            price: 7350,
-            ai: 7300,
-            status: 'Disetujui',
-            date: '28 Okt 2026',
-            time: '09:48',
-            history: [['Penawaran dikirim', '28 Okt 2026 · 09:48', 'Rp7.350/kg'], ['Petani menyetujui', '28 Okt 2026 · 10:05', 'Kesepakatan Rp7.350/kg']]
-        },
-        {
-            id: 'OFF-202',
-            buyer: 'Pembeli 02••53',
-            location: 'Sukabumi',
-            farmer: 'Bu Siti Aminah',
-            stock: 'STK-002',
-            volume: 6.0,
-            price: 6800,
-            ai: 7040,
-            status: 'Penawaran Balik',
-            date: '28 Okt 2026',
-            time: '08:12',
-            counter: 7000,
-            history: [['Penawaran dikirim', '28 Okt 2026 · 08:12', 'Rp6.800/kg'], ['Petani ajukan penawaran balik', '28 Okt 2026 · 08:33', 'Rp7.000/kg']]
-        }
-    ];
-    const transactions = [
-        { id: 'TRX-104', farmer: 'Pak Dedi Suhendra', buyer: 'Pembeli 06••27', location: 'Garut', stock: 'STK-003', volume: 3.2, price: 7050, date: '30 Okt 2026', status: 'Disepakati' },
-        { id: 'TRX-103', farmer: 'Pak Jajang Kurnia', buyer: 'Pembeli 07••16', location: 'Garut', stock: 'STK-005', volume: 4.8, price: 7350, date: '28 Okt 2026', status: 'Selesai' },
-        { id: 'TRX-102', farmer: 'Bu Nia Kartika', buyer: 'Pembeli 04••88', location: 'Sukabumi', stock: 'STK-006', volume: 4.0, price: 7000, date: '25 Okt 2026', status: 'Selesai' },
-        { id: 'TRX-101', farmer: 'Bu Ratna Mulyani', buyer: 'Pembeli 01••35', location: 'Sukabumi', stock: 'STK-004', volume: 2.0, price: 6950, date: '23 Okt 2026', status: 'Disepakati' }
-    ];
-    const events = [
-        { icon: 'handshake', title: 'Pembeli 08••91 mengajukan penawaran', note: 'STK-001 · Garut · Rp6.925/kg', time: '10:42', kind: 'Penawaran', status: 'Berhasil', location: 'Garut' },
-        { icon: 'arrow-left-right', title: 'Bu Siti mengajukan penawaran balik', note: 'OFF-207 · Sukabumi · Rp7.100/kg', time: '10:21', kind: 'Negosiasi', status: 'Berhasil', location: 'Sukabumi' },
-        { icon: 'search', title: 'Pembeli mencari gabah 5 ton', note: 'Pencarian stok · Garut', time: '09:52', kind: 'Pencarian', status: 'Berhasil', location: 'Garut' },
-        { icon: 'refresh-cw', title: 'Bu Lina memperbarui stok gabah', note: 'STK-008 · Sukabumi · 9 ton', time: '09:15', kind: 'Stok', status: 'Berhasil', location: 'Sukabumi' },
-        {
-            icon: 'message-circle-warning',
-            title: 'Pesan tidak dapat dipahami chatbot',
-            note: 'Permintaan perlu diperjelas · Identitas tersamarkan',
-            time: '08:47',
-            kind: 'Chatbot',
-            status: 'Perlu Tinjauan',
-            location: 'Garut'
-        },
-        { icon: 'package-plus', title: 'Pak Agus mendaftarkan stok baru', note: 'STK-007 · Garut · 2,5 ton', time: '08:13', kind: 'Stok', status: 'Berhasil', location: 'Garut' }
-    ];
+async function initAdmin() {
+    // Data admin dimuat dari GET /api/admin/dashboard (sebelumnya array statis di file ini).
+    let stocks = [], offers = [], transactions = [], events = [];
+    async function loadAdminData() {
+        const d = await api('/admin/dashboard', { role: 'admin' });
+        stocks = d.stocks; offers = d.offers; transactions = d.transactions; events = d.events;
+    }
     const pages = [
         ['overview', 'layout-dashboard', 'Overview'],
         ['stok', 'wheat', 'Stok Gabah'],
@@ -871,8 +769,14 @@ function initAdmin() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
         closeSide()
     }
-    function refreshDemo() {
-        toast('Data demo ditampilkan ulang — tidak terhubung server.')
+    async function refreshDemo() {
+        try {
+            await Promise.all([loadAdminData(), loadPrices('admin')]);
+            render();
+            toast('Data diperbarui dari server.');
+        } catch (e) {
+            toast(e.message);
+        }
     }
     function toggleSide() {
         document.getElementById('sidebar').classList.toggle('open');
@@ -1025,6 +929,14 @@ function initAdmin() {
             closeModal()
     });
     renderPage = renderAdmin;
+    document.getElementById('content').innerHTML = '<div class="empty-state">Memuat data dari server…</div>';
+    try {
+        await Promise.all([loadAdminData(), loadPrices('admin')]);
+    } catch (e) {
+        document.getElementById('nav').innerHTML = '';
+        document.getElementById('content').innerHTML = apiErrorHTML(e, 'dashboard admin');
+        return;
+    }
     render();
 }
 
@@ -1034,68 +946,43 @@ function initRoleDashboard() {
  const IS_FARMER = role === 'petani';
  const CURRENT_FARMER = 'F-001';
  const CURRENT_BUYER = 'GUEST-001';
- const STORAGE_KEY = 'temu-tani-role-demo-v1';
  const rupiah = n => formatRupiah(Number(n||0));
  const number = n => Number(n||0).toLocaleString('id-ID',{maximumFractionDigits:2});
  const totalPrice = (ton, perKg) => rupiah(Math.round(ton*1000*perKg));
  const prettyDate = v => {if (!v)return '—'; const d=new Date(v+'T12:00:00');return Number.isNaN(d.getTime())?esc(v):d.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});};
  const fmtTime = v => v ? new Date(v).toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
- const now = () => new Date().toISOString();
- const uid = prefix => prefix + '-' + Math.random().toString(36).slice(2,7).toUpperCase();
  const pageDefs = IS_FARMER ? [
   ['overview','dashboard','Overview'],['stok','wheat','Stok Gabah'],['penawaran','handshake','Penawaran & Negosiasi'],['harga','chart','Prediksi Harga AI'],['transaksi','history','Transaksi Disepakati'],['berita','document','Berita & Analisis']
  ] : [
   ['overview','dashboard','Overview'],['stok','wheat','Stok Gabah'],['penawaran','handshake','Penawaran & Negosiasi'],['transaksi','history','Transaksi Disepakati']
  ];
- const initData = () => ({
-  farmers:[
-   {id:'F-001',name:'Pak Asep Hidayat',region:'Garut',village:'Tarogong Kidul',maxxiId:'MX-001'},
-   {id:'F-002',name:'Pak Dedi Suhendra',region:'Garut',village:'Cisurupan',maxxiId:'MX-002'},
-   {id:'F-003',name:'Bu Siti Aminah',region:'Sukabumi',village:'Cisaat',maxxiId:'MX-003'},
-   {id:'F-004',name:'Bu Ratna Mulyani',region:'Sukabumi',village:'Cicurug',maxxiId:'MX-004'},
-   {id:'F-005',name:'Pak Jajang Kurnia',region:'Garut',village:'Leles',maxxiId:'MX-005'},
-   {id:'F-006',name:'Bu Nia Kartika',region:'Sukabumi',village:'Sukaraja',maxxiId:'MX-006'}
-  ],
-  buyers:[{id:'GUEST-001',label:'Pembeli 08••91'},{id:'GUEST-002',label:'Pembeli 06••27'}],
-  stocks:[
-   {id:'STK-001',farmerId:'F-001',region:'Garut',type:'GKP',volume:5,harvest:'2026-11-09',status:'Tersedia',moisture:24},
-   {id:'STK-002',farmerId:'F-003',region:'Sukabumi',type:'GKP',volume:8.5,harvest:'2026-11-10',status:'Tersedia',moisture:23},
-   {id:'STK-003',farmerId:'F-002',region:'Garut',type:'GKP',volume:3.2,harvest:'2026-11-08',status:'Tersedia',moisture:25},
-   {id:'STK-004',farmerId:'F-004',region:'Sukabumi',type:'GKP',volume:6,harvest:'2026-11-12',status:'Tersedia',moisture:23},
-   {id:'STK-005',farmerId:'F-005',region:'Garut',type:'GKP',volume:4.8,harvest:'2026-11-11',status:'Tersedia',moisture:24},
-   {id:'STK-006',farmerId:'F-006',region:'Sukabumi',type:'GKG',volume:7.5,harvest:'2026-11-12',status:'Tersedia',moisture:14},
-   {id:'STK-007',farmerId:'F-001',region:'Garut',type:'GKP',volume:2.2,harvest:'2026-11-04',status:'Tersedia',moisture:24},
-   {id:'STK-008',farmerId:'F-001',region:'Garut',type:'GKG',volume:1.8,harvest:'2026-11-05',status:'Tersedia',moisture:14}
-  ],
-  requests:[
-   {id:'REQ-001',buyerId:'GUEST-001',region:'Garut',type:'GKP',volume:8,needed:'2026-11-14',created:'2026-11-06T08:10:00+07:00'},
-   {id:'REQ-002',buyerId:'GUEST-001',region:'Garut',type:'GKG',volume:1,needed:'2026-11-12',created:'2026-11-05T09:15:00+07:00'},
-   {id:'REQ-003',buyerId:'GUEST-002',region:'Garut',type:'GKP',volume:3,needed:'2026-11-15',created:'2026-11-04T13:00:00+07:00'}
-  ],
-  offers:[
-   {id:'OFF-001',requestId:'REQ-001',buyerId:'GUEST-001',farmerId:'F-001',stockId:'STK-001',volume:3,initialBid:6800,currentBid:6800,counter:null,aiRef:7100,status:'Menunggu Petani',created:'2026-11-06T09:10:00+07:00',history:[{at:'2026-11-06T09:10:00+07:00',actor:'Pembeli',label:'Penawaran awal dikirim',price:6800}]},
-   {id:'OFF-002',requestId:'REQ-001',buyerId:'GUEST-001',farmerId:'F-002',stockId:'STK-003',volume:3,initialBid:6750,currentBid:6750,counter:7000,aiRef:7100,status:'Penawaran Balik',created:'2026-11-06T09:15:00+07:00',history:[{at:'2026-11-06T09:15:00+07:00',actor:'Pembeli',label:'Penawaran awal dikirim',price:6750},{at:'2026-11-06T09:20:00+07:00',actor:'Petani',label:'Petani mengajukan harga balik',price:7000}]},
-   {id:'OFF-003',requestId:'REQ-003',buyerId:'GUEST-002',farmerId:'F-001',stockId:'STK-001',volume:2,initialBid:6700,currentBid:6700,counter:null,aiRef:7100,status:'Ditolak',created:'2026-11-04T13:05:00+07:00',history:[{at:'2026-11-04T13:05:00+07:00',actor:'Pembeli',label:'Penawaran awal dikirim',price:6700},{at:'2026-11-04T13:15:00+07:00',actor:'Petani',label:'Penawaran ditolak',price:null}]},
-   {id:'OFF-004',requestId:'REQ-002',buyerId:'GUEST-001',farmerId:'F-001',stockId:'STK-008',volume:1,initialBid:7100,currentBid:7100,counter:7200,aiRef:7350,status:'Disepakati',created:'2026-11-05T09:20:00+07:00',agreedPrice:7200,history:[{at:'2026-11-05T09:20:00+07:00',actor:'Pembeli',label:'Penawaran awal dikirim',price:7100},{at:'2026-11-05T09:30:00+07:00',actor:'Petani',label:'Harga balik diajukan',price:7200},{at:'2026-11-05T09:40:00+07:00',actor:'Pembeli',label:'Harga balik disetujui',price:7200}]},
-   {id:'OFF-005',requestId:'REQ-001',buyerId:'GUEST-001',farmerId:'F-001',stockId:'STK-007',volume:1.2,initialBid:7000,currentBid:7000,counter:null,aiRef:7100,status:'Disepakati',agreedPrice:7000,created:'2026-11-04T10:10:00+07:00',history:[{at:'2026-11-04T10:10:00+07:00',actor:'Pembeli',label:'Penawaran awal dikirim',price:7000},{at:'2026-11-04T11:00:00+07:00',actor:'Petani',label:'Penawaran disetujui',price:7000}]}
-  ],
-  transactions:[
-   {id:'TRX-001',offerId:'OFF-004',buyerId:'GUEST-001',farmerId:'F-001',stockId:'STK-008',volume:1,price:7200,date:'2026-11-05',payment:'Belum Dibayar'},
-   {id:'TRX-002',offerId:'OFF-005',buyerId:'GUEST-001',farmerId:'F-001',stockId:'STK-007',volume:1.2,price:7000,date:'2026-11-04',payment:'Sudah Dibayar',paidAt:'2026-11-05T11:00:00+07:00'}
-  ],
-  activities:[
-   {id:'EVT-001',at:'2026-11-06T09:10:00+07:00',title:'Penawaran masuk untuk Pak Asep',note:'OFF-001 • 3 ton GKP • Garut'},
-   {id:'EVT-002',at:'2026-11-06T09:20:00+07:00',title:'Harga balik dari Pak Dedi',note:'OFF-002 • Rp7.000/kg'},
-   {id:'EVT-003',at:'2026-11-05T09:40:00+07:00',title:'Kesepakatan GKG tercatat',note:'TRX-001 • Menunggu pembayaran'},
-   {id:'EVT-004',at:'2026-11-05T11:00:00+07:00',title:'Pembayaran transaksi dikonfirmasi',note:'TRX-002 • Sudah dibayar'}
-  ]
- });
- let db;
- function load(){
-  try {const raw=localStorage.getItem(STORAGE_KEY);const data=raw?JSON.parse(raw):null;db=data && data.farmers && data.offers && data.transactions?data:initData();}
-  catch(e){db=initData();}
+ // Data kini disimpan di server (GET /api/state). Server hanya mengirim data milik peran ini:
+ // petani -> stok/penawaran/transaksi miliknya; tengkulak -> tanpa referensi harga AI.
+ const ACTOR = { role, user: IS_FARMER ? CURRENT_FARMER : CURRENT_BUYER };
+ let db = null;
+ let busy = false;
+ let mutationSeq = 0; // naik setiap aksi; dipakai agar hasil polling lama tidak menimpa data baru
+ async function load(){ db = await api('/state', ACTOR); }
+ // Kirim aksi ke server; server memvalidasi & mengembalikan snapshot terbaru.
+ // onError(e) boleh mengembalikan true bila error sudah ditampilkan sendiri (mis. alert seperti versi awal).
+ async function mutate(path, { method='POST', body, before, success, onError } = {}) {
+  if (busy) return null;
+  busy = true;
+  mutationSeq++;
+  try {
+   const res = await api(path, { ...ACTOR, method, body });
+   db = res.state;
+   if (before) before(res);
+   closeModal();
+   render();
+   toast(success || res.message);
+   return res;
+  } catch (e) {
+   if (!(onError && onError(e))) toast(e.message);
+   if (e.status === 404 || e.status === 409) { try { await load(); renderKeepingSearch(); } catch (_) {} }
+   return null;
+  } finally { busy = false; }
  }
- function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(db));}catch(e){} render();}
  const farmer = id => db.farmers.find(f=>f.id===id);
  const stock = id => db.stocks.find(s=>s.id===id);
  const buyer = id => db.buyers.find(b=>b.id===id);
@@ -1103,8 +990,8 @@ function initRoleDashboard() {
  const myOffers = () => db.offers.filter(o=>IS_FARMER?o.farmerId===CURRENT_FARMER:o.buyerId===CURRENT_BUYER);
  const myTransactions = () => db.transactions.filter(t=>IS_FARMER?t.farmerId===CURRENT_FARMER:t.buyerId===CURRENT_BUYER);
  const ownStock = () => db.stocks.filter(s=>s.farmerId===CURRENT_FARMER);
- const availability = s => Math.max(0,Math.round((s.volume-db.transactions.filter(t=>t.stockId===s.id).reduce((n,t)=>n+t.volume,0))*100)/100);
- const currentAI = (region,type) => {const map={Garut:{GKP:7100,GKG:7350},Sukabumi:{GKP:7040,GKG:7300}};return map[region]?.[type]||null;};
+ const availability = s => Number(s.available||0); // dihitung server: volume − volume yang sudah disepakati
+ const currentAI = (region,type) => db.aiReference?.[type] || null; // hanya dikirim server untuk petani
  const offerStatus = o => o.status;
  const badge = str => {const map={'Tersedia':'green','Disepakati':'green','Sudah Dibayar':'green','Aktif':'green','Menunggu Petani':'gold','Belum Dibayar':'gold','Penawaran Balik':'blue','Menunggu Verifikasi':'blue','Ditolak':'red','Akan Panen':'gray','Ditutup':'gray'};return `<span class="pill ${map[str]||'gray'}">${esc(str)}</span>`;};
  const person = f => `<span class="person-cell"><span class="initial-avatar">${esc(f.name.replace(/^(Pak|Bu) /,'').split(' ').slice(0,2).map(x=>x[0]).join(''))}</span><span><strong>${esc(f.name)}</strong><small>${esc(f.village+', '+f.region)}</small></span></span>`;
@@ -1148,10 +1035,12 @@ function initRoleDashboard() {
   `<div class="kpi-grid">${kpi('check','Total Kesepakatan',tx.length,'Transaksi milik Anda')}${kpi('wallet','Sudah Dibayar',tx.filter(t=>t.payment==='Sudah Dibayar').length,'Dikonfirmasi petani','lime')}${kpi('clock','Belum Dibayar',tx.filter(t=>t.payment==='Belum Dibayar').length,'Menunggu pembayaran','gold')}${kpi('activity','Menunggu Verifikasi',tx.filter(t=>t.payment==='Menunggu Verifikasi').length,'Pembeli mengaku sudah membayar','blue')}</div>`+
   `<div class="info-strip">${ico('info',17)} ${IS_FARMER?'Konfirmasi pembayaran diterima hanya ketika dana benar-benar masuk ke rekening Anda.':'Tombol “Saya Sudah Transfer” tidak memindahkan dana. Petani harus mengonfirmasi pembayaran setelah dana diterima.'}</div>`+filters('transaksi')+trxTable(list);
  }
+ function currentPage(){return pageDefs.some(p=>p[0]===ui.page)?ui.page:'overview';}
+ function renderNav(){const page=currentPage();document.getElementById('nav').innerHTML=pageDefs.map(p=>`<button class="nav-link ${page===p[0]?'active':''}" type="button" data-act="navigate" data-id="${p[0]}">${ico(p[1],18)}${p[2]}${p[0]==='penawaran'&&myOffers().filter(o=>IS_FARMER?o.status==='Menunggu Petani':o.status==='Penawaran Balik').length?`<span class="nav-count">${myOffers().filter(o=>IS_FARMER?o.status==='Menunggu Petani':o.status==='Penawaran Balik').length}</span>`:''}</button>`).join('');}
  function render(){
-  const page=pageDefs.some(p=>p[0]===ui.page)?ui.page:'overview';
+  const page=currentPage();
   document.getElementById('crumb').textContent=pageDefs.find(p=>p[0]===page)[2];
-  document.getElementById('nav').innerHTML=pageDefs.map(p=>`<button class="nav-link ${page===p[0]?'active':''}" type="button" data-act="navigate" data-id="${p[0]}">${ico(p[1],18)}${p[2]}${p[0]==='penawaran'&&myOffers().filter(o=>IS_FARMER?o.status==='Menunggu Petani':o.status==='Penawaran Balik').length?`<span class="nav-count">${myOffers().filter(o=>IS_FARMER?o.status==='Menunggu Petani':o.status==='Penawaran Balik').length}</span>`:''}</button>`).join('');
+  renderNav();
   document.getElementById('content').innerHTML=FRAME_PAGES[page]?frameHTML(page,page==='harga'&&IS_FARMER?'?wilayah='+encodeURIComponent(myFarmer().region):''):page==='overview'?overview():page==='stok'?stocksPage():page==='penawaran'?offersPage():transactionsPage();
   document.getElementById('notifBtn').innerHTML=ico('bell',17)+`<span class="notification-dot"></span>`;
   document.getElementById('menuToggle').innerHTML=ico('menu',19);
@@ -1185,8 +1074,6 @@ function initRoleDashboard() {
   modal('Detail Transaksi '+t.id,`${s.type} • ${s.region} • Kesepakatan harga`, `<div class="metric-row"><div class="metric-small"><small>Volume</small><strong>${number(t.volume)} ton</strong></div><div class="metric-small"><small>Harga akhir</small><strong>${rupiah(t.price)}</strong></div><div class="metric-small"><small>Total disepakati</small><strong>${totalPrice(t.volume,t.price)}</strong></div></div><div class="divider"></div><div class="modal-grid"><div class="modal-item"><label>Petani</label><strong>${esc(far.name)}</strong></div><div class="modal-item"><label>Pembeli</label><strong>${esc(buy.label)}</strong></div><div class="modal-item"><label>ID Penawaran</label><strong>${t.offerId}</strong></div><div class="modal-item"><label>Status Pembayaran</label>${badge(t.payment)}</div><div class="modal-item"><label>Tanggal Kesepakatan</label><strong>${prettyDate(t.date)}</strong></div><div class="modal-item"><label>Lokasi</label><strong>${s.region}</strong></div></div><div class="divider"></div>${actions||'<div class="notice-card">Tidak ada tindakan pembayaran yang diperlukan pada status ini.</div>'}`);
  }
  function counterOffer(id,mode='farmer'){const o=db.offers.find(x=>x.id===id);if(!o||!myOffers().includes(o))return;const farmerMode=IS_FARMER;const expected=farmerMode?'Menunggu Petani':'Penawaran Balik';if(o.status!==expected)return toast('Status penawaran sudah berubah.');modal(farmerMode?'Ajukan Harga Balik':'Ajukan Harga Baru',`Penawaran ${o.id} • ${number(o.volume)} ton ${stock(o.stockId).type}`,`<form id="counterForm" data-id="${o.id}"><div class="form-grid"><div class="field span-2"><label>Harga yang Anda ajukan (Rp/kg)</label><input name="price" type="number" min="1" step="1" required placeholder="Contoh: 7000"></div><div class="span-2 field-note">${farmerMode?`Harga balik harus lebih tinggi dari penawaran pembeli: <b>${rupiah(o.currentBid)}/kg</b>.`:`Harga balik petani: <b>${rupiah(o.counter)}/kg</b>. Harga Anda tidak boleh lebih rendah dari penawaran pertama Anda: <b>${rupiah(o.initialBid)}/kg</b>.`}</div>${farmerMode?`<div class="span-2 notice-positive">Harga referensi AI untuk petani: <b>${rupiah(o.aiRef)}/kg</b>. Anda bebas menentukan harga balik.</div>`:''}</div><div class="form-actions"><button type="button" class="btn" data-act="closeModal">Batal</button><button class="btn primary" type="submit">Kirim ${farmerMode?'Harga Balik':'Penawaran Baru'}</button></div></form>`);}
- function appendEvent(title,note){db.activities.unshift({id:uid('EVT'),at:now(),title,note});db.activities=db.activities.slice(0,30);}
- function addAgreement(o,agreed){if(o.status==='Disepakati')return false;const s=stock(o.stockId);if(!s||s.status!=='Tersedia'||availability(s)+1e-8<o.volume){toast('Stok sudah berkurang. Penawaran tidak dapat disetujui.');return false;}o.status='Disepakati';o.agreedPrice=agreed;o.history.push({at:now(),actor:IS_FARMER?'Petani':'Pembeli',label:'Harga disepakati',price:agreed});const tx={id:uid('TRX'),offerId:o.id,buyerId:o.buyerId,farmerId:o.farmerId,stockId:o.stockId,volume:o.volume,price:agreed,date:new Date().toISOString().slice(0,10),payment:'Belum Dibayar'};db.transactions.push(tx);appendEvent('Kesepakatan baru '+o.id,tx.id+' • '+number(o.volume)+' ton');save();return true;}
  function actions(act,id){
   if(act==='navigate'){ui.page=id;ui.query='';ui.status='Semua Status';if(IS_FARMER)ui.area='Garut';closeModal();render();closeSide();return;}
   if(act==='closeModal'){closeModal();return;}
@@ -1197,24 +1084,29 @@ function initRoleDashboard() {
   if(act==='offerDetail')return offerDetail(id);
   if(act==='trxDetail')return trxDetail(id);
   if(act==='counterOffer'||act==='rebidOffer')return counterOffer(id);
-  if(act==='acceptOffer'&&IS_FARMER){const o=db.offers.find(x=>x.id===id&&x.farmerId===CURRENT_FARMER&&x.status==='Menunggu Petani');if(o&&confirm('Terima harga '+rupiah(o.currentBid)+'/kg untuk '+o.volume+' ton?')){if(addAgreement(o,o.currentBid)){closeModal();toast('Penawaran berhasil disepakati.');}}return;}
-  if(act==='rejectOffer'&&IS_FARMER){const o=db.offers.find(x=>x.id===id&&x.farmerId===CURRENT_FARMER&&x.status==='Menunggu Petani');if(o&&confirm('Tolak penawaran ini?')){o.status='Ditolak';o.history.push({at:now(),actor:'Petani',label:'Penawaran ditolak',price:null});appendEvent('Penawaran ditolak '+id,'Petani menolak tawaran');closeModal();save();toast('Penawaran ditolak.');}return;}
-  if(act==='acceptCounter'&&!IS_FARMER){const o=db.offers.find(x=>x.id===id&&x.buyerId===CURRENT_BUYER&&x.status==='Penawaran Balik');if(o&&confirm('Setujui harga balik '+rupiah(o.counter)+'/kg?')){if(addAgreement(o,o.counter)){closeModal();toast('Harga balik disepakati.');}}return;}
-  if(act==='markPaid'&&!IS_FARMER){const t=db.transactions.find(x=>x.id===id&&x.buyerId===CURRENT_BUYER&&x.payment==='Belum Dibayar');if(t&&confirm('Anda sudah benar-benar melakukan transfer di luar aplikasi?')){t.payment='Menunggu Verifikasi';t.claimedPaidAt=now();appendEvent('Pembeli melaporkan transfer '+id,'Menunggu konfirmasi petani');closeModal();save();toast('Laporan transfer dicatat. Menunggu verifikasi petani.');}return;}
-  if(act==='verifyPayment'&&IS_FARMER){const t=db.transactions.find(x=>x.id===id&&x.farmerId===CURRENT_FARMER&&x.payment==='Menunggu Verifikasi');if(t&&confirm('Apakah dana benar-benar sudah masuk ke rekening Anda?')){t.payment='Sudah Dibayar';t.paidAt=now();appendEvent('Pembayaran dikonfirmasi '+id,'Dana diterima petani');closeModal();save();toast('Pembayaran telah dikonfirmasi.');}return;}
+  if(act==='acceptOffer'&&IS_FARMER){const o=db.offers.find(x=>x.id===id&&x.farmerId===CURRENT_FARMER&&x.status==='Menunggu Petani');if(o&&confirm('Terima harga '+rupiah(o.currentBid)+'/kg untuk '+o.volume+' ton?'))mutate(`/offers/${encodeURIComponent(id)}/accept`);return;}
+  if(act==='rejectOffer'&&IS_FARMER){const o=db.offers.find(x=>x.id===id&&x.farmerId===CURRENT_FARMER&&x.status==='Menunggu Petani');if(o&&confirm('Tolak penawaran ini?'))mutate(`/offers/${encodeURIComponent(id)}/reject`);return;}
+  if(act==='acceptCounter'&&!IS_FARMER){const o=db.offers.find(x=>x.id===id&&x.buyerId===CURRENT_BUYER&&x.status==='Penawaran Balik');if(o&&confirm('Setujui harga balik '+rupiah(o.counter)+'/kg?'))mutate(`/offers/${encodeURIComponent(id)}/accept-counter`);return;}
+  if(act==='markPaid'&&!IS_FARMER){const t=db.transactions.find(x=>x.id===id&&x.buyerId===CURRENT_BUYER&&x.payment==='Belum Dibayar');if(t&&confirm('Anda sudah benar-benar melakukan transfer di luar aplikasi?'))mutate(`/transactions/${encodeURIComponent(id)}/mark-paid`);return;}
+  if(act==='verifyPayment'&&IS_FARMER){const t=db.transactions.find(x=>x.id===id&&x.farmerId===CURRENT_FARMER&&x.payment==='Menunggu Verifikasi');if(t&&confirm('Apakah dana benar-benar sudah masuk ke rekening Anda?'))mutate(`/transactions/${encodeURIComponent(id)}/verify`);return;}
   if(act==='searchRequest'&&!IS_FARMER){const r=db.requests.find(x=>x.id===id&&x.buyerId===CURRENT_BUYER);if(r){ui.requested=r.id;ui.area=r.region;ui.type=r.type;ui.page='stok';ui.query='';ui.status='Semua Status';render();toast('Menampilkan stok yang sesuai '+r.id);closeSide();}return;}
-  if(act==='resetDemo'&&confirm('Kembalikan seluruh data simulasi seperti semula di browser ini?')){db=initData();save();closeModal();toast('Data simulasi dikembalikan.');}
+  if(act==='resetDemo'&&confirm('Kembalikan seluruh data simulasi seperti semula di server?'))mutate('/demo/reset',{success:'Data simulasi dikembalikan.'});
  }
- function handleForm(e){const form=e.target;if(!['stockForm','offerForm','requestForm','counterForm'].includes(form.id))return;e.preventDefault();const data=new FormData(form);
-  if(form.id==='stockForm'&&IS_FARMER){const id=form.dataset.id;const s=id?stock(id):null;const volume=Number(data.get('volume'));const committed=s?s.volume-availability(s):0;if(!Number.isFinite(volume)||volume<=0||volume+1e-8<committed)return toast('Volume harus positif dan tidak kurang dari volume yang telah disepakati.');const status=String(data.get('status'));const change={type:s&&committed>0?s.type:String(data.get('type')),volume,harvest:String(data.get('harvest')),status,moisture:Number(data.get('moisture'))||null};if(s){if(s.farmerId!==CURRENT_FARMER)return;Object.assign(s,change);}else{db.stocks.push({id:uid('STK'),farmerId:CURRENT_FARMER,region:myFarmer().region,...change});}appendEvent(s?'Stok diperbarui':'Stok baru ditambahkan',`${number(volume)} ton ${change.type} • Garut`);closeModal();save();toast(s?'Stok berhasil diperbarui.':'Stok gabah berhasil ditambahkan.');return;}
-  if(form.id==='requestForm'&&!IS_FARMER){const volume=Number(data.get('volume'));if(!Number.isFinite(volume)||volume<=0)return toast('Volume tidak valid.');const r={id:uid('REQ'),buyerId:CURRENT_BUYER,type:String(data.get('type')),region:String(data.get('region')),volume,needed:String(data.get('needed')),created:now()};db.requests.push(r);appendEvent('Permintaan pembeli baru '+r.id,`${number(volume)} ton ${r.type} • ${r.region}`);ui.area=r.region;ui.type=r.type;ui.requested=r.id;ui.page='stok';ui.query='';closeModal();save();toast('Permintaan tersimpan. Pilih petani untuk menawar.');return;}
-  if(form.id==='offerForm'&&!IS_FARMER){const s=stock(form.dataset.id);const qty=Number(data.get('volume'));const price=Number(data.get('price'));if(s&&s.status==='Tersedia'&&qty>0&&availability(s)+1e-8<qty){alert(`Volume yang Anda tawarkan (${number(qty)} ton) melebihi stok tersedia (${number(availability(s))} ton ${s.type}).\n\nKurangi volume penawaran Anda.`);return;}if(!s||s.status!=='Tersedia'||availability(s)+1e-8<qty||qty<=0||!Number.isFinite(price)||price<=0)return toast('Data penawaran tidak valid atau stok tidak mencukupi.');let req=db.requests.find(r=>r.id===data.get('requestId')&&r.buyerId===CURRENT_BUYER);if(req&&(req.region!==s.region||req.type!==s.type))return toast('Permintaan tidak sesuai lokasi atau jenis gabah.');if(!req){req={id:uid('REQ'),buyerId:CURRENT_BUYER,type:s.type,region:s.region,volume:qty,needed:s.harvest,created:now()};db.requests.push(req);}const o={id:uid('OFF'),requestId:req.id,buyerId:CURRENT_BUYER,farmerId:s.farmerId,stockId:s.id,volume:qty,initialBid:price,currentBid:price,counter:null,aiRef:currentAI(s.region,s.type),status:'Menunggu Petani',created:now(),history:[{at:now(),actor:'Pembeli',label:'Penawaran awal dikirim',price}]};db.offers.push(o);appendEvent('Penawaran baru '+o.id,`${qty} ton ${s.type} • ${s.region}`);ui.page='penawaran';ui.status='Semua Status';ui.query='';closeModal();save();toast('Penawaran dikirim kepada petani.');return;}
+ function handleForm(e){const form=e.target;if(!['stockForm','offerForm','requestForm','counterForm'].includes(form.id))return;e.preventDefault();if(busy)return;const data=new FormData(form);
+  if(form.id==='stockForm'&&IS_FARMER){const id=form.dataset.id;const s=id?stock(id):null;const volume=Number(data.get('volume'));const committed=s?s.volume-availability(s):0;if(!Number.isFinite(volume)||volume<=0||volume+1e-8<committed)return toast('Volume harus positif dan tidak kurang dari volume yang telah disepakati.');if(s&&s.farmerId!==CURRENT_FARMER)return;const body={type:s&&committed>0?s.type:String(data.get('type')),volume,harvest:String(data.get('harvest')),status:String(data.get('status')),moisture:Number(data.get('moisture'))||null};
+   mutate(s?`/stocks/${encodeURIComponent(s.id)}`:'/stocks',{method:s?'PUT':'POST',body});return;}
+  if(form.id==='requestForm'&&!IS_FARMER){const volume=Number(data.get('volume'));if(!Number.isFinite(volume)||volume<=0)return toast('Volume tidak valid.');const body={type:String(data.get('type')),region:String(data.get('region')),volume,needed:String(data.get('needed'))};
+   mutate('/requests',{body,before:res=>{ui.area=body.region;ui.type=body.type;ui.requested=res.id;ui.page='stok';ui.query='';}});return;}
+  if(form.id==='offerForm'&&!IS_FARMER){const s=stock(form.dataset.id);const qty=Number(data.get('volume'));const price=Number(data.get('price'));if(s&&s.status==='Tersedia'&&qty>0&&availability(s)+1e-8<qty){alert(`Volume yang Anda tawarkan (${number(qty)} ton) melebihi stok tersedia (${number(availability(s))} ton ${s.type}).\n\nKurangi volume penawaran Anda.`);return;}if(!s||s.status!=='Tersedia'||availability(s)+1e-8<qty||qty<=0||!Number.isFinite(price)||price<=0)return toast('Data penawaran tidak valid atau stok tidak mencukupi.');const reqId=String(data.get('requestId')||'');const req=db.requests.find(r=>r.id===reqId&&r.buyerId===CURRENT_BUYER);if(req&&(req.region!==s.region||req.type!==s.type))return toast('Permintaan tidak sesuai lokasi atau jenis gabah.');
+   mutate('/offers',{body:{stockId:s.id,volume:qty,price:Math.round(price),requestId:req?req.id:null},before:()=>{ui.page='penawaran';ui.status='Semua Status';ui.query='';},
+    onError:e=>{if(e.status===409&&e.message.startsWith('Volume yang Anda tawarkan')){alert(e.message+'\n\nKurangi volume penawaran Anda.');return true;}return false;}});return;}
   if(form.id==='counterForm'){const o=db.offers.find(x=>x.id===form.dataset.id);const p=Number(data.get('price'));
   if(!o||!Number.isFinite(p)||p<=0)return toast('Harga belum valid.');
-  if(IS_FARMER){if(o.farmerId!==CURRENT_FARMER||o.status!=='Menunggu Petani')return toast('Penawaran tidak bisa diubah.');if(p<=o.currentBid){alert(`Harga balik harus lebih tinggi dari harga yang diajukan pembeli (${rupiah(o.currentBid)}/kg).`);return;}o.counter=p;o.status='Penawaran Balik';o.history.push({at:now(),actor:'Petani',label:'Harga balik diajukan',price:p});appendEvent('Petani mengajukan harga balik '+o.id,rupiah(p)+'/kg');}
-  else{if(o.buyerId!==CURRENT_BUYER||o.status!=='Penawaran Balik')return toast('Penawaran tidak bisa diubah.');if(p<o.initialBid){alert(`Harga Anda tidak boleh lebih rendah dari penawaran pertama Anda (${rupiah(o.initialBid)}/kg).`);return;}if(p>o.counter&&!confirm(`Petani memberi harga ${rupiah(o.counter)}/kg, apakah Anda yakin memberi harga balik ${rupiah(p)}/kg?`))return;o.currentBid=p;o.counter=null;o.status='Menunggu Petani';o.history.push({at:now(),actor:'Pembeli',label:'Penawaran baru diajukan',price:p});appendEvent('Pembeli mengajukan harga baru '+o.id,rupiah(p)+'/kg');}
-  closeModal();save();toast(IS_FARMER?'Harga balik berhasil dikirim.':'Harga penawaran baru dikirim.');return;}
+  if(IS_FARMER){if(o.farmerId!==CURRENT_FARMER||o.status!=='Menunggu Petani')return toast('Penawaran tidak bisa diubah.');if(p<=o.currentBid){alert(`Harga balik harus lebih tinggi dari harga yang diajukan pembeli (${rupiah(o.currentBid)}/kg).`);return;}}
+  else{if(o.buyerId!==CURRENT_BUYER||o.status!=='Penawaran Balik')return toast('Penawaran tidak bisa diubah.');if(p<o.initialBid){alert(`Harga Anda tidak boleh lebih rendah dari penawaran pertama Anda (${rupiah(o.initialBid)}/kg).`);return;}if(p>o.counter&&!confirm(`Petani memberi harga ${rupiah(o.counter)}/kg, apakah Anda yakin memberi harga balik ${rupiah(p)}/kg?`))return;}
+  mutate(`/offers/${encodeURIComponent(o.id)}/counter`,{body:{price:Math.round(p)},onError:e=>{if(e.status===400){alert(e.message);return true;}return false;}});return;}
  }
+ function renderKeepingSearch(){const a=document.activeElement;const keep=a&&a.id==='tableSearch'?a.selectionStart:null;render();if(keep!==null){const n=document.getElementById('tableSearch');if(n){n.focus();n.setSelectionRange(keep,keep);}}}
  function closeSide(){document.getElementById('sidebar').classList.remove('open');document.getElementById('overlay').classList.remove('open');}
  function bindEvents(){document.addEventListener('click',e=>{const btn=e.target.closest('[data-act]');if(btn){actions(btn.dataset.act,btn.dataset.id||'');return;}});
   document.addEventListener('submit',handleForm);
@@ -1225,20 +1117,39 @@ function initRoleDashboard() {
   document.getElementById('overlay').addEventListener('click',closeSide);
   document.getElementById('notifBtn').addEventListener('click',()=>modal('Notifikasi','Ringkasan aktivitas yang memerlukan perhatian',`<div class="card-stack">${IS_FARMER?`<div class="notice-card">${myOffers().filter(o=>o.status==='Menunggu Petani').length} penawaran menunggu keputusan Anda.</div><div class="notice-card">${myTransactions().filter(t=>t.payment==='Menunggu Verifikasi').length} pembayaran menunggu konfirmasi.</div>`:`<div class="notice-card">${myOffers().filter(o=>o.status==='Penawaran Balik').length} harga balik petani menunggu respons.</div><div class="notice-card">${myTransactions().filter(t=>t.payment==='Belum Dibayar').length} transaksi belum ditandai transfer.</div>`}<button class="btn" type="button" data-act="resetDemo">${ico('refresh',16)} Reset data simulasi</button></div>`));
   document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
-  window.addEventListener('storage',e=>{if(e.key===STORAGE_KEY){load();render();}});
+  // Sinkronisasi: cek versi data di server; render ulang hanya bila berubah.
+  async function syncFromServer(){
+   if(busy||document.hidden)return;
+   const seq=mutationSeq;
+   try{
+    const v=await api('/state/version');if(db&&v.version===db.version)return;
+    const fresh=await api('/state',ACTOR);
+    // Abaikan bila ada aksi pengguna selama permintaan berlangsung, atau data sudah lebih baru.
+    if(busy||seq!==mutationSeq||(db&&fresh.version<=db.version))return;
+    db=fresh;
+    // Halaman iframe (Harga/Berita) tidak dirender ulang agar filter & posisi baca tidak hilang.
+    if(FRAME_PAGES[currentPage()])renderNav();else renderKeepingSearch();
+   }catch(e){/* server sementara tidak terjangkau: coba lagi nanti */}
+  }
+  setInterval(syncFromServer,4000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncFromServer();});
+  window.addEventListener('focus',syncFromServer);
  }
  listenFrameHeight(300);
- load();bindEvents();render();
+ (async function boot(){
+  document.getElementById('content').innerHTML='<div class="empty-state">Memuat data dari server…</div>';
+  try{await load();}
+  catch(e){document.getElementById('content').innerHTML=apiErrorHTML(e,'dashboard');return;}
+  bindEvents();render();
+ })();
 }
 
 /* ========== 6. Konten iframe: Prediksi Harga AI (harga.html) ========== */
-function initHarga() {
-    // Dashboard petani mengirim ?wilayah=<kabupaten petani>; prediksi dikunci ke wilayah itu.
-    const locked = new URLSearchParams(window.location.search).get('wilayah');
-    if (locked && priceData[locked]) {
-        state.lockedArea = locked;
-        state.area = locked;
-    }
+async function initHarga() {
+    // Dashboard induk mengirim ?role=<peran>. Untuk petani, server sendiri yang mengunci wilayah
+    // (lockedArea) sehingga prediksi kabupaten lain tidak pernah dikirim ke browser.
+    const params = new URLSearchParams(window.location.search);
+    const role = params.get('role') || 'admin';
     renderPage = function () {
         document.getElementById('content').innerHTML = hargaPage();
         postHeight();
@@ -1261,7 +1172,19 @@ function initHarga() {
         postFrameHeight('harga', Math.ceil(document.getElementById('content').getBoundingClientRect().height));
     }
     applyBreakpoints();
-    render();
+    document.getElementById('content').innerHTML = '<div class="empty-state">Memuat prediksi harga…</div>';
+    try {
+        const res = await loadPrices(role);
+        const locked = res.lockedArea || params.get('wilayah');
+        if (locked && priceData[locked]) {
+            state.lockedArea = locked;
+            state.area = locked;
+        }
+        render();
+    } catch (e) {
+        document.getElementById('content').innerHTML = apiErrorHTML(e, 'prediksi harga');
+        postHeight();
+    }
     window.addEventListener('resize', function () {
         applyBreakpoints();
         postHeight();
@@ -1282,44 +1205,11 @@ function initBerita() {
  const pad = n => String(n).padStart(2,'0');
  const fmt = s => { const d=new Date(s+'T00:00:00'); return d.toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}); };
 
- function parseCSV(text){
-  const rows=[]; let row=[], field='', quoted=false;
-  for(let i=0;i<text.length;i++){
-   const ch=text[i], next=text[i+1];
-   if(quoted){
-    if(ch==='"' && next==='"'){field+='"';i++;}
-    else if(ch==='"'){quoted=false;}
-    else field+=ch;
-   }else{
-    if(ch==='"' && field.length===0) quoted=true;
-    else if(ch===','){row.push(field);field='';}
-    else if(ch==='\n'){row.push(field);rows.push(row);row=[];field='';}
-    else if(ch==='\r'){/* ignore CR; LF ends row */}
-    else field+=ch;
-   }
-  }
-  if(field.length || row.length){row.push(field);rows.push(row);}
-  if(!rows.length) return [];
-  const headers=rows.shift().map((v,i)=>i===0?v.replace(/^\uFEFF/,'').trim():v.trim());
-  return rows.filter(r=>r.some(v=>v.trim()!=='')).map(r=>{
-   const obj={}; headers.forEach((key,i)=>obj[key]=(r[i]??'').trim()); return obj;
-  });
- }
- async function loadNewsCSV(){
-  const response=await fetch('./berita.csv',{cache:'no-store'});
-  if(!response.ok) throw new Error(`HTTP ${response.status} saat membaca berita.csv`);
-  const csv=await response.text();
-  const rows=parseCSV(csv);
-  NEWS=rows.map((r,i)=>{
-   let entities=[];
-   try{entities=JSON.parse(r.ner_results||'[]');if(!Array.isArray(entities))entities=[];}catch(e){console.warn('ner_results tidak valid pada baris',i+2,e);}
-   return {
-    id:r.id||String(i+1),tanggal:(r.tanggal||'').slice(0,10),kabupaten:r.kabupaten||'',
-    sumber:r.sumber||'',kategori:r.kategori||'',judul:r.judul||'',isi:r.isi||'',
-    status_data:r.status_data||'',ner_results:entities
-   };
-  }).filter(n=>n.tanggal && n.judul);
-  if(!NEWS.length) throw new Error('berita.csv berhasil dibaca, tetapi tidak ada baris berita yang valid.');
+ // Data berita diambil dari GET /api/berita (CSV kini dibaca & divalidasi di server, termasuk ner_results).
+ async function loadNews(){
+  const res=await api('/berita');
+  NEWS=(res.items||[]).map((n,i)=>({...n,id:n.id||String(i+1),ner_results:Array.isArray(n.ner_results)?n.ner_results:[]})).filter(n=>n.tanggal && n.judul);
+  if(!NEWS.length) throw new Error('Server tidak mengirim berita yang valid.');
  }
  function setDefaultDates(){
   const dates=NEWS.map(n=>n.tanggal).filter(Boolean).sort();
@@ -1401,12 +1291,12 @@ function initBerita() {
  $('pages').addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(!b||b.disabled)return;currentPage=Number(b.dataset.page);renderList();});
  (async function init(){
   try{
-   await loadNewsCSV();
+   await loadNews();
    setDefaultDates();
    applyFilter();
   }catch(error){
    console.error(error);
-   $('rangeInfo').textContent='Gagal memuat berita.csv';
+   $('rangeInfo').textContent='Gagal memuat data berita dari server';
    $('featured').innerHTML=`<div class="empty"><b>Data berita belum dapat dimuat.</b><br>${esc(error.message)}<br>`;
    $('newsList').innerHTML='';
    $('wordCloud').innerHTML='<div class="cloud-empty">Wordcloud akan tampil setelah CSV berhasil dimuat.</div>';

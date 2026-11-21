@@ -1,60 +1,94 @@
-# Temu Tani — Dashboard Petani dan Tengkulak
+# Temu Tani — Dashboard Petani & Tengkulak (FastAPI)
 
-Prototipe frontend interaktif yang **mengadaptasi desain web admin unggahan pengguna** (warna, sidebar, tipografi, kartu KPI, tabel, modal, logo, dan navigasi). Data transaksi dan referensi harga yang digunakan adalah **simulasi**, bukan data pasar, prediksi model, atau konfirmasi pembayaran sesungguhnya.
+Prototipe Temu Tani dengan arsitektur **frontend HTML/CSS/JS + backend FastAPI (JSON API)**.
+Tampilan dan alur sama dengan versi statis sebelumnya. Bedanya, data dan aturan bisnis
+(stok, penawaran, negosiasi, transaksi, prediksi harga, berita) sekarang ada di server.
+Semua angka tetap **data simulasi**.
 
-## Isi folder
+## Struktur
 
-- `index.html` — pintu masuk untuk memilih peran demo.
-- `petani.html` — Dashboard Petani (contoh: Pak Asep Hidayat, Kabupaten Garut).
-- `tengkulak.html` — Dashboard Tengkulak (contoh: pembeli WhatsApp guest).
-- `assets/styles.css` — styling yang mengacu pada CSS web admin + penyesuaian dua peran.
-- `assets/app.js` — data simulasi, state, tabel, filter, aksi stok, penawaran, dan transaksi.
-- `assets/logo-maxxi.png`, `assets/logo-wa.jpg` — logo yang disertakan dari file admin pengguna.
-- `referensi_admin/` — salinan web admin asli untuk perbandingan desain, **belum tersinkron** dengan dua halaman baru.
-- `Chatbot/` — simulasi chatbot WhatsApp Temu Tani (`chatbot.html`) beserta aset.
-
-## Cara membuka
-
-**Pilihan cepat:** buka `index.html` dengan Chrome atau Edge. Semua menu dan modal dapat dicoba. Namun, pada sebagian browser perubahan data antarfile HTML yang dibuka lewat `file://` mungkin tidak otomatis tersinkron.
-
-**Disarankan untuk mencoba alur dua peran yang tersambung:** jalankan server lokal pada folder ini:
-
-```bash
-python -m http.server 8000
+```
+temutani/
+├── backend/
+│   ├── main.py        # FastAPI: endpoint /api/* + menyajikan frontend
+│   ├── store.py       # penyimpanan JSON atomik (pengganti localStorage)
+│   ├── seed.py        # data awal simulasi (petani, tengkulak, admin)
+│   ├── pricing.py     # simulasi keluaran model harga AI
+│   ├── news.py        # pembaca berita.csv + ner_results
+│   └── data/
+│       ├── berita.csv
+│       └── runtime/   # dibuat otomatis: role_demo.json, chatbot_state.json
+├── frontend/          # HTML/CSS asli (tidak diubah) + app.js yang memanggil API
+│   ├── index.html, app.js, assets/
+│   ├── dashboard/     # admin, petani, tengkulak, harga (iframe), berita (iframe)
+│   └── Chatbot/chatbot.html
+├── tests/test_api.py
+├── requirements.txt
+└── start_app.bat / start_app.sh
 ```
 
-Lalu buka `http://localhost:8000` di browser. Pada Windows, bisa mencoba `Mulai_Dashboard_Windows.bat` bila Python sudah terpasang.
+## Menjalankan
 
-Buka dashboard Petani dan Tengkulak melalui **browser/profil yang sama** pada domain dan port yang sama. Keduanya berbagi data melalui `localStorage`; perubahan tersimpan di browser dan dapat terlihat di tab lain. Klik ikon notifikasi → **Reset data simulasi** untuk mengembalikan contoh awal.
+**Windows:** klik dua kali `start_app.bat` (membuat `.venv`, memasang dependensi, membuka browser).
+
+**macOS/Linux:** `./start_app.sh`
+
+**Manual:**
+```bash
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn backend.main:app --reload
+```
+Buka `http://localhost:8000`. Dokumentasi API interaktif: `http://localhost:8000/docs`.
+
+> Halaman **tidak bisa** lagi dibuka langsung lewat `file://`, karena data diambil dari API.
+
+## Endpoint utama
+
+| Method | Endpoint | Peran | Fungsi |
+| --- | --- | --- | --- |
+| GET | `/api/state` | petani, tengkulak | Snapshot data sesuai peran |
+| GET | `/api/state/version` | semua | Versi data (dipakai sinkronisasi antar-tab) |
+| POST | `/api/stocks` · PUT `/api/stocks/{id}` | petani | Tambah / ubah stok |
+| POST | `/api/requests` | tengkulak | Buat permintaan gabah |
+| POST | `/api/offers` | tengkulak | Ajukan harga pertama |
+| POST | `/api/offers/{id}/accept` · `/reject` | petani | Terima / tolak |
+| POST | `/api/offers/{id}/counter` | petani, tengkulak | Harga balik / tawar lagi |
+| POST | `/api/offers/{id}/accept-counter` | tengkulak | Setujui harga balik |
+| POST | `/api/transactions/{id}/mark-paid` | tengkulak | Klaim sudah transfer |
+| POST | `/api/transactions/{id}/verify` | petani | Konfirmasi dana diterima |
+| POST | `/api/demo/reset` | petani, tengkulak | Reset data simulasi |
+| GET | `/api/prices` | petani, admin | Prediksi harga AI (petani dikunci ke kabupatennya) |
+| GET | `/api/berita?from=&to=` | semua | Berita + hasil NER |
+| GET | `/api/admin/dashboard` | admin | Data dashboard admin |
+| GET/PUT/DELETE | `/api/chatbot/state` | semua | State simulasi chatbot |
+
+Peran dikirim lewat header `X-Demo-Role` (`petani` / `tengkulak` / `admin`) dan `X-Demo-User`.
+
+## Aturan yang kini ditegakkan di server
+
+- Referensi harga AI (`aiRef`, `/api/prices`) **tidak pernah dikirim** ke tengkulak.
+- Petani hanya menerima stok, penawaran, dan transaksi miliknya; petani lain mendapat 404.
+- Kesepakatan dan alokasi stok berjalan dalam satu transaksi berkunci, sehingga tidak ada overselling.
+- Volume stok tidak bisa diturunkan di bawah volume yang sudah disepakati; jenis gabah terkunci setelah ada kesepakatan.
+- Transisi status (Menunggu Petani → Penawaran Balik → Disepakati, Belum Dibayar → Menunggu Verifikasi → Sudah Dibayar) divalidasi server (409 bila status sudah berubah).
 
 ## Alur uji fitur
 
-1. Pada halaman Tengkulak, klik **Buat Permintaan** → masukkan tonase, jenis GKP/GKG, kabupaten, dan tanggal kebutuhan.
-2. Pada **Stok Gabah** Tengkulak, pilih stok yang sesuai → **Ajukan Harga**. **Tidak ada harga indikatif petani atau referensi harga AI yang diperlihatkan kepada tengkulak.** Tengkulak menentukan penawaran pertama.
-3. Buka dashboard Petani di browser yang sama. Pada **Penawaran & Negosiasi**, pilih penawaran untuk Pak Asep dan lihat **harga wajar AI**, hanya sebagai referensi bagi petani. Tekan **Terima**, **Tolak**, atau **Ajukan Harga Balik**.
-4. Pada dashboard Tengkulak, tanggapi harga balik dengan **Setujui** atau **Tawar Lagi**. Jika sepakat, transaksi dibuat dengan status **Belum Dibayar** dan stok dialokasikan.
-5. Pada halaman Transaksi Tengkulak, pilih transaksi → **Saya Sudah Transfer**. Status menjadi **Menunggu Verifikasi** (ini hanyalah klaim, tidak memindahkan dana).
-6. Pada halaman Transaksi Petani, klik **Konfirmasi Dana Diterima** hanya setelah dana benar-benar diterima. Status menjadi **Sudah Dibayar**.
-7. Petani dapat menambah stok atau mengubah data listing, namun tidak boleh mengurangi volume total di bawah volume yang telah disepakati dan dialokasikan.
+Sama seperti sebelumnya. Buka dashboard Petani dan Tengkulak di dua tab atau dua perangkat yang mengakses server yang sama. Perubahan di satu tab muncul di tab lain dalam ±4 detik, tanpa reload.
 
-## Menu dan cakupan peran
+## Tes
 
-| Petani | Tengkulak |
-| --- | --- |
-| Overview — hanya petani yang dipilih & Kab. Garut | Overview — hanya permintaan & penawaran pembeli yang dipilih |
-| Stok Gabah — tambah/edit stok milik sendiri | Stok Gabah — daftar gabah lintas wilayah + filter |
-| Penawaran & Negosiasi — respons & harga balik | Penawaran & Negosiasi — tawaran pertama, terima harga balik, tawar ulang |
-| Prediksi Harga AI — referensi khusus Garut | Tidak ditampilkan |
-| Transaksi Disepakati — konfirmasi dana diterima | Transaksi Disepakati — laporan transfer & status |
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
 
-**Catatan penting:** pada akun petani, penawaran yang bisa ditanggapi adalah penawaran yang benar-benar ditujukan ke listing stok petani tersebut (bukan penawaran privat petani lain dalam satu kabupaten). Kabupaten tetap dipakai sebagai kriteria pencocokan permintaan.
+## Batasan sebelum produksi
 
-## Batasan prototipe / sebelum diproduksi
-
-- Tidak memakai login, session, autentikasi, hak akses, database server, WhatsApp API, payment gateway, atau model AI sungguhan.
-- `localStorage` **bukan solusi keamanan**. Peran petani/pembeli yang ditampilkan adalah akun contoh; pembatasan data pada frontend bukan pengganti otorisasi backend.
-- Integrasikan identitas petani ke database Maxxi Tani dengan izin yang tepat, serta gunakan tautan masuk terverifikasi via WhatsApp (misalnya token/OTP berumur pendek) untuk pembeli tanpa registrasi. Akses penawaran/transaksi tetap harus dicek di backend.
-- Pada produksi, kalkulasi stok/penawaran/transaksi dan transaksi database harus atomik agar tidak ada overselling atau duplikasi kesepakatan.
-- Jangan mengekspos prediksi AI privat untuk petani kepada pembeli melalui API. Pembatasan harus diterapkan di server, bukan hanya menyembunyikan elemen HTML.
-- Tanggal dan harga pada halaman AI hanya simulasi. Angka contoh HPP Rp6.500/kg berasal dari proposal dan **harus diverifikasi menurut kebijakan yang berlaku** saat go-live.
-- Berkas admin asli dipertahankan sebagai pembanding dan **tidak otomatis mengambil data dari localStorage prototipe baru**.
+- `X-Demo-Role`/`X-Demo-User` **bukan autentikasi**. Ganti dengan login/OTP WhatsApp berumur pendek + token (mis. JWT) dan cek hak akses dari token.
+- Penyimpanan JSON hanya aman untuk satu proses. Untuk banyak worker gunakan database (PostgreSQL/Supabase) dengan transaksi SQL.
+- Dashboard admin masih memakai data contoh tersendiri, belum dihitung dari data peran.
+- Chatbot masih simulasi mandiri (model datanya terpisah dari dashboard); kini state-nya hanya disimpan di server.
+- Harga dan HPP Rp6.500/kg adalah contoh dari proposal dan **harus diverifikasi** terhadap kebijakan yang berlaku saat go-live.
+- Status pembayaran adalah pencatatan, bukan verifikasi bank atau payment gateway.

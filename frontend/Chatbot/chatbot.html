@@ -924,7 +924,7 @@ button:disabled {
 
   </div>
 <script>
-(() => {
+(async () => {
     'use strict';
     // Ikon SVG untuk header, menu, dan balon percakapan.
     const ICONS = {
@@ -979,9 +979,35 @@ button:disabled {
         stockLedgerVersion: 2,
         lastUpdate: Date.now()
     });
+    // --- Sinkronisasi dengan server FastAPI (GET/PUT /api/chatbot/state) ---
+    // Server menjadi sumber data utama; localStorage hanya cadangan bila server tidak terjangkau.
+    const CHAT_API = (window.TEMUTANI_API_BASE || '').replace(/\/$/, '') + '/api/chatbot/state';
+    async function loadRemoteState() {
+        try {
+            const res = await fetch(CHAT_API, { cache: 'no-store' });
+            if (!res.ok) return null;
+            const body = await res.json();
+            return body && body.state ? body.state : null;
+        } catch { return null; }
+    }
+    let remoteTimer = null;
+    function pushRemoteState() {
+        clearTimeout(remoteTimer);
+        remoteTimer = setTimeout(() => {
+            fetch(CHAT_API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) }).catch(() => {});
+        }, 250);
+    }
+    function persist() {
+        try { localStorage.setItem(FKEY, JSON.stringify(state)); } catch {}
+        pushRemoteState();
+    }
     let state;
     try {
-        const saved = JSON.parse(localStorage.getItem(FKEY));
+        // Pakai salinan paling baru (server vs cadangan lokal) agar percakapan tidak mundur.
+        let local = null;
+        try { local = JSON.parse(localStorage.getItem(FKEY)); } catch {}
+        const remote = await loadRemoteState();
+        const saved = (remote && local) ? ((Number(local.lastUpdate) || 0) > (Number(remote.lastUpdate) || 0) ? local : remote) : (remote || local);
         state = saved?.v === 8 ? saved : defaultData();
     }
     catch {
@@ -997,7 +1023,7 @@ button:disabled {
             stock.quantityKg = Math.max(0, stock.quantityKg - committedKg);
         }
         state.stockLedgerVersion = 2;
-        try { localStorage.setItem(FKEY, JSON.stringify(state)); } catch {}
+        persist();
     }
     // Bersihkan tombol lama yang sudah tidak dipakai dari riwayat tersimpan.
     // Perbarui juga pilihan menu pada percakapan lama yang tersimpan di browser.
@@ -1017,7 +1043,7 @@ button:disabled {
             }
         }
     }
-    try { localStorage.setItem(FKEY, JSON.stringify(state)); } catch {}
+    persist();
     const refs = { chat: document.getElementById('chatroom'), input: document.getElementById('chatInput'), role: document.getElementById('roleDisplay'), sheet: document.getElementById('sheetContainer'), toast: document.getElementById('toast') };
     const now = () => new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
     const money = n => 'Rp' + Number(n).toLocaleString('id-ID');
@@ -1043,10 +1069,7 @@ button:disabled {
     function addMessage(role, from, text, buttons = [], meta = {}) { const farmerId = meta.farmerId || myId(); const arr = chatFor(role, farmerId); const msg = { id: 'M' + state.chatCounter++, from, text, buttons, at: now(), tag: meta.tag || '', answered: false }; arr.push(msg); save(); return msg; }
     const bot = (text, buttons = [], role = state.role, meta = {}) => addMessage(role, 'bot', text, buttons, meta);
     const say = (text, role = state.role, meta = {}) => addMessage(role, 'user', text, [], meta);
-    function save() { state.lastUpdate = Date.now(); try {
-        localStorage.setItem(FKEY, JSON.stringify(state));
-    }
-    catch { } }
+    function save() { state.lastUpdate = Date.now(); persist(); }
     // --- Tombol balasan dan menu awal ---
     function btn(label, action, data = {}, kind = 'normal') { return { label, action, data, kind }; }
     function menuButtons(role = state.role) {

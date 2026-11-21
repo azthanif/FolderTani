@@ -1,6 +1,5 @@
-.DS_Store
-Thumbs.db
-.venv/
 __pycache__/
-node_modules/
-.env
+*.pyc
+.venv/
+backend/data/runtime/
+.pytest_cache/
