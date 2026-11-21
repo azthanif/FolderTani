@@ -158,3 +158,16 @@ def test_vercel_mode_uses_tmp_and_cdn(monkeypatch):
     finally:
         monkeypatch.delenv("VERCEL")
         importlib.reload(main)
+
+
+def test_vercel_function_wrapper_restores_path(client):
+    """Simulasi rewrite Vercel: /api/state -> /api/index?__path=state."""
+    import api.index as entry
+    importlib.reload(entry)
+    c = TestClient(entry.app)
+    assert c.get("/api/index?__path=health").json()["status"] == "ok"
+    r = c.get("/api/index?__path=berita&from=2026-11-10", headers=P)
+    assert r.status_code == 200 and all(n["tanggal"] >= "2026-11-10" for n in r.json()["items"])
+    r = c.post("/api/index?__path=offers/OFF-001/reject", headers=P)
+    assert r.status_code == 200 and r.json()["message"] == "Penawaran ditolak."
+    assert c.get("/api/state", headers=T).status_code == 200  # path asli tetap jalan

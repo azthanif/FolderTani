@@ -7,8 +7,3 @@ dependencies = [
     "fastapi>=0.110,<1.0",
     "uvicorn[standard]>=0.27",
 ]
-
-# Entrypoint tidak berada di lokasi default Vercel (app.py/main.py di root, src/ atau app/),
-# jadi harus ditunjuk eksplisit. Tanpa ini Vercel tidak menemukan FastAPI -> 404 NOT_FOUND.
-[tool.vercel]
-entrypoint = "backend.main:app"

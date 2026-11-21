@@ -24,7 +24,8 @@ temutani/
 │   └── Chatbot/chatbot.html
 ├── tests/test_api.py
 ├── requirements.txt
-├── pyproject.toml     # dependensi + entrypoint Vercel (backend.main:app)
+├── api/index.py       # entrypoint Vercel Function → backend.main:app
+├── vercel.json        # konfigurasi deploy Vercel
 └── start_app.bat / start_app.sh
 ```
 
@@ -46,11 +47,12 @@ Buka `http://localhost:8000`. Dokumentasi API interaktif: `http://localhost:8000
 
 ## Deploy ke Vercel
 
-Cukup hubungkan repo ke Vercel (Framework Preset: **FastAPI** atau *Other*, Root Directory: folder yang berisi `pyproject.toml`). Konfigurasi yang dipakai:
+Hubungkan repo ke Vercel. Root Directory = folder yang berisi `vercel.json`. Framework Preset tidak perlu diubah karena sudah dikunci oleh `vercel.json` (`"framework": null`).
 
-- `pyproject.toml` → `[tool.vercel] entrypoint = "backend.main:app"`. Wajib, karena entrypoint tidak berada di lokasi default Vercel.
-- `public/` disajikan langsung oleh CDN Vercel; FastAPI hanya menangani `/api/*`.
+- `public/` disajikan langsung oleh CDN Vercel.
+- `api/index.py` adalah Vercel Function yang membungkus FastAPI (`backend/main.py`); `vercel.json` me-rewrite semua `/api/*` ke function ini.
 - Di Vercel, data disimpan di `/tmp/temutani` (filesystem lain read-only).
+- Cek setelah deploy: `https://<domain>/api/health` harus mengembalikan `{"status":"ok"}`.
 
 > **Batasan Vercel:** `/tmp` bersifat sementara dan tidak dibagi antar-instance. Data simulasi bisa kembali ke kondisi awal setelah function idle, dan dua pengguna bisa sesekali melihat data berbeda. Untuk demo yang stabil, pindahkan penyimpanan ke database (mis. Supabase/Postgres).
 
