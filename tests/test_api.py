@@ -141,3 +141,20 @@ def test_unknown_request_id_auto_creates_request(client):
     offer = next(o for o in s["offers"] if o["id"] == r.json()["id"])
     assert offer["requestId"] != "REQ-TIDAK-ADA"
     assert s["activities"][0]["note"] == "1.5 ton GKP • Garut"  # format sama dengan versi awal
+
+
+def test_vercel_mode_uses_tmp_and_cdn(monkeypatch):
+    """Di Vercel: data di /tmp dan public/ TIDAK di-mount (disajikan CDN)."""
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("TEMUTANI_DATA_DIR", raising=False)
+    import backend.main as main
+    importlib.reload(main)
+    try:
+        assert str(main.DATA_DIR).startswith("/tmp/")
+        c = TestClient(main.app)
+        assert c.get("/api/health").status_code == 200
+        assert c.get("/index.html").status_code == 404  # bukan tugas FastAPI di Vercel
+        assert c.post("/api/requests", headers=T, json={"type": "GKP", "region": "Garut", "volume": 1, "needed": "2026-11-20"}).status_code == 200
+    finally:
+        monkeypatch.delenv("VERCEL")
+        importlib.reload(main)

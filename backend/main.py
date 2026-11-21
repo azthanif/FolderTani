@@ -35,8 +35,12 @@ log = logging.getLogger("temutani")
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
-FRONTEND_DIR = Path(os.getenv("TEMUTANI_FRONTEND_DIR", PROJECT_DIR / "frontend"))
-DATA_DIR = Path(os.getenv("TEMUTANI_DATA_DIR", BASE_DIR / "data" / "runtime"))
+ON_VERCEL = bool(os.getenv("VERCEL"))
+# Folder `public/` disajikan langsung oleh CDN Vercel; secara lokal disajikan FastAPI (lihat bawah).
+FRONTEND_DIR = Path(os.getenv("TEMUTANI_FRONTEND_DIR", PROJECT_DIR / "public"))
+# Filesystem Vercel Functions read-only kecuali /tmp (dan /tmp tidak permanen, lihat README).
+_default_data = Path("/tmp/temutani") if ON_VERCEL else BASE_DIR / "data" / "runtime"
+DATA_DIR = Path(os.getenv("TEMUTANI_DATA_DIR", _default_data))
 NEWS_CSV = Path(os.getenv("TEMUTANI_NEWS_CSV", BASE_DIR / "data" / "berita.csv"))
 CHATBOT_MAX_BYTES = 2_000_000
 
@@ -573,7 +577,9 @@ def api_not_found(path: str):
     err(404, "Endpoint API tidak ditemukan.")
 
 
-if FRONTEND_DIR.exists():
+# Di Vercel, public/ sudah disajikan CDN di level platform; dokumentasi Vercel melarang
+# me-mount public/ dengan app.mount(). Mount hanya dipakai saat dijalankan lokal (uvicorn).
+if not ON_VERCEL and FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
-else:  # pragma: no cover
+elif not ON_VERCEL:  # pragma: no cover
     log.warning("Folder frontend tidak ditemukan: %s", FRONTEND_DIR)

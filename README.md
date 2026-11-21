@@ -18,12 +18,13 @@ temutani/
 │   └── data/
 │       ├── berita.csv
 │       └── runtime/   # dibuat otomatis: role_demo.json, chatbot_state.json
-├── frontend/          # HTML/CSS asli (tidak diubah) + app.js yang memanggil API
+├── public/            # frontend: HTML/CSS asli + app.js yang memanggil API (CDN di Vercel)
 │   ├── index.html, app.js, assets/
 │   ├── dashboard/     # admin, petani, tengkulak, harga (iframe), berita (iframe)
 │   └── Chatbot/chatbot.html
 ├── tests/test_api.py
 ├── requirements.txt
+├── pyproject.toml     # dependensi + entrypoint Vercel (backend.main:app)
 └── start_app.bat / start_app.sh
 ```
 
@@ -42,6 +43,16 @@ uvicorn backend.main:app --reload
 Buka `http://localhost:8000`. Dokumentasi API interaktif: `http://localhost:8000/docs`.
 
 > Halaman **tidak bisa** lagi dibuka langsung lewat `file://`, karena data diambil dari API.
+
+## Deploy ke Vercel
+
+Cukup hubungkan repo ke Vercel (Framework Preset: **FastAPI** atau *Other*, Root Directory: folder yang berisi `pyproject.toml`). Konfigurasi yang dipakai:
+
+- `pyproject.toml` → `[tool.vercel] entrypoint = "backend.main:app"`. Wajib, karena entrypoint tidak berada di lokasi default Vercel.
+- `public/` disajikan langsung oleh CDN Vercel; FastAPI hanya menangani `/api/*`.
+- Di Vercel, data disimpan di `/tmp/temutani` (filesystem lain read-only).
+
+> **Batasan Vercel:** `/tmp` bersifat sementara dan tidak dibagi antar-instance. Data simulasi bisa kembali ke kondisi awal setelah function idle, dan dua pengguna bisa sesekali melihat data berbeda. Untuk demo yang stabil, pindahkan penyimpanan ke database (mis. Supabase/Postgres).
 
 ## Endpoint utama
 
