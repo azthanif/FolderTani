@@ -27,6 +27,8 @@ interface Props {
   user: ShellUser;
   chatbotFrom: "admin" | "petani" | "tengkulak";
   switchLink?: { href: string; label: string };
+  /** Bila diisi, kartu pengguna di sidebar menjadi tombol "Keluar" (hapus sesi). */
+  onLogout?: () => void;
   /** Elemen di topbar sebelum tombol notifikasi (pencarian global admin / chip peran). */
   topExtra?: ReactNode;
   /** Dipanggil saat tombol lonceng diklik; menerima API modal/toast. */
@@ -59,7 +61,7 @@ export function DashboardShell(props: Props) {
   return <ShellInner {...props} />;
 }
 
-function ShellInner({ variant, brandSmall, nav, user, chatbotFrom, switchLink, topExtra, onNotif, children }: Props) {
+function ShellInner({ variant, brandSmall, nav, user, chatbotFrom, switchLink, onLogout, topExtra, onNotif, children }: Props) {
   const pathname = usePathname();
   const ui = useUI();
   const [open, setOpen] = useState(false);
@@ -114,7 +116,16 @@ function ShellInner({ variant, brandSmall, nav, user, chatbotFrom, switchLink, t
             </div>
           </Link>
 
-          <Link className="side-footer" href="/" title="Keluar ke halaman utama" aria-label="Keluar ke halaman utama">
+          {onLogout ? (
+            <button
+              type="button"
+              className="side-footer"
+              onClick={() => {
+                if (confirm("Keluar dari akun ini?")) onLogout();
+              }}
+              title="Keluar dari akun"
+              aria-label="Keluar dari akun"
+            >
             <div className="avatar">{user.initials}</div>
             <div>
               <strong>{user.name}</strong>
@@ -123,7 +134,19 @@ function ShellInner({ variant, brandSmall, nav, user, chatbotFrom, switchLink, t
             <svg className="logout-ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M15 17l5-5-5-5M20 12H9M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7" />
             </svg>
-          </Link>
+            </button>
+          ) : (
+            <Link className="side-footer" href="/" title="Keluar ke halaman utama" aria-label="Keluar ke halaman utama">
+            <div className="avatar">{user.initials}</div>
+            <div>
+              <strong>{user.name}</strong>
+              {user.sub ? <small>{user.sub}</small> : null}
+            </div>
+            <svg className="logout-ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M15 17l5-5-5-5M20 12H9M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7" />
+            </svg>
+            </Link>
+          )}
 
           {switchLink ? (
             <div className="side-switch">

@@ -9,53 +9,6 @@ const ChevronRight = () => (
   </svg>
 );
 
-const ROLES = [
-  {
-    cls: "admin",
-    title: "Dashboard Admin",
-    pill: "Master",
-    desc: "Pantau seluruh ekosistem: stok, penawaran, negosiasi, dan transaksi lintas kabupaten.",
-    href: "/admin",
-    cta: "Buka Dashboard",
-    icon: (
-      <>
-        <path d="M12 3 20 6v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-3Z" />
-        <path d="m9 12 2 2 4-4" />
-      </>
-    ),
-  },
-  {
-    cls: "farmer",
-    title: "Dashboard Petani",
-    desc: "Kelola stok gabah, tanggapi penawaran pembeli, dan lihat estimasi harga AI.",
-    href: "/petani",
-    cta: "Masuk sebagai Petani",
-    icon: (
-      <>
-        <path d="M12 21v-8" />
-        <path d="M12 15c-4.5 0-7-2.5-7-6 4.5 0 7 2.5 7 6Z" />
-        <path d="M12 12c0-4.5 2.5-7 6-7 0 4.5-2.5 7-6 7Z" />
-        <path d="M7 21h10" />
-      </>
-    ),
-  },
-  {
-    cls: "buyer",
-    title: "Dashboard Tengkulak",
-    desc: "Jelajahi stok, buat permintaan, ajukan harga, negosiasi, dan catat pembayaran.",
-    href: "/tengkulak",
-    cta: "Masuk sebagai Tengkulak",
-    icon: (
-      <>
-        <path d="M3 6h11v11H3z" />
-        <path d="M14 10h4l3 3v4h-7z" />
-        <circle cx="7.5" cy="18" r="1.8" />
-        <circle cx="17.5" cy="18" r="1.8" />
-      </>
-    ),
-  },
-];
-
 const svgProps = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, viewBox: "0 0 24 24" } as const;
 
 export default function Home() {
@@ -74,7 +27,17 @@ export default function Home() {
               <div className="brand-sub">EKOSISTEM PANGAN DIGITAL</div>
             </div>
           </a>
-          <div className="nav-note">Informasi lebih terbuka, keputusan lebih berdaya.</div>
+          <div className="nav-right">
+            <div className="nav-note">Informasi lebih terbuka, keputusan lebih berdaya.</div>
+            <nav aria-label="Akun" className="nav-auth">
+              <Link className="nav-login" href="/masuk">
+                Masuk
+              </Link>
+              <Link className="nav-cta" href="/daftar">
+                Daftar
+              </Link>
+            </nav>
+          </div>
         </div>
       </header>
       <main>
@@ -90,34 +53,10 @@ export default function Home() {
                 <span className="accent">bertumbuh bersama.</span>
               </h1>
               <p className="hero-copy">
-                TemuTani menghubungkan petani dengan pembeli dan menghadirkan referensi harga gabah berbasis AI. Pilih akses sesuai peran untuk
-                menjelajahi prototipe ekosistem digital TemuTani.
+                TemuTani menghubungkan petani dengan pembeli dan menghadirkan referensi harga gabah berbasis AI. Daftar sebagai petani atau
+                tengkulak untuk mulai menggunakan TemuTani.
               </p>
             </div>
-            <section aria-labelledby="roleHeading" className="role-section">
-              <div className="role-heading">
-                <strong id="roleHeading">Pilih dashboard untuk memulai</strong>
-              </div>
-              <div className="role-grid">
-                {ROLES.map((r) => (
-                  <article key={r.cls} className={`role-card ${r.cls}`}>
-                    <div aria-hidden="true" className="role-icon">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        {r.icon}
-                      </svg>
-                    </div>
-                    <div className="role-title">
-                      <h2>{r.title}</h2>
-                      {r.pill ? <span className="role-pill">{r.pill}</span> : null}
-                    </div>
-                    <p>{r.desc}</p>
-                    <Link className="role-link" href={r.href}>
-                      {r.cta} <ChevronRight />
-                    </Link>
-                  </article>
-                ))}
-              </div>
-            </section>
             <div className="trust-row" />
           </div>
         </section>
@@ -201,7 +140,7 @@ export default function Home() {
                 </div>
                 <div className="chat-date">HARI INI</div>
                 <div className="bubble bot">Halo! Selamat datang di TemuTani. Mari catat stok gabah yang akan dipanen.</div>
-                <div className="bubble user">GKP, 5 ton, Garut. Panen minggu depan.</div>
+                <div className="bubble user">GKP, 5.000 kg, Garut. Panen minggu depan.</div>
                 <div className="bubble bot">Stok berhasil dicatat. Kamu akan menerima informasi jika ada pembeli yang sesuai.</div>
                 <div className="bubble bot">Ada penawaran baru untuk stokmu:</div>
                 <div className="price-bubble">

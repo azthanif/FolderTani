@@ -63,7 +63,7 @@ export function startChatbot(root: HTMLElement): () => void {
             { id: 'STK-101', farmerId: 'F001', type: 'GKP', quantityKg: 5000, date: '2026-11-10' },
             { id: 'STK-102', farmerId: 'F002', type: 'GKP', quantityKg: 3000, date: '2026-11-11' },
             { id: 'STK-103', farmerId: 'F003', type: 'GKP', quantityKg: 4000, date: '2026-11-13' },
-            { id: 'STK-104', farmerId: 'F004', type: 'GKG', quantityKg: 6000, date: '2026-11-17' },
+            { id: 'STK-104', farmerId: 'F004', type: 'GKP', quantityKg: 6000, date: '2026-11-17' },
             { id: 'STK-105', farmerId: 'F005', type: 'GKP', quantityKg: 8500, date: '2026-11-20' }
         ],
         requests: [],
@@ -106,6 +106,8 @@ export function startChatbot(root: HTMLElement): () => void {
         if (disposed) return;
         const saved = (remote && local) ? ((Number(local.lastUpdate) || 0) > (Number(remote.lastUpdate) || 0) ? local : remote) : (remote || local);
         state = saved?.v === 8 ? saved : defaultData();
+        // Hanya GKP yang didukung: state lama yang masih berisi GKG dikonversi.
+        (state.stocks || []).forEach(st => { st.type = 'GKP'; });
     }
     catch {
         state = defaultData();
@@ -192,7 +194,7 @@ export function startChatbot(root: HTMLElement): () => void {
             ? { label: profile.whatsapp, demo: false }
             : { label: DEMO_FARMER_CONTACTS[farmerId] || 'Nomor contoh belum tersedia', demo: true };
     }
-    const pred = (region, type = 'GKP') => { const p = { Garut: 6900, Sukabumi: 6850, Cianjur: 6950, Subang: 6750 }[region] || 6900; return type === 'GKG' ? p + 700 : p; };
+    const pred = (region) => ({ Garut: 6900, Sukabumi: 6850, Cianjur: 6950, Subang: 6750 }[region] || 6900); // GKP saja
     const REGIONS = ['Garut', 'Sukabumi', 'Cianjur', 'Subang'];
     function offerTitle(o) { const s = getStock(o.stockId); return `**${o.id} • ${getFarmer(o.farmerId).short}**\n${o.region} • ${s?.type || 'GKP'} • ${kg(o.qtyKg)}`; }
     // --- Rendering antarmuka chat ---
@@ -306,7 +308,7 @@ export function startChatbot(root: HTMLElement): () => void {
             message += '\n';
         }
         if (groups.length > 1) {
-            message += 'Ketik **jenis gabah dan jumlah stok terkini**, misalnya **GKP 4500** atau **GKG 0**.';
+            message += 'Ketik **jenis gabah dan jumlah stok terkini**, misalnya **GKP 4500**.';
         } else {
             message += 'Berapa **jumlah stok terbaru** Anda sekarang?\nKetik angka dalam **kg**, misalnya **4500** atau **0** jika habis.';
         }
@@ -601,7 +603,7 @@ export function startChatbot(root: HTMLElement): () => void {
                     bot('Identitas petani berubah. Buka menu stok lagi untuk melanjutkan.');
                     break;
                 }
-                const typed = value.match(/^(GKP|GKG)\s+(.+)$/i);
+                const typed = value.match(/^(GKP)\s+(.+)$/i);
                 const type = typed ? typed[1].toUpperCase() : f.type;
                 const latestQty = parseIntLocale(typed ? typed[2] : value);
                 if (!type || f.needsType && !typed) {

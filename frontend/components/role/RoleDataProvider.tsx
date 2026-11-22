@@ -1,13 +1,12 @@
 "use client";
-/* Data & aksi dashboard petani/tengkulak (port initRoleDashboard: load, mutate, sinkronisasi polling). */
+/* Data & aksi dashboard petani/tengkulak (port initRoleDashboard: load, mutate, sinkronisasi polling).
+   Identitas pengguna diambil dari sesi login (lib/auth.ts); tanpa sesi -> diarahkan ke /masuk. */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
+import { clearSession, getSession, type Session } from "@/lib/auth";
 import { useUI } from "@/components/UIProvider";
 import type { MutationResult, RoleKind, RoleState } from "./types";
-
-export const CURRENT_FARMER = "F-001";
-export const CURRENT_BUYER = "GUEST-001";
 
 export interface UiFilters {
   query: string;
@@ -29,6 +28,10 @@ export interface MutateOptions {
 interface RoleContextValue {
   role: RoleKind;
   isFarmer: boolean;
+  /** ID pengguna yang sedang login (F-xxx / B-xxx). */
+  me: string;
+  session: Session | null;
+  logout: () => void;
   base: string;
   db: RoleState | null;
   error: Error | null;
@@ -50,10 +53,23 @@ export function useRole(): RoleContextValue {
 export function RoleDataProvider({ role, children }: { role: RoleKind; children: ReactNode }) {
   const isFarmer = role === "petani";
   const base = "/" + role;
-  const actor = useMemo(() => ({ role, user: isFarmer ? CURRENT_FARMER : CURRENT_BUYER }), [role, isFarmer]);
   const { closeModal, toast } = useUI();
   const router = useRouter();
   const pathname = usePathname();
+  // Sesi dibaca setelah mount (localStorage tidak ada saat render di server).
+  const [session, setSession] = useState<Session | null>(null);
+  useEffect(() => {
+    const s = getSession();
+    if (!s) router.replace("/masuk");
+    else if (s.user.role !== role) router.replace("/" + s.user.role); // petani tidak bisa membuka dashboard tengkulak, dan sebaliknya
+    else setSession(s);
+  }, [role, router]);
+  const me = session?.user.id ?? "";
+  const actor = useMemo(() => ({ role }), [role]); // token dikirim otomatis oleh api()
+  const logout = useCallback(() => {
+    clearSession();
+    router.replace("/masuk");
+  }, [router]);
 
   const [db, setDbState] = useState<RoleState | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -62,7 +78,7 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
   const mutationSeq = useRef(0); // naik setiap aksi; agar hasil polling lama tidak menimpa data baru
   const [ui, setUiState] = useState<UiFilters>({
     query: "",
-    area: isFarmer ? "Garut" : "Semua Wilayah",
+    area: "Semua Wilayah",
     type: "Semua Jenis",
     status: "Semua Status",
     requested: "",
@@ -76,16 +92,21 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
   const setUi = useCallback((patch: Partial<UiFilters>) => setUiState((u) => ({ ...u, ...patch })), []);
 
   const load = useCallback(async () => {
-    setDb(await api<RoleState>("/state", actor));
-  }, [actor, setDb]);
+    try {
+      setDb(await api<RoleState>("/state", actor));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) logout(); // token kedaluwarsa / akun hilang
+      throw e;
+    }
+  }, [actor, setDb, logout]);
 
   // Pindah halaman: pencarian & filter status dikosongkan (seperti actions('navigate')).
   const lastPath = useRef(pathname);
   useEffect(() => {
     if (lastPath.current === pathname) return;
     lastPath.current = pathname;
-    setUiState((u) => ({ ...u, query: "", status: "Semua Status", area: isFarmer ? "Garut" : u.area }));
-  }, [pathname, isFarmer]);
+    setUiState((u) => ({ ...u, query: "", status: "Semua Status" }));
+  }, [pathname]);
 
   const navigate = useCallback(
     (page: string) => {
@@ -125,16 +146,17 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
     [actor, closeModal, load, setDb, toast],
   );
 
-  // Muat awal.
+  // Muat awal (setelah sesi tersedia).
   useEffect(() => {
+    if (!session) return;
     load().catch((e: Error) => setError(e));
-  }, [load]);
+  }, [load, session]);
 
   // Sinkronisasi: cek versi data di server; ambil ulang hanya bila berubah.
   useEffect(() => {
     let alive = true;
     async function syncFromServer() {
-      if (busy.current || document.hidden || !dbRef.current) return;
+      if (!session || busy.current || document.hidden || !dbRef.current) return;
       const seq = mutationSeq.current;
       try {
         const v = await api<{ version: number }>("/state/version");
@@ -159,8 +181,8 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", syncFromServer);
     };
-  }, [actor, setDb]);
+  }, [actor, setDb, session]);
 
-  const value: RoleContextValue = { role, isFarmer, base, db, error, getDb, mutate, ui, setUi, navigate };
+  const value: RoleContextValue = { role, isFarmer, me, session, logout, base, db, error, getDb, mutate, ui, setUi, navigate };
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;
 }

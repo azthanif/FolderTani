@@ -26,9 +26,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import pricing
+from . import auth, pricing
 from .news import load_news
-from .seed import admin_data, role_demo_data
+from .seed import SCHEMA_VERSION, admin_data, role_demo_data
 from .store import BlobStore, JsonStore
 
 log = logging.getLogger("temutani")
@@ -45,10 +45,13 @@ NEWS_CSV = Path(os.getenv("TEMUTANI_NEWS_CSV", BASE_DIR / "data" / "berita.csv")
 CHATBOT_MAX_BYTES = 2_000_000
 
 STOCK_STATUSES = ("Tersedia", "Akan Panen", "Ditutup")
-GRAIN_TYPES = ("GKP", "GKG")
+GRAIN_TYPES = ("GKP",)  # hanya Gabah Kering Panen
+UNIT = "kg"  # satuan volume seluruh API
 EPS = 1e-8
 
 store = JsonStore(DATA_DIR / "role_demo.json", role_demo_data)
+if store.read().get("schema") != SCHEMA_VERSION:  # file runtime lama (ton/GKG, tanpa akun) -> data awal baru
+    store.reset()
 chatbot_store = BlobStore(DATA_DIR / "chatbot_state.json")
 
 app = FastAPI(
@@ -63,7 +66,7 @@ if _origins:  # hanya perlu bila frontend di-host terpisah (mis. Netlify/Vercel)
         CORSMiddleware,
         allow_origins=_origins,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["Content-Type", "X-Demo-Role", "X-Demo-User"],
+        allow_headers=["Content-Type", "Authorization", "X-Demo-Role", "X-Demo-User"],
     )
 
 
@@ -132,9 +135,21 @@ DEFAULT_USER = {"petani": "F-001", "tengkulak": "GUEST-001", "admin": "ADMIN-1"}
 
 
 def get_actor(
+    authorization: str = Header(default="", alias="Authorization"),
     x_demo_role: str = Header(default="", alias="X-Demo-Role"),
     x_demo_user: str = Header(default="", alias="X-Demo-User"),
 ) -> Actor:
+    # 1) Token login (Authorization: Bearer <token>) diutamakan.
+    if authorization.lower().startswith("bearer "):
+        data = auth.read_token(authorization[7:].strip())
+        if not data or data.get("r") not in ("petani", "tengkulak"):
+            err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
+        db = store.read()
+        pool = db["farmers"] if data["r"] == "petani" else db["buyers"]
+        if not find(pool, data["u"]):
+            err(401, "Akun tidak ditemukan. Silakan masuk kembali.")
+        return Actor(role=data["r"], user=data["u"])
+    # 2) Fallback header demo (dipakai dashboard admin & tes). SIMULASI, bukan autentikasi.
     role = x_demo_role.strip().lower()
     if role not in DEFAULT_USER:
         err(401, "Peran demo tidak dikenali. Kirim header X-Demo-Role: petani | tengkulak | admin.")
@@ -195,7 +210,7 @@ def result(db: dict, actor: Actor, message: str, **extra) -> dict:
 # Skema input
 # ---------------------------------------------------------------------------
 class StockIn(BaseModel):
-    type: Literal["GKP", "GKG"] = "GKP"
+    type: Literal["GKP"] = "GKP"
     volume: float = Field(gt=0)
     harvest: str = Field(min_length=8, max_length=10)
     status: Literal["Tersedia", "Akan Panen", "Ditutup"] = "Tersedia"
@@ -210,8 +225,13 @@ class StockIn(BaseModel):
 
 
 class RequestIn(BaseModel):
-    type: Literal["GKP", "GKG"]
-    region: Literal["Garut", "Sukabumi"]
+    type: Literal["GKP"] = "GKP"
+    region: str = Field(min_length=2, max_length=60)  # kota/kabupaten bebas (petani baru dapat dari wilayah mana pun)
+
+    @field_validator("region")
+    @classmethod
+    def norm_region(cls, v: str) -> str:
+        return pricing.canonical_region(v)
     volume: float = Field(gt=0)
     needed: str = Field(min_length=8, max_length=10)
 
@@ -225,6 +245,26 @@ class OfferIn(BaseModel):
 
 class PriceIn(BaseModel):
     price: int = Field(gt=0)
+
+
+class RegisterIn(BaseModel):
+    role: Literal["petani", "tengkulak"]
+    name: str = Field(min_length=3, max_length=80)
+    phone: str = Field(min_length=9, max_length=20)
+    password: str = Field(min_length=8, max_length=128)
+    # Wajib untuk petani; diabaikan untuk tengkulak.
+    region: Optional[str] = Field(default=None, max_length=60)    # kota/kabupaten
+    district: Optional[str] = Field(default=None, max_length=60)  # kecamatan
+
+    @field_validator("name", "region", "district")
+    @classmethod
+    def strip(cls, v: Optional[str]) -> Optional[str]:
+        return " ".join(v.split()) if isinstance(v, str) else v
+
+
+class LoginIn(BaseModel):
+    phone: str = Field(min_length=9, max_length=20)
+    password: str = Field(min_length=1, max_length=128)
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +285,68 @@ async def validation_handler(_: Request, exc: RequestValidationError):
 @app.get("/api/health", tags=["umum"])
 def health():
     return {"status": "ok", "time": now_iso()}
+
+
+# ---------------------------------------------------------------------------
+# Akun: daftar & masuk (nomor HP + password)
+# ---------------------------------------------------------------------------
+def _session(db: dict, user: dict) -> dict:
+    if user["role"] == "petani":
+        f = find(db["farmers"], user["id"]) or {}
+        profile = {"name": f.get("name", ""), "region": f.get("region", ""), "district": f.get("village", "")}
+    else:
+        b = find(db["buyers"], user["id"]) or {}
+        profile = {"name": b.get("label", "")}
+    return {
+        "token": auth.issue_token(user["id"], user["role"]),
+        "user": {"id": user["id"], "role": user["role"], "phone": user["phone"], **profile},
+    }
+
+
+@app.post("/api/auth/register", tags=["akun"], status_code=201)
+def register(body: RegisterIn):
+    phone = auth.normalize_phone(body.phone)
+    if not phone:
+        err(400, "Nomor HP tidak valid. Gunakan format 08xxxxxxxxxx.")
+    if body.role == "petani" and (not body.region or len(body.region) < 2 or not body.district or len(body.district) < 2):
+        err(400, "Kota/kabupaten dan kecamatan wajib diisi untuk petani.")
+    password_hash = auth.hash_password(body.password)  # di luar lock: PBKDF2 sengaja lambat
+    with store.transaction() as db:
+        users = db.setdefault("users", [])
+        if any(u["phone"] == phone for u in users):
+            err(409, "Nomor HP sudah terdaftar. Silakan masuk.")
+        if body.role == "petani":
+            uid_ = uid("F", {f["id"] for f in db["farmers"]})
+            region = pricing.canonical_region(body.region)
+            db["farmers"].append({"id": uid_, "name": body.name, "region": region, "village": body.district})
+            append_event(db, "Petani baru terdaftar", f"{body.district}, {region}")
+        else:
+            uid_ = uid("B", {b["id"] for b in db["buyers"]})
+            db["buyers"].append({"id": uid_, "label": body.name})
+            append_event(db, "Tengkulak baru terdaftar", auth.mask_phone(phone))
+        user = {"id": uid_, "role": body.role, "phone": phone, "passwordHash": password_hash, "created": now_iso()}
+        users.append(user)
+    return _session(db, user)
+
+
+@app.post("/api/auth/login", tags=["akun"])
+def login(body: LoginIn):
+    phone = auth.normalize_phone(body.phone)
+    db = store.read()
+    user = next((u for u in db.get("users", []) if u["phone"] == phone), None) if phone else None
+    # Pesan sama untuk nomor tak terdaftar & password salah (tidak membocorkan nomor yang terdaftar).
+    if not user or not auth.verify_password(body.password, user["passwordHash"]):
+        err(401, "Nomor HP atau password salah.")
+    return _session(db, user)
+
+
+@app.get("/api/auth/me", tags=["akun"])
+def me(actor: Actor = Depends(get_actor)):
+    db = store.read()
+    user = next((u for u in db.get("users", []) if u["id"] == actor.user), None)
+    if not user:
+        err(401, "Akun tidak ditemukan.")
+    return _session(db, user)["user"]
 
 
 @app.get("/api/prices", tags=["harga"])
@@ -306,7 +408,17 @@ def get_state_version():
 def reset_demo(actor: Actor = Depends(get_actor)):
     if actor.role not in ("petani", "tengkulak"):
         err(403, "Aksi ini tidak diizinkan untuk peran Anda.")
-    db = store.reset()
+    # Data transaksi dikembalikan ke awal, tetapi akun yang sudah mendaftar tetap dipertahankan.
+    keep = store.read()
+    seed = role_demo_data()
+    seed_users = {u["id"] for u in seed["users"]}
+    with store.transaction() as db:
+        db.clear()
+        db.update(seed)
+        for key in ("farmers", "buyers"):
+            ids = {x["id"] for x in db[key]}
+            db[key].extend(x for x in keep.get(key, []) if x["id"] not in ids)
+        db["users"].extend(u for u in keep.get("users", []) if u["id"] not in seed_users)
     return result(db, actor, "Data simulasi dikembalikan.")
 
 
@@ -326,7 +438,7 @@ def create_stock(body: StockIn, actor: Actor = Depends(get_actor)):
             "moisture": body.moisture or None,
         }
         db["stocks"].append(stock)
-        append_event(db, "Stok baru ditambahkan", f"{fmt_number(body.volume)} ton {body.type} • {farmer['region']}")
+        append_event(db, "Stok baru ditambahkan", f"{fmt_number(body.volume)} kg {body.type} • {farmer['region']}")
     return result(db, actor, "Stok gabah berhasil ditambahkan.", id=stock["id"])
 
 
@@ -348,7 +460,7 @@ def update_stock(stock_id: str, body: StockIn, actor: Actor = Depends(get_actor)
             "moisture": body.moisture or None,
         })
         farmer = find(db["farmers"], actor.user)
-        append_event(db, "Stok diperbarui", f"{fmt_number(body.volume)} ton {s['type']} • {farmer['region']}")
+        append_event(db, "Stok diperbarui", f"{fmt_number(body.volume)} kg {s['type']} • {farmer['region']}")
     return result(db, actor, "Stok berhasil diperbarui.", id=stock_id)
 
 
@@ -366,7 +478,7 @@ def create_request(body: RequestIn, actor: Actor = Depends(get_actor)):
             "created": now_iso(),
         }
         db["requests"].append(req)
-        append_event(db, "Permintaan pembeli baru " + req["id"], f"{fmt_number(body.volume)} ton {body.type} • {body.region}")
+        append_event(db, "Permintaan pembeli baru " + req["id"], f"{fmt_number(body.volume)} kg {body.type} • {body.region}")
     return result(db, actor, "Permintaan tersimpan. Pilih petani untuk menawar.", id=req["id"])
 
 
@@ -379,7 +491,7 @@ def create_offer(body: OfferIn, actor: Actor = Depends(get_actor)):
             err(409, "Data penawaran tidak valid atau stok tidak mencukupi.")
         avail = availability(db, s)
         if avail + EPS < body.volume:
-            err(409, f"Volume yang Anda tawarkan ({fmt_number(body.volume)} ton) melebihi stok tersedia ({fmt_number(avail)} ton {s['type']}).")
+            err(409, f"Volume yang Anda tawarkan ({fmt_number(body.volume)} kg) melebihi stok tersedia ({fmt_number(avail)} kg {s['type']}).")
         # Sama seperti versi awal: requestId yang tidak dikenal -> buat permintaan baru otomatis.
         req = find(db["requests"], body.requestId) if body.requestId else None
         if req and req["buyerId"] != actor.user:
@@ -404,7 +516,7 @@ def create_offer(body: OfferIn, actor: Actor = Depends(get_actor)):
             "history": [{"at": ts, "actor": "Pembeli", "label": "Penawaran awal dikirim", "price": body.price}],
         }
         db["offers"].append(offer)
-        append_event(db, "Penawaran baru " + offer["id"], f"{js_num(body.volume)} ton {s['type']} • {s['region']}")
+        append_event(db, "Penawaran baru " + offer["id"], f"{fmt_number(body.volume)} kg {s['type']} • {s['region']}")
     return result(db, actor, "Penawaran dikirim kepada petani.", id=offer["id"])
 
 
@@ -432,7 +544,7 @@ def _agree(db: dict, actor: Actor, o: dict, price: int) -> dict:
         "volume": o["volume"], "price": price, "date": pricing.today_wib(), "payment": "Belum Dibayar",
     }
     db["transactions"].append(tx)
-    append_event(db, "Kesepakatan baru " + o["id"], f"{tx['id']} • {fmt_number(o['volume'])} ton")
+    append_event(db, "Kesepakatan baru " + o["id"], f"{tx['id']} • {fmt_number(o['volume'])} kg")
     return tx
 
 

@@ -1,4 +1,5 @@
-/* Klien API FastAPI. Identitas demo dikirim lewat header (SIMULASI, bukan autentikasi). */
+/* Klien API FastAPI. Petani/tengkulak memakai token login (Authorization: Bearer).
+   Header X-Demo-* hanya dipakai dashboard admin (SIMULASI, bukan autentikasi). */
 export type Role = "admin" | "petani" | "tengkulak";
 
 export class ApiError extends Error {
@@ -16,13 +17,30 @@ export interface ApiOptions {
   body?: unknown;
   role?: Role;
   user?: string;
+  /** Kirim token sesi bila ada (default true). Set false untuk endpoint login/daftar. */
+  auth?: boolean;
 }
 
-export async function api<T = unknown>(path: string, { method = "GET", body, role, user }: ApiOptions = {}): Promise<T> {
+/** Token sesi dibaca langsung dari localStorage (lihat lib/auth.ts) agar tidak terjadi impor melingkar. */
+function sessionToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem("temutani.session");
+    return raw ? (JSON.parse(raw) as { token?: string }).token || null : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function api<T = unknown>(path: string, { method = "GET", body, role, user, auth = true }: ApiOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (role) headers["X-Demo-Role"] = role;
-  if (user) headers["X-Demo-User"] = user;
+  const token = auth && role !== "admin" ? sessionToken() : null;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  else {
+    if (role) headers["X-Demo-Role"] = role;
+    if (user) headers["X-Demo-User"] = user;
+  }
   let res: Response;
   try {
     res = await fetch(API_BASE + path, {

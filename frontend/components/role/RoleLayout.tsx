@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 import { ApiErrorCard, DashboardRoot, DashboardShell, type NavItem } from "@/components/DashboardShell";
 import { SVG_PATHS } from "@/components/Icon";
 import { useRoleActions } from "./actions";
-import { CURRENT_FARMER, RoleDataProvider, useRole } from "./RoleDataProvider";
+import { RoleDataProvider, useRole } from "./RoleDataProvider";
+import { initials } from "@/lib/format";
 import { selectors } from "./common";
 import type { RoleKind } from "./types";
 
@@ -20,7 +21,7 @@ const PAGE_DEFS: Record<RoleKind, [string, string, string][]> = {
 };
 
 function RoleShell({ children }: { children: ReactNode }) {
-  const { role, isFarmer, db, base } = useRole();
+  const { role, isFarmer, db, base, logout } = useRole();
   const A = useRoleActions();
   let nav: NavItem[] = [];
   let user = { name: "—", sub: "—", initials: "--" };
@@ -33,9 +34,11 @@ function RoleShell({ children }: { children: ReactNode }) {
       label,
       count: id === "penawaran" && pending ? pending : undefined,
     }));
+    const f = S.myFarmer();
+    const b = S.myBuyer();
     user = isFarmer
-      ? { name: S.farmer(CURRENT_FARMER)?.name || "—", sub: "Kabupaten Garut", initials: "AH" }
-      : { name: "Pembeli WhatsApp", sub: "Guest • Semua wilayah", initials: "TG" };
+      ? { name: f?.name || "—", sub: f ? `${f.village}, ${f.region}` : "—", initials: f ? initials(f.name) : "--" }
+      : { name: b?.label || "—", sub: "Tengkulak • Semua wilayah", initials: b ? initials(b.label) : "--" };
   }
   const chip = (
     <span className="role-chip">
@@ -50,7 +53,7 @@ function RoleShell({ children }: { children: ReactNode }) {
       nav={nav}
       user={user}
       chatbotFrom={role}
-      switchLink={isFarmer ? { href: "/tengkulak", label: "Dashboard Tengkulak" } : { href: "/petani", label: "Dashboard Petani" }}
+      onLogout={logout}
       topExtra={chip}
       onNotif={() => A.notifications()}
     >

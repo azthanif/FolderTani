@@ -8,6 +8,7 @@ kontrak respons API tidak perlu berubah.
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timedelta, timezone
 
 WIB = timezone(timedelta(hours=7))
@@ -30,13 +31,21 @@ PRICE_ANCHORS: dict[str, dict] = {
     },
 }
 
-# Referensi harga wajar per jenis gabah (dulu currentAI() di app.js). Privat untuk petani.
+# Referensi harga wajar (Rp/kg) per jenis gabah. Privat untuk petani. Hanya GKP yang didukung.
 AI_REFERENCE: dict[str, dict[str, int]] = {
-    "Garut": {"GKP": 7100, "GKG": 7350},
-    "Sukabumi": {"GKP": 7040, "GKG": 7300},
+    "Garut": {"GKP": 7100},
+    "Sukabumi": {"GKP": 7040},
 }
 
 REGIONS = tuple(PRICE_ANCHORS)
+
+
+def canonical_region(name: str) -> str:
+    """'Kab. Garut' / 'kabupaten garut' / 'GARUT' -> 'Garut' (nama wilayah yang punya data harga).
+    Wilayah lain dikembalikan apa adanya (spasi dirapikan), mis. 'Kota Bandung'."""
+    cleaned = " ".join((name or "").split())
+    key = re.sub(r"^(kabupaten|kab\.?|kota)\s+", "", cleaned, flags=re.I).casefold()
+    return next((r for r in REGIONS if r.casefold() == key), cleaned)
 
 
 def js_round(x: float) -> int:
