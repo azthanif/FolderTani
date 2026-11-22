@@ -1,0 +1,4 @@
+{
+  "$schema": "https://vercel.sh",
+  "framework": "nextjs"
+}
