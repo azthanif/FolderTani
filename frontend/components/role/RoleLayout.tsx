@@ -12,11 +12,11 @@ import type { RoleKind } from "./types";
 const PAGE_DEFS: Record<RoleKind, [string, string, string][]> = {
   petani: [
     ["overview", "dashboard", "Overview"], ["stok", "wheat", "Stok Gabah"], ["penawaran", "handshake", "Penawaran & Negosiasi"],
-    ["harga", "chart", "Prediksi Harga AI"], ["transaksi", "history", "Transaksi Disepakati"], ["berita", "document", "Berita & Analisis"],
+    ["harga", "chart", "Prediksi Harga AI"], ["transaksi", "history", "Riwayat Kesepakatan"], ["berita", "document", "Berita & Analisis"],
   ],
   tengkulak: [
     ["overview", "dashboard", "Overview"], ["stok", "wheat", "Stok Gabah"], ["penawaran", "handshake", "Penawaran & Negosiasi"],
-    ["transaksi", "history", "Transaksi Disepakati"],
+    ["transaksi", "history", "Riwayat Kesepakatan"],
   ],
 };
 
@@ -52,7 +52,6 @@ function RoleShell({ children }: { children: ReactNode }) {
       brandSmall={isFarmer ? "PETANI" : "Tengkulak"}
       nav={nav}
       user={user}
-      chatbotFrom={role}
       onLogout={logout}
       topExtra={chip}
       onNotif={() => A.notifications()}

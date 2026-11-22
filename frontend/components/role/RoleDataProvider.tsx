@@ -13,7 +13,6 @@ export interface UiFilters {
   area: string;
   type: string;
   status: string;
-  requested: string;
 }
 
 export interface MutateOptions {
@@ -81,7 +80,6 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
     area: "Semua Wilayah",
     type: "Semua Jenis",
     status: "Semua Status",
-    requested: "",
   });
 
   const setDb = useCallback((next: RoleState) => {

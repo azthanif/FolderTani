@@ -21,7 +21,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     { href: "/admin/stok", icon: "wheat", label: "Stok Gabah" },
     { href: "/admin/penawaran", icon: "handshake", label: "Penawaran & Negosiasi", count: active },
     { href: "/admin/harga", icon: "chart-no-axes-combined", label: "Prediksi Harga AI" },
-    { href: "/admin/transaksi", icon: "receipt-text", label: "Transaksi Disepakati" },
+    { href: "/admin/transaksi", icon: "receipt-text", label: "Riwayat Kesepakatan" },
     { href: "/admin/aktivitas", icon: "messages-square", label: "Aktivitas Chatbot" },
     { href: "/admin/berita", icon: "newspaper", label: "Berita & Analisis" },
   ];
@@ -39,7 +39,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <DashboardShell
       variant="admin"
       brandSmall="Administrator"
-      chatbotFrom="admin"
       user={{ name: "Admin 1", initials: "A1" }}
       nav={nav}
       topExtra={

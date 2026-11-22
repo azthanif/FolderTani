@@ -43,8 +43,8 @@ export function selectors(db: RoleState, isFarmer: boolean) {
 export type Selectors = ReturnType<typeof selectors>;
 
 const BADGE: Record<string, string> = {
-  Tersedia: "green", Disepakati: "green", "Sudah Dibayar": "green", Aktif: "green",
-  "Menunggu Petani": "gold", "Belum Dibayar": "gold", "Penawaran Balik": "blue", "Menunggu Verifikasi": "blue",
+  Tersedia: "green", Disepakati: "green", Aktif: "green",
+  "Menunggu Petani": "gold", "Penawaran Balik": "blue",
   Ditolak: "red", "Akan Panen": "gray", Ditutup: "gray",
 };
 export const Badge = ({ s }: { s: string }) => <span className={`pill ${BADGE[s] || "gray"}`}>{s}</span>;

@@ -113,6 +113,14 @@ def availability(db: dict, stock: dict) -> float:
     return max(0.0, round2(stock["volume"] - committed))
 
 
+def log_stock(db: dict, farmer_id: str, activity: str, delta: float) -> None:
+    """Catat perubahan total stok fisik petani (untuk tabel Riwayat Perubahan Stok)."""
+    log = db.setdefault("stockLog", [])
+    total = sum(s["volume"] for s in db["stocks"] if s["farmerId"] == farmer_id)
+    log.append({"id": uid("LOG", {x["id"] for x in log}), "farmerId": farmer_id, "at": now_iso(),
+                "activity": activity, "delta": delta, "total": total})
+
+
 def append_event(db: dict, title: str, note: str) -> None:
     ids = {a["id"] for a in db["activities"]}
     db["activities"].insert(0, {"id": uid("EVT", ids), "at": now_iso(), "title": title, "note": note})
@@ -170,6 +178,12 @@ def require(actor: Actor, role: str) -> None:
 # ---------------------------------------------------------------------------
 # Snapshot per peran: server hanya mengirim data yang boleh dilihat peran tsb.
 # ---------------------------------------------------------------------------
+def _with_contact(db: dict, t: dict, counterpart_id: str) -> dict:
+    """Nomor HP lawan transaksi, hanya untuk pihak dalam kesepakatan (pembayaran dilakukan di luar sistem)."""
+    user = next((u for u in db.get("users", []) if u["id"] == counterpart_id), None)
+    return {**t, "contact": user["phone"] if user else None}
+
+
 def snapshot(db: dict, actor: Actor) -> dict:
     stocks = [{**s, "available": availability(db, s)} for s in db["stocks"]]
     base = {
@@ -184,9 +198,9 @@ def snapshot(db: dict, actor: Actor) -> dict:
         return {
             **base,
             "stocks": [s for s in stocks if s["farmerId"] == actor.user],
-            "requests": [],
+            "stockLog": [x for x in db.get("stockLog", []) if x["farmerId"] == actor.user][::-1],  # terbaru dulu
             "offers": [o for o in db["offers"] if o["farmerId"] == actor.user],
-            "transactions": [t for t in db["transactions"] if t["farmerId"] == actor.user],
+            "transactions": [_with_contact(db, t, t["buyerId"]) for t in db["transactions"] if t["farmerId"] == actor.user],
             "aiReference": pricing.AI_REFERENCE.get(farmer["region"], {}),
         }
     if actor.role == "tengkulak":
@@ -195,9 +209,8 @@ def snapshot(db: dict, actor: Actor) -> dict:
         return {
             **base,
             "stocks": stocks,
-            "requests": [r for r in db["requests"] if r["buyerId"] == actor.user],
             "offers": offers,
-            "transactions": [t for t in db["transactions"] if t["buyerId"] == actor.user],
+            "transactions": [_with_contact(db, t, t["farmerId"]) for t in db["transactions"] if t["buyerId"] == actor.user],
         }
     err(403, "Snapshot peran hanya untuk petani atau tengkulak.")
 
@@ -224,23 +237,14 @@ class StockIn(BaseModel):
         return v
 
 
-class RequestIn(BaseModel):
-    type: Literal["GKP"] = "GKP"
-    region: str = Field(min_length=2, max_length=60)  # kota/kabupaten bebas (petani baru dapat dari wilayah mana pun)
-
-    @field_validator("region")
-    @classmethod
-    def norm_region(cls, v: str) -> str:
-        return pricing.canonical_region(v)
-    volume: float = Field(gt=0)
-    needed: str = Field(min_length=8, max_length=10)
-
-
 class OfferIn(BaseModel):
     stockId: str
     volume: float = Field(gt=0)
     price: int = Field(gt=0)
-    requestId: Optional[str] = None
+
+
+class StockTotalIn(BaseModel):
+    volume: float = Field(ge=0)  # total stok fisik terkini (kg)
 
 
 class PriceIn(BaseModel):
@@ -438,8 +442,49 @@ def create_stock(body: StockIn, actor: Actor = Depends(get_actor)):
             "moisture": body.moisture or None,
         }
         db["stocks"].append(stock)
+        log_stock(db, actor.user, "Tambah panen", body.volume)
         append_event(db, "Stok baru ditambahkan", f"{fmt_number(body.volume)} kg {body.type} • {farmer['region']}")
     return result(db, actor, "Stok gabah berhasil ditambahkan.", id=stock["id"])
+
+
+@app.put("/api/stocks/total", tags=["petani"])
+def update_stock_total(body: StockTotalIn, actor: Actor = Depends(get_actor)):
+    """Perbarui total stok fisik petani. Selisih diterapkan ke listing milik petani:
+    penambahan masuk ke listing terbaru; pengurangan diambil dari bagian yang belum dialokasikan
+    (listing terbaru dulu). Total tidak boleh kurang dari volume yang sudah disepakati."""
+    require(actor, "petani")
+    with store.transaction() as db:
+        own = sorted((s for s in db["stocks"] if s["farmerId"] == actor.user), key=lambda s: s["harvest"], reverse=True)
+        current = sum(s["volume"] for s in own)
+        committed = sum(s["volume"] - availability(db, s) for s in own)
+        if body.volume + EPS < committed:
+            err(400, f"Total stok tidak boleh kurang dari volume yang sudah dialokasikan ({fmt_number(committed)} kg).")
+        delta = body.volume - current
+        if abs(delta) <= EPS:
+            return result(db, actor, "Tidak ada perubahan stok.")
+        farmer = find(db["farmers"], actor.user)
+        if delta > 0:
+            if own:
+                own[0]["volume"] += delta
+            else:
+                db["stocks"].append({
+                    "id": uid("STK", {s["id"] for s in db["stocks"]}), "farmerId": actor.user, "region": farmer["region"],
+                    "type": "GKP", "volume": delta, "harvest": pricing.today_wib(), "status": "Tersedia", "moisture": None,
+                })
+        else:
+            need = -delta
+            for s in own:
+                take = min(need, availability(db, s))
+                s["volume"] -= take
+                need -= take
+                if need <= EPS:
+                    break
+            # Listing kosong yang tidak dirujuk penawaran mana pun dihapus.
+            referenced = {o["stockId"] for o in db["offers"]}
+            db["stocks"] = [s for s in db["stocks"] if not (s["farmerId"] == actor.user and s["volume"] <= EPS and s["id"] not in referenced)]
+        log_stock(db, actor.user, "Update stok", delta)
+        append_event(db, "Stok diperbarui", f"Total {fmt_number(body.volume)} kg GKP • {farmer['region']}")
+    return result(db, actor, "Stok berhasil diperbarui.")
 
 
 @app.put("/api/stocks/{stock_id}", tags=["petani"])
@@ -452,6 +497,7 @@ def update_stock(stock_id: str, body: StockIn, actor: Actor = Depends(get_actor)
         committed = s["volume"] - availability(db, s)
         if body.volume + EPS < committed:
             err(400, "Volume harus positif dan tidak kurang dari volume yang telah disepakati.")
+        delta = body.volume - s["volume"]
         s.update({
             "type": s["type"] if committed > 0 else body.type,  # jenis dikunci bila sudah ada kesepakatan
             "volume": body.volume,
@@ -459,27 +505,11 @@ def update_stock(stock_id: str, body: StockIn, actor: Actor = Depends(get_actor)
             "status": body.status,
             "moisture": body.moisture or None,
         })
+        if abs(delta) > EPS:
+            log_stock(db, actor.user, "Update stok", delta)
         farmer = find(db["farmers"], actor.user)
         append_event(db, "Stok diperbarui", f"{fmt_number(body.volume)} kg {s['type']} • {farmer['region']}")
     return result(db, actor, "Stok berhasil diperbarui.", id=stock_id)
-
-
-@app.post("/api/requests", tags=["tengkulak"])
-def create_request(body: RequestIn, actor: Actor = Depends(get_actor)):
-    require(actor, "tengkulak")
-    with store.transaction() as db:
-        req = {
-            "id": uid("REQ", {r["id"] for r in db["requests"]}),
-            "buyerId": actor.user,
-            "type": body.type,
-            "region": body.region,
-            "volume": body.volume,
-            "needed": body.needed,
-            "created": now_iso(),
-        }
-        db["requests"].append(req)
-        append_event(db, "Permintaan pembeli baru " + req["id"], f"{fmt_number(body.volume)} kg {body.type} • {body.region}")
-    return result(db, actor, "Permintaan tersimpan. Pilih petani untuk menawar.", id=req["id"])
 
 
 @app.post("/api/offers", tags=["tengkulak"])
@@ -492,24 +522,10 @@ def create_offer(body: OfferIn, actor: Actor = Depends(get_actor)):
         avail = availability(db, s)
         if avail + EPS < body.volume:
             err(409, f"Volume yang Anda tawarkan ({fmt_number(body.volume)} kg) melebihi stok tersedia ({fmt_number(avail)} kg {s['type']}).")
-        # Sama seperti versi awal: requestId yang tidak dikenal -> buat permintaan baru otomatis.
-        req = find(db["requests"], body.requestId) if body.requestId else None
-        if req and req["buyerId"] != actor.user:
-            req = None
-        if req:
-            if req["region"] != s["region"] or req["type"] != s["type"]:
-                err(400, "Permintaan tidak sesuai lokasi atau jenis gabah.")
-        if not req:
-            req = {
-                "id": uid("REQ", {r["id"] for r in db["requests"]}),
-                "buyerId": actor.user, "type": s["type"], "region": s["region"],
-                "volume": body.volume, "needed": s["harvest"], "created": now_iso(),
-            }
-            db["requests"].append(req)
         ts = now_iso()
         offer = {
             "id": uid("OFF", {o["id"] for o in db["offers"]}),
-            "requestId": req["id"], "buyerId": actor.user, "farmerId": s["farmerId"], "stockId": s["id"],
+            "buyerId": actor.user, "farmerId": s["farmerId"], "stockId": s["id"],
             "volume": body.volume, "initialBid": body.price, "currentBid": body.price, "counter": None,
             "aiRef": pricing.AI_REFERENCE.get(s["region"], {}).get(s["type"]),  # dihitung server, tak pernah dikirim ke pembeli
             "status": "Menunggu Petani", "created": ts,
@@ -541,7 +557,7 @@ def _agree(db: dict, actor: Actor, o: dict, price: int) -> dict:
     tx = {
         "id": uid("TRX", {t["id"] for t in db["transactions"]}),
         "offerId": o["id"], "buyerId": o["buyerId"], "farmerId": o["farmerId"], "stockId": o["stockId"],
-        "volume": o["volume"], "price": price, "date": pricing.today_wib(), "payment": "Belum Dibayar",
+        "volume": o["volume"], "price": price, "date": pricing.today_wib(),
     }
     db["transactions"].append(tx)
     append_event(db, "Kesepakatan baru " + o["id"], f"{tx['id']} • {fmt_number(o['volume'])} kg")
@@ -613,41 +629,6 @@ def accept_counter(offer_id: str, actor: Actor = Depends(get_actor)):
             err(409, "Status penawaran sudah berubah.")
         tx = _agree(db, actor, o, o["counter"])
     return result(db, actor, "Harga balik disepakati.", id=tx["id"])
-
-
-def _own_trx(db: dict, actor: Actor, trx_id: str) -> dict:
-    t = find(db["transactions"], trx_id)
-    owner = "farmerId" if actor.role == "petani" else "buyerId"
-    if not t or t[owner] != actor.user:
-        err(404, "Transaksi tidak ditemukan.")
-    return t
-
-
-@app.post("/api/transactions/{trx_id}/mark-paid", tags=["tengkulak"])
-def mark_paid(trx_id: str, actor: Actor = Depends(get_actor)):
-    """Klaim pembeli bahwa transfer sudah dilakukan. TIDAK memindahkan dana."""
-    require(actor, "tengkulak")
-    with store.transaction() as db:
-        t = _own_trx(db, actor, trx_id)
-        if t["payment"] != "Belum Dibayar":
-            err(409, "Status pembayaran sudah berubah.")
-        t["payment"] = "Menunggu Verifikasi"
-        t["claimedPaidAt"] = now_iso()
-        append_event(db, "Pembeli melaporkan transfer " + trx_id, "Menunggu konfirmasi petani")
-    return result(db, actor, "Laporan transfer dicatat. Menunggu verifikasi petani.")
-
-
-@app.post("/api/transactions/{trx_id}/verify", tags=["petani"])
-def verify_payment(trx_id: str, actor: Actor = Depends(get_actor)):
-    require(actor, "petani")
-    with store.transaction() as db:
-        t = _own_trx(db, actor, trx_id)
-        if t["payment"] != "Menunggu Verifikasi":
-            err(409, "Status pembayaran sudah berubah.")
-        t["payment"] = "Sudah Dibayar"
-        t["paidAt"] = now_iso()
-        append_event(db, "Pembayaran dikonfirmasi " + trx_id, "Dana diterima petani")
-    return result(db, actor, "Pembayaran telah dikonfirmasi.")
 
 
 # ---------------------------------------------------------------------------

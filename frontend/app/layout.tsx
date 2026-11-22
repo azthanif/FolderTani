@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { WaButton } from "@/components/WaButton";
 
 // Font di-host sendiri (paket @fontsource-variable) agar build tidak bergantung pada Google Fonts.
 const dmSans = localFont({
@@ -28,7 +29,10 @@ export const viewport: Viewport = { themeColor: "#153d30", width: "device-width"
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id" className={`${dmSans.variable} ${jakarta.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <WaButton />
+      </body>
     </html>
   );
 }

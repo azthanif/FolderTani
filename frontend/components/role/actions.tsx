@@ -1,5 +1,5 @@
 "use client";
-/* Aksi & modal dashboard petani/tengkulak (port newStock, newRequest, newOffer, offerDetail, trxDetail,
+/* Aksi & modal dashboard petani/tengkulak (port newStock, updateStockTotal, newOffer, offerDetail, trxDetail,
    counterOffer, actions() dan handleForm() dari app.js). Isi modal dirender oleh UIProvider (di luar
    RoleDataProvider), jadi semua data/aksi diteruskan lewat props/closure, bukan context. */
 import type { FormEvent } from "react";
@@ -10,7 +10,7 @@ import { availability, Badge, Btn, fmtTime, number, prettyDate, rupiah, selector
 import type { Offer, RoleState, Stock } from "./types";
 
 export function useRoleActions() {
-  const { isFarmer, getDb, mutate, ui, setUi, navigate, base } = useRole();
+  const { isFarmer, getDb, mutate, navigate, base } = useRole();
   const { openModal, closeModal, toast } = useUI();
   const sel = () => selectors(getDb() as RoleState, isFarmer);
   const me = () => (getDb() as RoleState).actor.user; // ID pengguna yang sedang login
@@ -84,59 +84,36 @@ export function useRoleActions() {
     );
   }
 
-  /* ---------- Permintaan (tengkulak) ---------- */
-  function newRequest() {
-    if (isFarmer) return;
+  /* ---------- Perbarui total stok fisik (petani) ---------- */
+  function updateStockTotal() {
+    if (!isFarmer) return;
+    const own = sel().ownStock();
+    const total = own.reduce((n, x) => n + x.volume, 0);
+    const committed = own.reduce((n, x) => n + (x.volume - availability(x)), 0);
     const submit = (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      const data = new FormData(e.currentTarget);
-      const volume = Number(data.get("volume"));
-      if (!Number.isFinite(volume) || volume <= 0) return toast("Volume tidak valid.");
-      const region = String(data.get("region") || "").trim();
-      if (region.length < 2) return toast("Kota/kabupaten tujuan wajib diisi.");
-      const body = { type: "GKP", region, volume, needed: String(data.get("needed")) };
-      mutate("/requests", {
-        body,
-        before: (res) => {
-          setUi({ area: body.region, type: body.type, requested: res.id || "", query: "" });
-          navigate("stok");
-        },
-      });
+      const volume = Number(new FormData(e.currentTarget).get("volume"));
+      if (!Number.isFinite(volume) || volume < 0) return toast("Volume tidak valid.");
+      if (volume + 1e-8 < committed) return toast(`Total stok tidak boleh kurang dari ${number(committed)} kg yang sudah dialokasikan.`);
+      mutate("/stocks/total", { method: "PUT", body: { volume } });
     };
     openModal(
-      "Ajukan Kebutuhan Gabah",
-      "Permintaan digunakan untuk mencari stok yang sesuai tanpa menampilkan harga petani.",
-      <form key="request" onSubmit={submit}>
+      "Perbarui Stok",
+      "Masukkan jumlah gabah yang saat ini benar-benar Anda miliki.",
+      <form key="stock-total" onSubmit={submit}>
         <div className="form-grid">
-          <div className="field">
-            <label>Jenis gabah</label>
-            <input value="GKP (Gabah Kering Panen)" readOnly disabled />
-          </div>
-          <div className="field">
-            <label>Jumlah yang dibutuhkan (kg)</label>
-            <input type="number" min="1" step="1" name="volume" required placeholder="Contoh: 8000" />
-          </div>
-          <div className="field">
-            <label>Kota/kabupaten tujuan</label>
-            {/* Pilihan diambil dari wilayah yang punya stok; boleh juga mengetik wilayah lain. */}
-            <input name="region" list="requestRegions" required minLength={2} maxLength={60} placeholder="Contoh: Garut" />
-            <datalist id="requestRegions">
-              {sel().regions().map((r) => (
-                <option key={r} value={r} />
-              ))}
-            </datalist>
-          </div>
-          <div className="field">
-            <label>Batas kebutuhan</label>
-            <input type="date" name="needed" defaultValue="2026-11-15" required />
+          <div className="field span-2">
+            <label htmlFor="stockTotal">Total stok fisik saat ini (kg)</label>
+            <input id="stockTotal" type="number" name="volume" min={Math.ceil(committed)} step="1" defaultValue={total} required />
           </div>
           <div className="span-2 field-note">
-            Setelah menyimpan, Anda akan diarahkan ke daftar stok yang sesuai. Penawaran dikirim per petani, dan Anda menentukan harganya terlebih dahulu.
+            Sudah dialokasikan via Temu Tani: <b>{number(committed)} kg</b>. Total stok tidak bisa kurang dari angka ini. Gunakan
+            &nbsp;<b>Tambah Stok</b> bila ada hasil panen baru.
           </div>
         </div>
         <div className="form-actions">
-          <button className="btn" type="button" onClick={closeModal}>Batal</button>
-          <button className="btn primary" type="submit">Simpan &amp; Cari Stok</button>
+          <button type="button" className="btn" onClick={closeModal}>Batal</button>
+          <button className="btn primary" type="submit">Simpan</button>
         </div>
       </form>,
     );
@@ -145,12 +122,10 @@ export function useRoleActions() {
   /* ---------- Penawaran baru (tengkulak) ---------- */
   function newOffer(id: string) {
     if (isFarmer) return;
-    const db = getDb() as RoleState;
     const S = sel();
     const s = S.stock(id);
     if (!s || s.status !== "Tersedia" || availability(s) <= 0) return toast("Stok tidak lagi tersedia.");
     const f = S.farmer(s.farmerId);
-    const requests = db.requests.filter((r) => r.buyerId === me() && r.region === s.region && r.type === s.type);
     const submit = (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       const data = new FormData(e.currentTarget);
@@ -164,11 +139,8 @@ export function useRoleActions() {
       }
       if (!st || st.status !== "Tersedia" || availability(st) + 1e-8 < qty || qty <= 0 || !Number.isFinite(price) || price <= 0)
         return toast("Data penawaran tidak valid atau stok tidak mencukupi.");
-      const reqId = String(data.get("requestId") || "");
-      const req = (getDb() as RoleState).requests.find((r) => r.id === reqId && r.buyerId === me());
-      if (req && (req.region !== st.region || req.type !== st.type)) return toast("Permintaan tidak sesuai lokasi atau jenis gabah.");
       mutate("/offers", {
-        body: { stockId: st.id, volume: qty, price: Math.round(price), requestId: req ? req.id : null },
+        body: { stockId: st.id, volume: qty, price: Math.round(price) },
         before: () => navigate("penawaran"),
         onError: (er) => {
           if (er.status === 409 && er.message.startsWith("Volume yang Anda tawarkan")) {
@@ -193,17 +165,6 @@ export function useRoleActions() {
         </div>
         <form key={"offer-" + s.id} onSubmit={submit}>
           <div className="form-grid">
-            <div className="field span-2">
-              <label>Permintaan kebutuhan (opsional)</label>
-              <select name="requestId" defaultValue={requests.some((r) => r.id === ui.requested) ? ui.requested : ""}>
-                <option value="">Buat permintaan baru otomatis</option>
-                {requests.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.id} • {number(r.volume)} kg {r.type} • {r.region}
-                  </option>
-                ))}
-              </select>
-            </div>
             <div className="field">
               <label>Volume ditawarkan (kg)</label>
               <input name="volume" type="number" step="1" min="1" max={availability(s)} required placeholder="Contoh: 2000" />
@@ -312,24 +273,6 @@ export function useRoleActions() {
     const o = (getDb() as RoleState).offers.find((x) => x.id === id && x.buyerId === me() && x.status === "Penawaran Balik");
     if (o && confirm("Setujui harga balik " + rupiah(o.counter) + "/kg?")) mutate(`/offers/${enc(id)}/accept-counter`);
   }
-  function markPaid(id: string) {
-    if (isFarmer) return;
-    const t = (getDb() as RoleState).transactions.find((x) => x.id === id && x.buyerId === me() && x.payment === "Belum Dibayar");
-    if (t && confirm("Anda sudah benar-benar melakukan transfer di luar aplikasi?")) mutate(`/transactions/${enc(id)}/mark-paid`);
-  }
-  function verifyPayment(id: string) {
-    if (!isFarmer) return;
-    const t = (getDb() as RoleState).transactions.find((x) => x.id === id && x.farmerId === me() && x.payment === "Menunggu Verifikasi");
-    if (t && confirm("Apakah dana benar-benar sudah masuk ke rekening Anda?")) mutate(`/transactions/${enc(id)}/verify`);
-  }
-  function searchRequest(id: string) {
-    if (isFarmer) return;
-    const r = (getDb() as RoleState).requests.find((x) => x.id === id && x.buyerId === me());
-    if (!r) return;
-    setUi({ requested: r.id, area: r.region, type: r.type, query: "", status: "Semua Status" });
-    navigate("stok");
-    toast("Menampilkan stok yang sesuai " + r.id);
-  }
   function resetDemo() {
     if (confirm("Kembalikan seluruh data simulasi seperti semula di server?")) mutate("/demo/reset", { success: "Data simulasi dikembalikan." });
   }
@@ -424,27 +367,10 @@ export function useRoleActions() {
     const t = (getDb() as RoleState).transactions.find((x) => x.id === id);
     if (!t || !S.myTransactions().includes(t)) return toast("Transaksi tidak ditemukan.");
     const s = S.stock(t.stockId), far = S.farmer(t.farmerId), buy = S.buyer(t.buyerId);
-    let actions = null;
-    if (isFarmer && t.payment === "Menunggu Verifikasi")
-      actions = (
-        <>
-          <div className="notice-positive">Pembeli menyatakan telah melakukan transfer. Pastikan dana benar-benar diterima sebelum mengonfirmasi.</div>
-          <div className="form-actions">
-            <Btn cl="primary" onClick={() => verifyPayment(t.id)}>Konfirmasi Dana Diterima</Btn>
-          </div>
-        </>
-      );
-    if (!isFarmer && t.payment === "Belum Dibayar")
-      actions = (
-        <>
-          <div className="notice-card">Setelah mengirim uang melalui metode yang disepakati di luar aplikasi, Anda dapat melaporkan bahwa transfer telah dilakukan.</div>
-          <div className="form-actions">
-            <Btn cl="primary" onClick={() => markPaid(t.id)}>Saya Sudah Transfer</Btn>
-          </div>
-        </>
-      );
+    const other = isFarmer ? buy?.label : far?.name;
+    const wa = t.contact ? "https://wa.me/62" + t.contact.replace(/^0/, "") : null;
     openModal(
-      "Detail Transaksi " + t.id,
+      "Detail Kesepakatan " + t.id,
       `${s?.type} • ${s?.region} • Kesepakatan harga`,
       <>
         <div className="metric-row">
@@ -457,12 +383,22 @@ export function useRoleActions() {
           <div className="modal-item"><label>Petani</label><strong>{far?.name}</strong></div>
           <div className="modal-item"><label>Pembeli</label><strong>{buy?.label}</strong></div>
           <div className="modal-item"><label>ID Penawaran</label><strong>{t.offerId}</strong></div>
-          <div className="modal-item"><label>Status Pembayaran</label><Badge s={t.payment} /></div>
+          <div className="modal-item"><label>Kontak {isFarmer ? "Pembeli" : "Petani"}</label><strong>{t.contact || "Tidak tersedia"}</strong></div>
           <div className="modal-item"><label>Tanggal Kesepakatan</label><strong>{prettyDate(t.date)}</strong></div>
           <div className="modal-item"><label>Lokasi</label><strong>{s?.region}</strong></div>
         </div>
         <div className="divider" />
-        {actions || <div className="notice-card">Tidak ada tindakan pembayaran yang diperlukan pada status ini.</div>}
+        <div className="notice-card">
+          Pembayaran dan serah terima gabah dilakukan langsung antara petani dan pembeli di luar Temu Tani. Hubungi {other || "lawan transaksi"} untuk
+          menyepakati cara bayar dan jadwal pengambilan.
+        </div>
+        {wa ? (
+          <div className="form-actions">
+            <a className="btn primary" href={wa} target="_blank" rel="noopener noreferrer">
+              <Icon name="phone" size={15} /> Hubungi via WhatsApp
+            </a>
+          </div>
+        ) : null}
       </>,
     );
   }
@@ -479,12 +415,12 @@ export function useRoleActions() {
         {isFarmer ? (
           <>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Menunggu Petani").length} penawaran menunggu keputusan Anda.</div>
-            <div className="notice-card">{S.myTransactions().filter((t) => t.payment === "Menunggu Verifikasi").length} pembayaran menunggu konfirmasi.</div>
+            <div className="notice-card">{S.myOffers().filter((o) => o.status === "Penawaran Balik").length} penawaran sedang dinegosiasikan.</div>
           </>
         ) : (
           <>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Penawaran Balik").length} harga balik petani menunggu respons.</div>
-            <div className="notice-card">{S.myTransactions().filter((t) => t.payment === "Belum Dibayar").length} transaksi belum ditandai transfer.</div>
+            <div className="notice-card">{S.myOffers().filter((o) => o.status === "Menunggu Petani").length} penawaran menunggu respons petani.</div>
           </>
         )}
         <button className="btn" type="button" onClick={resetDemo}>
@@ -494,5 +430,5 @@ export function useRoleActions() {
     );
   }
 
-  return { newStock, newRequest, newOffer, offerDetail, trxDetail, counterOffer, searchRequest, notifications, navigate, base };
+  return { newStock, updateStockTotal, newOffer, offerDetail, trxDetail, counterOffer, notifications, navigate, base };
 }

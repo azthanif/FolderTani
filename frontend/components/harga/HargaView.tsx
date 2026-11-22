@@ -46,7 +46,11 @@ export function HargaView({ role }: { role: Role }) {
   if (!d)
     return (
       <div className="page-harga">
-        <div className="empty-state">Data harga belum tersedia.</div>
+        <div className="empty-state">
+          {prices.lockedArea
+            ? `Prediksi harga untuk ${prices.lockedArea} belum tersedia. Saat ini model baru mencakup Garut dan Sukabumi.`
+            : "Data harga belum tersedia."}
+        </div>
       </div>
     );
 

@@ -37,7 +37,7 @@ export function useDetail() {
             ["NAMA PETANI", x.farmer],
             ["KABUPATEN", x.location],
             ["JENIS GABAH", x.type],
-            ["VOLUME", fmtNum(x.volume) + " ton"],
+            ["VOLUME", fmtNum(x.volume) + " kg"],
             ["WAKTU PANEN", x.harvest],
             ["STATUS", <Badge key="b" status={x.status} />],
             ["PENAWARAN MASUK", String(x.offers)],
@@ -54,9 +54,9 @@ export function useDetail() {
         <>
           <DetailsGrid
             pairs={[
-              ["PEMBELI", x.buyer + " (guest)"],
+              ["PEMBELI", x.buyer],
               ["PETANI", x.farmer],
-              ["STOK / VOLUME", x.stock + " · " + fmtNum(x.volume) + " ton"],
+              ["STOK / VOLUME", x.stock + " · " + fmtNum(x.volume) + " kg"],
               ["KABUPATEN", x.location],
               ["HARGA PENAWARAN", formatRupiah(x.price) + "/kg"],
               ["HARGA REFERENSI AI", formatRupiah(x.ai) + "/kg"],
@@ -90,9 +90,9 @@ export function useDetail() {
             ["PETANI", x.farmer],
             ["PEMBELI", x.buyer],
             ["KABUPATEN", x.location],
-            ["VOLUME", fmtNum(x.volume) + " ton"],
+            ["VOLUME", fmtNum(x.volume) + " kg"],
             ["HARGA AKHIR", formatRupiah(x.price) + "/kg"],
-            ["TOTAL NILAI", formatRupiah(x.price * x.volume * 1000)],
+            ["TOTAL NILAI", formatRupiah(x.price * x.volume)],
             ["TANGGAL", x.date],
             ["STATUS", <Badge key="b" status={x.status} />],
           ]}

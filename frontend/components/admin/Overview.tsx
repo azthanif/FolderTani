@@ -52,7 +52,7 @@ export function AdminOverview() {
           title="Stok Gabah Tersedia"
           value={
             <>
-              {fmtNum(countStocks(stocks, area))} <span className="kpi-unit">ton</span>
+              {fmtNum(countStocks(stocks, area))} <span className="kpi-unit">kg</span>
             </>
           }
           foot="Volume stok saat ini"
@@ -77,7 +77,7 @@ export function AdminOverview() {
               <div className="region-item" key={loc}>
                 <div className="region-line">
                   <span>{loc}</span>
-                  <span>{fmtNum(n)} ton</span>
+                  <span>{fmtNum(n)} kg</span>
                 </div>
                 <div className="progress">
                   <div className={`progress-bar${i ? " alt" : ""}`} style={{ width: `${Math.round((n / total) * 100)}%` }} />
@@ -88,7 +88,7 @@ export function AdminOverview() {
           <div className="divider" />
           <div className="tiny-stats">
             <div>
-              <strong>{fmtNum(total)} ton</strong>
+              <strong>{fmtNum(total)} kg</strong>
               <small>Stok gabah tersedia</small>
             </div>
           </div>

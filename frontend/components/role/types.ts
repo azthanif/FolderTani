@@ -7,17 +7,20 @@ export interface Stock {
   id: string; farmerId: string; region: string; type: string; volume: number; harvest: string;
   status: string; moisture?: number | null; available?: number;
 }
-export interface BuyRequest { id: string; buyerId: string; region: string; type: string; volume: number; needed: string; created?: string }
 export interface OfferHistory { at: string; actor: string; label: string; price?: number | null }
 export interface Offer {
-  id: string; requestId?: string | null; buyerId: string; farmerId: string; stockId: string; volume: number;
+  id: string; buyerId: string; farmerId: string; stockId: string; volume: number;
   initialBid: number; currentBid: number; counter?: number | null; aiRef?: number; status: string;
   created?: string; agreedPrice?: number; history: OfferHistory[];
 }
 export interface Transaction {
   id: string; offerId: string; buyerId: string; farmerId: string; stockId: string; volume: number;
-  price: number; date: string; payment: string; paidAt?: string;
+  price: number; date: string;
+  /** Nomor HP lawan transaksi (bila terdaftar). Pembayaran dilakukan langsung di luar sistem. */
+  contact?: string | null;
 }
+/** Riwayat perubahan total stok fisik petani (terbaru dulu). */
+export interface StockLog { id: string; farmerId: string; at: string; activity: string; delta: number; total: number }
 export interface Activity { id: string; at: string; title: string; note: string }
 
 export interface RoleState {
@@ -27,7 +30,7 @@ export interface RoleState {
   buyers: Buyer[];
   activities: Activity[];
   stocks: Stock[];
-  requests: BuyRequest[];
+  stockLog?: StockLog[];
   offers: Offer[];
   transactions: Transaction[];
   aiReference?: Record<string, number>;

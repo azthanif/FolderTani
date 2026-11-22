@@ -1048,7 +1048,7 @@
 .dash .toast {
     position: fixed;
     right: 24px;
-    bottom: 25px;
+    bottom: 100px; /* di atas tombol WhatsApp melayang */
     background: #183e2c;
     color: white;
     border-radius: 12px;
@@ -1393,3 +1393,36 @@
 
 /* Next.js: menu sidebar kini <a> (Link), bukan <button> */
 .dash a.nav-link { text-decoration: none; }
+
+/* ---------- Stok Gabah Saya (petani): ringkasan + riwayat ---------- */
+.dash .stock-head-icon { display: inline-grid; place-items: center; width: 52px; height: 52px; border-radius: 14px; background: var(--mint); color: var(--green); }
+.dash .stock-panel { padding: 24px; }
+.dash .stock-panel > .section-title { margin: 0 0 14px; }
+.dash .stock-total { padding: 20px 22px; border-radius: 16px; background: linear-gradient(135deg, #f1f8ec, #e7f3eb); border: 1px solid #dcebdd; }
+.dash .stock-total-top { display: flex; justify-content: space-between; align-items: center; color: var(--text); font-size: 14px; }
+.dash .stock-total-top svg { color: var(--green); }
+.dash .stock-total strong { display: block; margin: 12px 0 6px; font-family: var(--font-jakarta), sans-serif; font-size: 30px; letter-spacing: -0.8px; color: var(--ink); }
+.dash .stock-total p { margin: 0; color: var(--text); font-size: 13px; }
+.dash .stock-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.dash .stock-sub { padding: 16px 18px; border-radius: 14px; border: 1px solid var(--line); background: #fff; }
+.dash .stock-sub > span { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
+.dash .stock-sub strong { display: block; margin-top: 10px; font-family: var(--font-jakarta), sans-serif; font-size: 22px; color: var(--ink); }
+.dash .stock-sub.good { background: #f6fbf3; }
+.dash .stock-sub.good strong { color: var(--green); }
+.dash .stock-info { display: inline-flex; color: var(--muted); cursor: help; }
+.dash .stock-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+.dash .stock-actions .btn { justify-content: center; min-height: 44px; border-radius: 999px; font-size: 14px; }
+.dash .stock-panel .divider { margin: 22px 0 16px; }
+.dash .stock-panel .section-header { margin-bottom: 8px; }
+.dash .stock-panel .section-header svg { color: var(--text); }
+.dash .stock-log { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dash .stock-log th { text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); padding: 10px 8px; border-bottom: 1px solid var(--line); }
+.dash .stock-log td { padding: 11px 8px; border-bottom: 1px solid var(--line); color: var(--ink); }
+.dash .stock-log .delta-up { color: var(--green); font-weight: 700; }
+.dash .stock-log .delta-down { color: var(--red); font-weight: 700; }
+.dash .stock-log-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+@media (max-width: 640px) {
+  .dash .stock-split, .dash .stock-actions { grid-template-columns: 1fr; }
+  .dash .stock-total strong { font-size: 26px; }
+}
+.dash a.btn { text-decoration: none; }

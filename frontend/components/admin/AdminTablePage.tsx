@@ -38,7 +38,6 @@ export function AdminTablePage({ kind }: { kind: TableKind }) {
   const detail = useDetail();
   const [area, setArea] = useState(ALL_AREAS);
   const [status, setStatus] = useState("Semua Status");
-  const [type, setType] = useState("Semua Jenis");
 
   const source: Row[] = kind === "stok" ? stocks : kind === "penawaran" ? offers : kind === "transaksi" ? transactions : events;
 
@@ -47,9 +46,8 @@ export function AdminTablePage({ kind }: { kind: TableKind }) {
       const r = x as unknown as Record<string, unknown>;
       const matchArea = area === ALL_AREAS || r.location === area;
       const matchStatus = status === "Semua Status" || r.status === status;
-      const matchType = type === "Semua Jenis" || r.type === type;
       const matchQuery = Object.values(r).join(" ").toLowerCase().includes(query.toLowerCase().trim());
-      return matchArea && matchStatus && matchType && matchQuery;
+      return matchArea && matchStatus && matchQuery;
     });
   }
   const rows = rowFilter(source);
@@ -74,7 +72,7 @@ export function AdminTablePage({ kind }: { kind: TableKind }) {
   }
 
   const conf: Record<TableKind, [string, string, string, string, string]> = {
-    stok: ["Stok Gabah", "Pantau ketersediaan dan distribusi stok gabah petani.", "STOK TERSEDIA", `${fmtNum(countStocks(stocks, area))} ton`, "Total stok belum terjual"],
+    stok: ["Stok Gabah", "Pantau ketersediaan dan distribusi stok gabah petani.", "STOK TERSEDIA", `${fmtNum(countStocks(stocks, area))} kg`, "Total stok belum terjual"],
     penawaran: [
       "Penawaran & Negosiasi",
       "Pantau penawaran pembeli dan proses negosiasi dengan petani.",
@@ -83,10 +81,10 @@ export function AdminTablePage({ kind }: { kind: TableKind }) {
       "Menunggu atau masih dinegosiasikan",
     ],
     transaksi: [
-      "Transaksi Disepakati",
+      "Riwayat Kesepakatan",
       "Pantau riwayat kesepakatan dan status transaksi.",
       "TOTAL NILAI KESEPAKATAN",
-      formatRupiah(transactions.filter((x) => area === ALL_AREAS || x.location === area).reduce((a, t) => a + t.volume * 1000 * t.price, 0)),
+      formatRupiah(transactions.filter((x) => area === ALL_AREAS || x.location === area).reduce((a, t) => a + t.volume * t.price, 0)),
       "Bukan nilai pembayaran terkonfirmasi",
     ],
     aktivitas: ["Aktivitas Chatbot", "Pantau interaksi dan aktivitas chatbot WhatsApp.", "INTERAKSI TERCATAT", `${events.length}`, "Sebagian contoh aktivitas WhatsApp"],
@@ -114,11 +112,6 @@ export function AdminTablePage({ kind }: { kind: TableKind }) {
         <select className="select" aria-label="Filter status" value={status} onChange={(e) => setStatus(e.target.value)}>
           <Options values={STATUSES[kind]} />
         </select>
-        {kind === "stok" ? (
-          <select className="select" aria-label="Jenis gabah" value={type} onChange={(e) => setType(e.target.value)}>
-            <Options values={["Semua Jenis", "GKP", "GKG"]} />
-          </select>
-        ) : null}
         <button type="button" className="btn" onClick={exportCSV}>
           <Icon name="download" size={15} /> Ekspor CSV
         </button>
@@ -176,7 +169,7 @@ function TableRow({ kind, row, onDetail }: { kind: TableKind; row: Row; onDetail
         <td>{s.location}</td>
         <td>{s.type}</td>
         <td>
-          <strong>{fmtNum(s.volume)} ton</strong>
+          <strong>{fmtNum(s.volume)} kg</strong>
         </td>
         <td>{s.harvest}</td>
         <td>
@@ -230,10 +223,10 @@ function TableRow({ kind, row, onDetail }: { kind: TableKind; row: Row; onDetail
         <td>{t.farmer}</td>
         <td>{t.buyer}</td>
         <td>{t.location}</td>
-        <td>{fmtNum(t.volume)} ton</td>
+        <td>{fmtNum(t.volume)} kg</td>
         <td>{formatRupiah(t.price)}/kg</td>
         <td>
-          <strong>{formatRupiah(t.volume * 1000 * t.price)}</strong>
+          <strong>{formatRupiah(t.volume * t.price)}</strong>
         </td>
         <td>
           <Badge status={t.status} />

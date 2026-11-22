@@ -1,10 +1,11 @@
 "use client";
 /* Halaman dashboard petani/tengkulak: overview, stok, penawaran, transaksi (port app.js bagian 5). */
+import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useRoleActions } from "./actions";
 import { useRole } from "./RoleDataProvider";
 import {
-  ActivityCard, availability, Badge, Btn, DataTable, Kpi, number, PageHeader, Person, prettyDate, rupiah, selectors, totalPrice,
+  ActivityCard, availability, Badge, Btn, DataTable, kg, Kpi, number, PageHeader, Person, prettyDate, rupiah, selectors, totalPrice,
   type Selectors,
 } from "./common";
 import type { Offer, RoleState } from "./types";
@@ -20,7 +21,7 @@ function Filters({ page }: { page: "stok" | "penawaran" | "transaksi" }) {
   const { isFarmer, ui, setUi, db } = useRole();
   const showRegion = !isFarmer && page === "stok";
   const regionOptions = db ? selectors(db, isFarmer).regions() : [];
-  const statuses = page === "penawaran" ? ["Menunggu Petani", "Penawaran Balik", "Disepakati", "Ditolak"] : ["Belum Dibayar", "Menunggu Verifikasi", "Sudah Dibayar"];
+  const statuses = ["Menunggu Petani", "Penawaran Balik", "Disepakati", "Ditolak"];
   return (
     <div className="toolbar">
       <label className="search-box">
@@ -35,7 +36,7 @@ function Filters({ page }: { page: "stok" | "penawaran" | "transaksi" }) {
           ))}
         </select>
       ) : null}
-      {page === "penawaran" || page === "transaksi" ? (
+      {page === "penawaran" ? (
         <select className="select" aria-label="Filter status" value={ui.status} onChange={(e) => setUi({ status: e.target.value })}>
           {["Semua Status", ...statuses].map((x) => (
             <option key={x}>{x}</option>
@@ -48,10 +49,10 @@ function Filters({ page }: { page: "stok" | "penawaran" | "transaksi" }) {
 
 function useFiltered() {
   const { ui } = useRole();
-  return function filtered<T extends { status?: string; payment?: string }>(arr: T[], cb: (x: T) => string) {
+  return function filtered<T extends object>(arr: T[], cb: (x: T) => string) {
     return arr
       .filter((x) => !ui.query || cb(x).toLowerCase().includes(ui.query.toLowerCase()))
-      .filter((x) => ui.status === "Semua Status" || x.status === ui.status || x.payment === ui.status);
+      .filter((x) => ui.status === "Semua Status" || ("status" in x && x.status === ui.status));
   };
 }
 
@@ -115,13 +116,13 @@ export function OverviewPage() {
       <>
         <PageHeader isFarmer title={`Selamat datang, ${me?.name || "Petani"}`} desc={`Ringkasan stok dan penawaran Anda di ${me?.region || "wilayah Anda"}.`} />
         <div className="demo-strip">
-          <Icon name="info" size={17} /> Stok, penawaran, dan transaksi yang tampil hanya milik akun Anda. Harga AI di sini untuk referensi keputusan petani.
+          <Icon name="info" size={17} /> Stok, penawaran, dan kesepakatan yang tampil hanya milik akun Anda. Harga AI di sini untuk referensi keputusan petani.
         </div>
         <div className="kpi-grid">
           <Kpi icon="wheat" title="Stok Siap Dijual" val={<>{number(total)} <span className="kpi-unit">kg</span></>} foot={stocks.length + " listing gabah milik Anda"} />
           <Kpi icon="handshake" title="Penawaran Masuk" val={waiting.length} foot="Menunggu keputusan Anda" theme="gold" />
           <Kpi icon="activity" title="Sedang Dinegosiasikan" val={o.filter((a) => a.status === "Penawaran Balik").length} foot="Harga balik yang diajukan" theme="blue" />
-          <Kpi icon="wallet" title="Belum Dibayar" val={t.filter((a) => a.payment !== "Sudah Dibayar").length} foot="Kesepakatan perlu ditindaklanjuti" theme="lime" />
+          <Kpi icon="check" title="Kesepakatan" val={t.length} foot="Pembayaran langsung dengan pembeli" theme="lime" />
         </div>
         <div className="page-banner card">
           <div>
@@ -150,7 +151,7 @@ export function OverviewPage() {
                 <div className="stock-row" key={a.id}>
                   <div>
                     <strong>{a.id} • {number(a.volume)} kg {S.stock(a.stockId)?.type}</strong>
-                    <p>{S.buyer(a.buyerId)?.label || "Pembeli WhatsApp"} • Harga {rupiah(a.currentBid)}/kg</p>
+                    <p>{S.buyer(a.buyerId)?.label || "Pembeli"} • Harga {rupiah(a.currentBid)}/kg</p>
                   </div>
                   <Btn cl="primary" onClick={() => A.offerDetail(a.id)}>Tanggapi</Btn>
                 </div>
@@ -181,16 +182,21 @@ export function OverviewPage() {
             ))}
           </section>
           <section className="card section-card">
-            <h3 className="section-title">Status Pembayaran</h3>
-            <div className="section-subtitle">Kesepakatan milik Anda</div>
+            <div className="section-header">
+              <div>
+                <h3 className="section-title">Kesepakatan Terbaru</h3>
+                <div className="section-subtitle">Pembayaran dilakukan langsung dengan pembeli</div>
+              </div>
+              <Btn onClick={() => A.navigate("transaksi")}>Lihat Semua</Btn>
+            </div>
             {t.length ? (
-              t.slice().reverse().map((x) => (
+              t.slice().reverse().slice(0, 4).map((x) => (
                 <div className="stock-row" key={x.id}>
                   <div>
-                    <strong>{x.id}</strong>
-                    <p>{totalPrice(x.volume, x.price)} · {number(x.volume)} kg</p>
+                    <strong>{x.id} • {S.buyer(x.buyerId)?.label}</strong>
+                    <p>{number(x.volume)} kg × {rupiah(x.price)}/kg = {totalPrice(x.volume, x.price)}</p>
                   </div>
-                  <Badge s={x.payment} />
+                  <span className="stock-meta">{prettyDate(x.date)}</span>
                 </div>
               ))
             ) : (
@@ -203,29 +209,29 @@ export function OverviewPage() {
   }
 
   const bOffers = S.myOffers(), t = S.myTransactions();
-  const req = db.requests.filter((r) => r.buyerId === S.me);
   const all = db.stocks.filter((s) => s.status === "Tersedia").reduce((n, s) => n + availability(s), 0);
-  const active = bOffers.filter((o) => ["Menunggu Petani", "Penawaran Balik"].includes(o.status)).length;
+  const active = bOffers.filter((o) => ["Menunggu Petani", "Penawaran Balik"].includes(o.status));
+  const recent = bOffers.slice().reverse().slice(0, 5);
   return (
     <>
       <PageHeader isFarmer={false} title={`Selamat datang, ${S.myBuyer()?.label || "Pembeli"}`} desc="Cari gabah di berbagai wilayah dan kelola penawaran Anda." />
       <div className="demo-strip">
-        <Icon name="info" size={17} /> Hanya permintaan, penawaran, dan transaksi milik akun Anda yang ditampilkan.
+        <Icon name="info" size={17} /> Hanya penawaran dan kesepakatan milik akun Anda yang ditampilkan.
       </div>
       <div className="kpi-grid">
-        <Kpi icon="document" title="Permintaan Saya" val={req.length} foot="Permintaan kebutuhan gabah" />
+        <Kpi icon="handshake" title="Penawaran Saya" val={bOffers.length} foot="Seluruh penawaran yang Anda ajukan" />
         <Kpi icon="package" title="Stok Lintas Wilayah" val={<>{number(all)} <span className="kpi-unit">kg</span></>} foot="Gabah tersedia di semua kota/kabupaten" theme="lime" />
-        <Kpi icon="handshake" title="Penawaran Aktif" val={active} foot="Menunggu petani / harga balik" theme="gold" />
-        <Kpi icon="check" title="Kesepakatan" val={t.length} foot="Transaksi milik Anda" theme="blue" />
+        <Kpi icon="clock" title="Penawaran Aktif" val={active.length} foot="Menunggu petani / harga balik" theme="gold" />
+        <Kpi icon="check" title="Kesepakatan" val={t.length} foot="Harga yang sudah disepakati" theme="blue" />
       </div>
       <div className="page-banner card">
         <div>
           <strong>Butuh gabah untuk usaha Anda?</strong>
-          <p>Sampaikan kebutuhan volume (kg) dan kota/kabupaten. Bandingkan stok petani lalu ajukan penawaran harga pertama.</p>
+          <p>Bandingkan stok petani di berbagai kota/kabupaten, lalu ajukan harga pertama langsung dari menu Stok Gabah.</p>
         </div>
         <div className="banner-right">
-          <Btn cl="secondary" onClick={A.newRequest}>
-            <Icon name="plus" size={15} /> Buat Permintaan
+          <Btn cl="secondary" onClick={() => A.navigate("stok")}>
+            <Icon name="search" size={15} /> Cari Stok Gabah
           </Btn>
         </div>
       </div>
@@ -233,31 +239,33 @@ export function OverviewPage() {
         <section className="card section-card">
           <div className="section-header">
             <div>
-              <h3 className="section-title">Permintaan Gabah Saya</h3>
-              <div className="section-subtitle">Pilih permintaan untuk mencari stok yang sesuai</div>
+              <h3 className="section-title">Penawaran Saya</h3>
+              <div className="section-subtitle">Perkembangan pengajuan harga kepada petani</div>
             </div>
+            <Btn onClick={() => A.navigate("penawaran")}>Lihat Semua</Btn>
           </div>
-          {req.slice().reverse().map((r) => (
-            <div className="stock-row" key={r.id}>
-              <div>
-                <strong>{r.id} • {number(r.volume)} kg {r.type}</strong>
-                <p>{r.region} · Dibutuhkan {prettyDate(r.needed)}</p>
-              </div>
-              <Btn cl="secondary" onClick={() => A.searchRequest(r.id)}>Cari Stok</Btn>
-            </div>
-          ))}
+          {recent.length ? (
+            recent.map((o) => {
+              const st = S.stock(o.stockId);
+              const price = o.status === "Disepakati" ? o.agreedPrice ?? o.currentBid : o.status === "Penawaran Balik" ? o.counter ?? o.currentBid : o.currentBid;
+              return (
+                <div className="stock-row" key={o.id}>
+                  <div>
+                    <strong>{S.farmer(o.farmerId)?.name} • {number(o.volume)} kg {st?.type || "GKP"}</strong>
+                    <p>{o.id} · {st?.region} · {rupiah(price)}/kg</p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Badge s={o.status} />
+                    <Btn onClick={() => A.offerDetail(o.id)}>Detail</Btn>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="empty-state">Belum ada penawaran. Buka menu Stok Gabah untuk mengajukan harga.</div>
+          )}
         </section>
         <ActivityCard db={db} />
-      </div>
-      <div className="card table-card">
-        <div className="section-header">
-          <div>
-            <h3 className="section-title">Penawaran Saya</h3>
-            <div className="section-subtitle">Perkembangan pengajuan harga kepada petani</div>
-          </div>
-          <Btn onClick={() => A.navigate("penawaran")}>Lihat Semua</Btn>
-        </div>
-        <OfferTable rows={bOffers.slice().reverse().slice(0, 4)} S={S} isFarmer={false} onDetail={A.offerDetail} />
       </div>
     </>
   );
@@ -265,28 +273,127 @@ export function OverviewPage() {
 
 /* ---------- Stok ---------- */
 export function StocksPage() {
-  const { db, S, A, isFarmer, ui } = useData();
-  const my = isFarmer;
+  const { isFarmer } = useData();
+  return isFarmer ? <FarmerStockPage /> : <BuyerStockPage />;
+}
+
+/** Petani: ringkasan total stok fisik + riwayat perubahan (bukan daftar listing per panen). */
+function FarmerStockPage() {
+  const { db, S, A } = useData();
+  const [showAll, setShowAll] = useState(false);
+  const own = S.ownStock();
+  const total = own.reduce((n, x) => n + x.volume, 0);
+  const available = own.filter((x) => x.status === "Tersedia").reduce((n, x) => n + availability(x), 0);
+  const allocated = own.reduce((n, x) => n + (x.volume - availability(x)), 0);
+  const log = db.stockLog || [];
+  const rows = showAll ? log : log.slice(0, 8);
+  const shortDate = (iso: string) => new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
+  const allocInfo = "Volume yang sudah disepakati dengan pembeli melalui Temu Tani. Bagian ini tidak bisa ditawarkan lagi.";
+  return (
+    <>
+      <PageHeader
+        isFarmer
+        title="Stok Gabah Saya"
+        desc={`Pantau dan perbarui stok gabah Anda di ${S.myFarmer()?.region || "wilayah Anda"}.`}
+        action={
+          <span className="stock-head-icon" aria-hidden="true">
+            <Icon name="wheat" size={24} />
+          </span>
+        }
+      />
+      <section className="card stock-panel">
+        <h3 className="section-title">Ringkasan Stok Gabah</h3>
+        <div className="stock-total">
+          <div className="stock-total-top">
+            <span>Total stok fisik saat ini</span>
+            <Icon name="package" size={17} />
+          </div>
+          <strong>{kg(total)}</strong>
+          <p>Jumlah gabah yang saat ini Anda miliki.</p>
+        </div>
+        <div className="stock-split">
+          <div className="stock-sub">
+            <span>
+              Dialokasikan via Temu Tani{" "}
+              <span className="stock-info" title={allocInfo} aria-label={allocInfo} role="img">
+                <Icon name="info" size={14} />
+              </span>
+            </span>
+            <strong>{kg(allocated)}</strong>
+          </div>
+          <div className="stock-sub good">
+            <span>Tersedia untuk Ditawarkan</span>
+            <strong>{kg(available)}</strong>
+          </div>
+        </div>
+        <div className="stock-actions">
+          <button type="button" className="btn primary" onClick={A.updateStockTotal}>
+            <Icon name="refresh" size={16} /> Perbarui Stok
+          </button>
+          <button type="button" className="btn" onClick={() => A.newStock()}>
+            <Icon name="plus" size={16} /> Tambah Stok
+          </button>
+        </div>
+        <div className="divider" />
+        <div className="section-header">
+          <h3 className="section-title">Riwayat Perubahan Stok</h3>
+          <Icon name="history" size={18} />
+        </div>
+        {log.length ? (
+          <div className="table-wrap">
+            <table className="stock-log">
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Aktivitas</th>
+                  <th>Perubahan</th>
+                  <th>Total Akhir</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((x) => (
+                  <tr key={x.id}>
+                    <td>{shortDate(x.at)}</td>
+                    <td>{x.activity}</td>
+                    <td className={x.delta >= 0 ? "delta-up" : "delta-down"}>
+                      {x.delta >= 0 ? "+" : "−"}
+                      {kg(Math.abs(x.delta))}
+                    </td>
+                    <td>{kg(x.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">Belum ada riwayat. Tambahkan stok pertama Anda.</div>
+        )}
+        <div className="stock-log-foot">
+          <span>Riwayat ditampilkan dari yang terbaru.</span>
+          {log.length > 8 ? (
+            <button type="button" className="btn tiny" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? "Tampilkan lebih sedikit" : `Tampilkan semua (${log.length})`}
+            </button>
+          ) : null}
+        </div>
+      </section>
+    </>
+  );
+}
+
+/** Tengkulak: daftar stok lintas wilayah untuk diajukan harga. */
+function BuyerStockPage() {
+  const { db, S, A, ui } = useData();
+  const my = false;
   const a = my ? S.ownStock() : db.stocks.filter((s) => s.status === "Tersedia" && availability(s) > 0);
   const b = a.filter((s) => my || ui.area === "Semua Wilayah" || s.region === ui.area);
   const list = b.filter((s) => !ui.query || [s.id, s.type, s.region, S.farmer(s.farmerId)?.name].join(" ").toLowerCase().includes(ui.query.toLowerCase()));
   return (
     <>
       <PageHeader
-        isFarmer={isFarmer}
+        isFarmer={false}
         title={my ? "Stok Gabah Saya" : "Stok Gabah"}
         desc={my ? `Kelola gabah milik Anda di ${S.myFarmer()?.region || "wilayah Anda"}.` : "Jelajahi stok gabah lintas wilayah. Harga awal ditentukan oleh pembeli saat mengajukan penawaran."}
-        action={
-          my ? (
-            <Btn cl="primary" onClick={() => A.newStock()}>
-              <Icon name="plus" size={16} /> Tambah Stok
-            </Btn>
-          ) : (
-            <Btn cl="primary" onClick={A.newRequest}>
-              <Icon name="plus" size={16} /> Buat Permintaan
-            </Btn>
-          )
-        }
       />
       <div className="info-strip">
         <Icon name="info" size={18} />{" "}
@@ -363,56 +470,53 @@ export function OffersPage() {
           </div>
         </div>
         <OfferTable rows={a} S={S} isFarmer={isFarmer} onDetail={A.offerDetail} />
-        <div className="table-foot-note">Satu permintaan pembeli dapat menghasilkan beberapa penawaran ke petani berbeda. Semua nominal harga dalam Rp/kg.</div>
+        <div className="table-foot-note">Setiap penawaran ditujukan ke satu stok petani. Semua nominal harga dalam Rp/kg.</div>
       </div>
     </>
   );
 }
 
-/* ---------- Transaksi ---------- */
+/* ---------- Kesepakatan (pembayaran di luar sistem) ---------- */
 export function TransactionsPage() {
   const { S, A, isFarmer } = useData();
   const filtered = useFiltered();
   const tx = S.myTransactions();
-  const list = filtered(tx, (t) => [t.id, t.payment, S.buyer(t.buyerId)?.label, S.farmer(t.farmerId)?.name, S.stock(t.stockId)?.type].join(" "));
+  const list = filtered(tx, (t) => [t.id, S.buyer(t.buyerId)?.label, S.farmer(t.farmerId)?.name, S.stock(t.stockId)?.region].join(" "));
+  const volume = tx.reduce((n, t) => n + t.volume, 0);
+  const value = tx.reduce((n, t) => n + t.volume * t.price, 0);
   return (
     <>
       <PageHeader
         isFarmer={isFarmer}
-        title="Transaksi Disepakati"
-        desc={isFarmer ? "Pantau transaksi dari gabah Anda, termasuk pembayaran yang sudah diterima atau masih tertunda." : "Lihat semua kesepakatan Anda dan perbarui konfirmasi pengiriman pembayaran."}
+        title="Riwayat Kesepakatan"
+        desc={isFarmer ? "Catatan harga dan volume gabah yang sudah Anda sepakati dengan pembeli." : "Catatan harga dan volume gabah yang sudah Anda sepakati dengan petani."}
       />
       <div className="kpi-grid">
-        <Kpi icon="check" title="Total Kesepakatan" val={tx.length} foot="Transaksi milik Anda" />
-        <Kpi icon="wallet" title="Sudah Dibayar" val={tx.filter((t) => t.payment === "Sudah Dibayar").length} foot="Dikonfirmasi petani" theme="lime" />
-        <Kpi icon="clock" title="Belum Dibayar" val={tx.filter((t) => t.payment === "Belum Dibayar").length} foot="Menunggu pembayaran" theme="gold" />
-        <Kpi icon="activity" title="Menunggu Verifikasi" val={tx.filter((t) => t.payment === "Menunggu Verifikasi").length} foot="Pembeli mengaku sudah membayar" theme="blue" />
+        <Kpi icon="check" title="Total Kesepakatan" val={tx.length} foot="Kesepakatan milik Anda" />
+        <Kpi icon="package" title="Total Volume" val={<>{number(volume)} <span className="kpi-unit">kg</span></>} foot="Gabah yang disepakati" theme="lime" />
+        <Kpi icon="wallet" title="Nilai Kesepakatan" val={rupiah(value)} foot="Estimasi, dibayar di luar Temu Tani" theme="gold" />
+        <Kpi icon="chart" title="Rata-rata Harga" val={volume ? rupiah(Math.round(value / volume)) : "–"} foot="Rp/kg tertimbang volume" theme="blue" />
       </div>
       <div className="info-strip">
-        <Icon name="info" size={17} />{" "}
-        {isFarmer
-          ? "Konfirmasi pembayaran diterima hanya ketika dana benar-benar masuk ke rekening Anda."
-          : "Tombol “Saya Sudah Transfer” tidak memindahkan dana. Petani harus mengonfirmasi pembayaran setelah dana diterima."}
+        <Icon name="info" size={17} /> Pembayaran dan serah terima gabah dilakukan langsung antara petani dan pembeli di luar Temu Tani. Buka detail untuk
+        melihat kontak {isFarmer ? "pembeli" : "petani"}.
       </div>
       <Filters page="transaksi" />
       <DataTable
-        columns={["ID Transaksi", isFarmer ? "Pembeli" : "Petani", "Gabah", "Volume", "Harga Sepakat", "Total Nilai", "Pembayaran", "Aksi"]}
+        columns={["ID Kesepakatan", isFarmer ? "Pembeli" : "Petani", "Lokasi", "Volume", "Harga Sepakat", "Nilai Kesepakatan", "Tanggal", "Aksi"]}
         rows={list.map((t) => (
           <tr key={t.id}>
-            <td>
-              <strong>{t.id}</strong>
-              <small style={{ display: "block", color: "#9ba89f" }}>{prettyDate(t.date)}</small>
-            </td>
+            <td><strong>{t.id}</strong></td>
             <td>{isFarmer ? S.buyer(t.buyerId)?.label : S.farmer(t.farmerId)?.name}</td>
-            <td>{S.stock(t.stockId)?.type}</td>
+            <td>{S.stock(t.stockId)?.region}</td>
             <td>{number(t.volume)} kg</td>
             <td>{rupiah(t.price)}/kg</td>
             <td><strong>{totalPrice(t.volume, t.price)}</strong></td>
-            <td><Badge s={t.payment} /></td>
+            <td>{prettyDate(t.date)}</td>
             <td><Btn onClick={() => A.trxDetail(t.id)}>Lihat Detail</Btn></td>
           </tr>
         ))}
-        footer="Status pembayaran merupakan pencatatan simulasi, bukan verifikasi bank atau bukti pembayaran otomatis."
+        footer="Temu Tani mencatat kesepakatan harga, bukan memproses pembayaran."
       />
     </>
   );

@@ -66,8 +66,10 @@
 .auth-role:has(input:focus-visible) { outline: 2px solid #2b805b55; outline-offset: 2px; }
 
 .auth-pass { position: relative; }
-.auth-pass input { padding-right: 104px !important; }
-.auth-pass-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: #eef5e8; color: var(--forest); font: inherit; font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.auth-pass input { padding-right: 48px !important; }
+.auth-pass-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 36px; height: 36px; border: 0; background: transparent; color: var(--muted); border-radius: 10px; cursor: pointer; }
+.auth-pass-toggle:hover, .auth-pass-toggle[aria-pressed="true"] { color: var(--forest); background: #eef5e8; }
+.auth-pass-toggle:focus-visible { outline: 2px solid #2b805b55; }
 
 .auth-error { padding: 11px 13px; border-radius: 12px; background: #fdecec; color: #9b2c2c; font-size: 13px; line-height: 1.5; }
 .auth-submit { margin-top: 4px; border: 0; border-radius: 999px; padding: 14px 20px; background: var(--forest); color: #fff; font: inherit; font-weight: 800; font-size: 14px; cursor: pointer; transition: background 0.2s; }

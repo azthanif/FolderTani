@@ -25,7 +25,6 @@ interface Props {
   brandSmall: string;
   nav: NavItem[];
   user: ShellUser;
-  chatbotFrom: "admin" | "petani" | "tengkulak";
   switchLink?: { href: string; label: string };
   /** Bila diisi, kartu pengguna di sidebar menjadi tombol "Keluar" (hapus sesi). */
   onLogout?: () => void;
@@ -61,7 +60,7 @@ export function DashboardShell(props: Props) {
   return <ShellInner {...props} />;
 }
 
-function ShellInner({ variant, brandSmall, nav, user, chatbotFrom, switchLink, onLogout, topExtra, onNotif, children }: Props) {
+function ShellInner({ variant, brandSmall, nav, user, switchLink, onLogout, topExtra, onNotif, children }: Props) {
   const pathname = usePathname();
   const ui = useUI();
   const [open, setOpen] = useState(false);
@@ -105,17 +104,6 @@ function ShellInner({ variant, brandSmall, nav, user, chatbotFrom, switchLink, o
         </nav>
 
         <div className="side-bottom">
-          <Link className="side-panel" href={`/chatbot?from=${chatbotFrom}`} title="Simulasi chatbot WhatsApp">
-            <div className="panel-icon">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/assets/logo-wa.jpg" alt="WhatsApp" />
-            </div>
-            <div>
-              <h4>Alur WhatsApp</h4>
-              <p>Simulasi chatbot Temu Tani</p>
-            </div>
-          </Link>
-
           {onLogout ? (
             <button
               type="button"
