@@ -1,0 +1,4 @@
+/* Gaya global minimal. Gaya tiap area di-scope: .landing, .dash, .chatbot-page (lihat styles/). */
+html, body { margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+* { box-sizing: border-box; }
