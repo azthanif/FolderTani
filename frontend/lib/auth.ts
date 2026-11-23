@@ -1,15 +1,21 @@
 /* Sesi login disimpan di localStorage (token HMAC dari backend /api/auth/*). */
 import { api } from "./api";
 
-export type AccountRole = "petani" | "tengkulak";
+export type AccountRole = "petani" | "tengkulak" | "admin";
+export type SignupRole = "petani" | "tengkulak";
+
+/** Wilayah layanan Temu Tani (sesuai database). */
+export const REGIONS = ["Garut", "Cianjur"] as const;
 
 export interface SessionUser {
   id: string;
   role: AccountRole;
   phone: string;
   name: string;
-  region?: string; // kota/kabupaten (petani)
+  region?: string; // kabupaten (petani)
   district?: string; // kecamatan (petani)
+  /** Petani mengizinkan nomor HP dibagikan ke pembeli setelah sepakat. */
+  shareContact?: boolean;
 }
 
 export interface Session {
@@ -47,7 +53,7 @@ export function clearSession() {
 }
 
 export interface RegisterPayload {
-  role: AccountRole;
+  role: SignupRole;
   name: string;
   phone: string;
   password: string;
@@ -68,3 +74,48 @@ export async function login(phone: string, password: string): Promise<Session> {
 }
 
 export const dashboardPath = (role: AccountRole) => "/" + role;
+
+/** Simpan data pengguna terbaru (mis. setelah ubah profil) tanpa mengganti token. */
+function saveUser(user: SessionUser, token?: string) {
+  const cur = getSession();
+  if (!cur && !token) return;
+  setSession({ token: token || cur!.token, user });
+}
+
+export interface ProfilePayload {
+  name: string;
+  region?: string;
+  district?: string;
+  shareContact?: boolean;
+}
+
+export async function updateProfile(payload: ProfilePayload): Promise<Session & { message: string }> {
+  const r = await api<Session & { message: string }>("/auth/profile", { method: "PUT", body: payload });
+  saveUser(r.user, r.token);
+  return r;
+}
+
+export type OtpPurpose = "reset_password" | "change_password";
+
+export interface OtpResponse {
+  message: string;
+  expiresIn: number;
+  /** Hanya muncul di mode pengembangan (WAHA belum dikonfigurasi & TEMUTANI_OTP_DEV=1). */
+  devCode?: string;
+}
+
+export function requestOtp(purpose: OtpPurpose, phone?: string): Promise<OtpResponse> {
+  return api<OtpResponse>("/auth/otp", { method: "POST", body: { purpose, phone }, auth: purpose === "change_password" });
+}
+
+export async function resetPassword(phone: string, code: string, password: string): Promise<Session> {
+  const s = await api<Session>("/auth/password/reset", { method: "POST", body: { phone, code, password }, auth: false });
+  setSession({ token: s.token, user: s.user });
+  return s;
+}
+
+export async function changePassword(code: string, password: string): Promise<Session & { message: string }> {
+  const r = await api<Session & { message: string }>("/auth/password/change", { method: "POST", body: { code, password } });
+  setSession({ token: r.token, user: r.user }); // token lama tidak berlaku lagi
+  return r;
+}

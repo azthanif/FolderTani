@@ -55,9 +55,9 @@ export function startChatbot(root: HTMLElement): () => void {
         farmerProfiles: [
             { id: 'F001', name: 'Petani A · Pak Budi', short: 'Petani A', region: 'Garut', district: 'Cisurupan' },
             { id: 'F002', name: 'Petani C · Bu Siti', short: 'Petani C', region: 'Garut', district: 'Tarogong Kidul' },
-            { id: 'F003', name: 'Petani D · Pak Rahmat', short: 'Petani D', region: 'Sukabumi', district: 'Cisaat' },
+            { id: 'F003', name: 'Petani D · Pak Rahmat', short: 'Petani D', region: 'Cianjur', district: 'Cugenang' },
             { id: 'F004', name: 'Petani E · Bu Dewi', short: 'Petani E', region: 'Cianjur', district: 'Ciranjang' },
-            { id: 'F005', name: 'Petani F · Pak Dede', short: 'Petani F', region: 'Subang', district: 'Ciasem' }
+            { id: 'F005', name: 'Petani F · Pak Dede', short: 'Petani F', region: 'Cianjur', district: 'Ciranjang' }
         ],
         stocks: [
             { id: 'STK-101', farmerId: 'F001', type: 'GKP', quantityKg: 5000, date: '2026-11-10' },
@@ -194,8 +194,8 @@ export function startChatbot(root: HTMLElement): () => void {
             ? { label: profile.whatsapp, demo: false }
             : { label: DEMO_FARMER_CONTACTS[farmerId] || 'Nomor contoh belum tersedia', demo: true };
     }
-    const pred = (region) => ({ Garut: 6900, Sukabumi: 6850, Cianjur: 6950, Subang: 6750 }[region] || 6900); // GKP saja
-    const REGIONS = ['Garut', 'Sukabumi', 'Cianjur', 'Subang'];
+    const pred = (region) => ({ Garut: 6900, Cianjur: 6950 }[region] || 6900); // GKP saja
+    const REGIONS = ['Garut', 'Cianjur'];
     function offerTitle(o) { const s = getStock(o.stockId); return `**${o.id} • ${getFarmer(o.farmerId).short}**\n${o.region} • ${s?.type || 'GKP'} • ${kg(o.qtyKg)}`; }
     // --- Rendering antarmuka chat ---
     function render() {

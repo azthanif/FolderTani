@@ -76,7 +76,7 @@ export function Options({ values }: { values: string[] }) {
 export function AreaSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <select className="select" aria-label="Filter kabupaten" value={value} onChange={(e) => onChange(e.target.value)}>
-      <Options values={[ALL_AREAS, "Garut", "Sukabumi"]} />
+      <Options values={[ALL_AREAS, "Garut", "Cianjur"]} />
     </select>
   );
 }

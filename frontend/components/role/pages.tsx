@@ -130,7 +130,7 @@ export function OverviewPage() {
             <p>
               {S.currentAI("GKP") != null
                 ? "Referensi AI untuk membantu Anda mengevaluasi penawaran pembeli."
-                : "Referensi harga AI belum tersedia untuk wilayah Anda (saat ini baru Garut dan Sukabumi)."}
+                : "Referensi harga AI belum tersedia untuk wilayah Anda (saat ini Garut dan Cianjur)."}
             </p>
           </div>
           <div className="banner-right">

@@ -7,11 +7,13 @@ import { Icon } from "@/components/Icon";
 import { useAdmin } from "./AdminData";
 import { ALL_AREAS } from "./types";
 import { countOffers } from "./ui";
+import { initials } from "@/lib/format";
 
 const TABLE_PATHS = ["/admin/stok", "/admin/penawaran", "/admin/transaksi", "/admin/aktivitas"];
 
 export function AdminShell({ children }: { children: ReactNode }) {
-  const { offers, setQuery, queueQuery } = useAdmin();
+  const { offers, setQuery, queueQuery, session, logout } = useAdmin();
+  const adminName = session?.user.name || "Admin";
   const pathname = usePathname();
   const router = useRouter();
   const active = countOffers(offers, ALL_AREAS);
@@ -24,6 +26,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     { href: "/admin/transaksi", icon: "receipt-text", label: "Riwayat Kesepakatan" },
     { href: "/admin/aktivitas", icon: "messages-square", label: "Aktivitas Chatbot" },
     { href: "/admin/berita", icon: "newspaper", label: "Berita & Analisis" },
+    { href: "/admin/profil", icon: "user", label: "Profil Saya" },
   ];
 
   function globalQuery(q: string) {
@@ -39,7 +42,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <DashboardShell
       variant="admin"
       brandSmall="Administrator"
-      user={{ name: "Admin 1", initials: "A1" }}
+      user={{ name: adminName, initials: initials(adminName) }}
+      onLogout={logout}
       nav={nav}
       topExtra={
         <label className="global-search">
@@ -54,7 +58,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <>
             {[
               "Ada " + active + " penawaran yang menunggu respons atau penawaran balik.",
-              "Saat sistem aktif, peristiwa ini akan dibaca dari database Temu Tani.",
+              "Data stok, penawaran, dan kesepakatan dibaca langsung dari database Temu Tani (web & chatbot WhatsApp).",
             ].map((t) => (
               <div className="activity" key={t}>
                 <div className="activity-icon">

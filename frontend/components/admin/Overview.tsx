@@ -17,7 +17,7 @@ export function AdminOverview() {
   const detail = useDetail();
   const router = useRouter();
   const [area, setArea] = useState(ALL_AREAS);
-  const panelArea = area === "Sukabumi" ? "Sukabumi" : "Garut";
+  const panelArea = area === "Cianjur" ? "Cianjur" : "Garut";
   const areaOffers = offers.filter((o) => area === ALL_AREAS || o.location === area);
   const total = countStocks(stocks, ALL_AREAS);
   const locs = [...new Set(stocks.filter((x) => x.status !== "Terjual").map((x) => x.location))];

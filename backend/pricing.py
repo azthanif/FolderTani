@@ -23,7 +23,7 @@ PRICE_ANCHORS: dict[str, dict] = {
         "actual": [6750, 6830, 6780, 6900, 6960, 6930, 7040, 7020, 7100, 7090, 7160, 7100],
         "predicted": [6780, 6810, 6840, 6880, 6910, 6960, 6980, 7020, 7040, 7070, 7080, 7100],
     },
-    "Sukabumi": {
+    "Cianjur": {
         "current": 7040,
         "previous": 6900,
         "actual": [6680, 6710, 6760, 6740, 6830, 6880, 6850, 6960, 6910, 6990, 6970, 7040],
@@ -34,7 +34,7 @@ PRICE_ANCHORS: dict[str, dict] = {
 # Referensi harga wajar (Rp/kg) per jenis gabah. Privat untuk petani. Hanya GKP yang didukung.
 AI_REFERENCE: dict[str, dict[str, int]] = {
     "Garut": {"GKP": 7100},
-    "Sukabumi": {"GKP": 7040},
+    "Cianjur": {"GKP": 7040},
 }
 
 REGIONS = tuple(PRICE_ANCHORS)
@@ -69,8 +69,16 @@ def daily_series(anchors: list[int], days: int) -> list[int]:
     return out
 
 
-def region_prices(region: str) -> dict:
+def region_prices(region: str, current: int | None = None) -> dict:
+    """current: harga terbaru dari tabel price_predictions (bila ada); seluruh seri digeser agar berakhir di angka itu."""
     d = PRICE_ANCHORS[region]
+    shift = (current - d["current"]) if current else 0
+    d = {
+        "current": d["current"] + shift,
+        "previous": d["previous"] + shift,
+        "actual": [v + shift for v in d["actual"]],
+        "predicted": [v + shift for v in d["predicted"]],
+    }
     actual_daily = daily_series(d["actual"], HISTORY_DAYS)
     predicted_daily = daily_series(d["predicted"], HISTORY_DAYS)
     last = predicted_daily[HISTORY_DAYS - 1]
@@ -85,12 +93,13 @@ def region_prices(region: str) -> dict:
     }
 
 
-def price_payload(regions: list[str]) -> dict:
+def price_payload(regions: list[str], current: dict[str, int] | None = None) -> dict:
+    current = current or {}
     return {
         "asOf": today_wib(),
         "historyDays": HISTORY_DAYS,
         "forecastDays": FORECAST_DAYS,
         "hpp": HPP_GKP,
         "meta": {"source": "Model AI Temu Tani", "mape": None, "modelVersion": None, "simulated": True},
-        "regions": {r: region_prices(r) for r in regions},
+        "regions": {r: region_prices(r, current.get(r)) for r in regions},
     }

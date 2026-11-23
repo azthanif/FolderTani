@@ -13,10 +13,11 @@ const PAGE_DEFS: Record<RoleKind, [string, string, string][]> = {
   petani: [
     ["overview", "dashboard", "Overview"], ["stok", "wheat", "Stok Gabah"], ["penawaran", "handshake", "Penawaran & Negosiasi"],
     ["harga", "chart", "Prediksi Harga AI"], ["transaksi", "history", "Riwayat Kesepakatan"], ["berita", "document", "Berita & Analisis"],
+    ["profil", "user", "Profil Saya"],
   ],
   tengkulak: [
     ["overview", "dashboard", "Overview"], ["stok", "wheat", "Stok Gabah"], ["penawaran", "handshake", "Penawaran & Negosiasi"],
-    ["transaksi", "history", "Riwayat Kesepakatan"],
+    ["transaksi", "history", "Riwayat Kesepakatan"], ["profil", "user", "Profil Saya"],
   ],
 };
 

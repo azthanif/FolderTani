@@ -57,10 +57,8 @@ export function useRoleActions() {
   /** Perbarui Stok: ubah sisa stok untuk tiap tanggal panen. */
   function updateStockRemaining() {
     if (!isFarmer) return;
-    const lots = sel()
-      .ownStock()
-      .filter((x) => x.volume > 0)
-      .sort((a, b) => a.harvest.localeCompare(b.harvest));
+    // Sisa stok per tanggal panen (tabel stock_batches di server).
+    const lots = ((getDb() as RoleState).batches || []).filter((x) => x.volume > 0).slice().sort((a, b) => a.harvest.localeCompare(b.harvest));
     const submit = (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       const data = new FormData(e.currentTarget);
@@ -273,10 +271,6 @@ export function useRoleActions() {
     const o = (getDb() as RoleState).offers.find((x) => x.id === id && x.buyerId === me() && x.status === "Penawaran Balik");
     if (o && confirm("Setujui harga balik " + rupiah(o.counter) + "/kg?")) mutate(`/offers/${enc(id)}/accept-counter`);
   }
-  function resetDemo() {
-    if (confirm("Kembalikan seluruh data simulasi seperti semula di server?")) mutate("/demo/reset", { success: "Data simulasi dikembalikan." });
-  }
-
   /* ---------- Detail penawaran ---------- */
   function offerDetail(id: string) {
     const S = sel();
@@ -423,9 +417,6 @@ export function useRoleActions() {
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Menunggu Petani").length} penawaran menunggu respons petani.</div>
           </>
         )}
-        <button className="btn" type="button" onClick={resetDemo}>
-          <Icon name="refresh" size={16} /> Reset data simulasi
-        </button>
       </div>,
     );
   }
