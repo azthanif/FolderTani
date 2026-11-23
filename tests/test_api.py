@@ -131,11 +131,15 @@ def test_otp_locked_after_max_attempts(client):
     assert client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "barubaru1"}).status_code == 429
 
 
-def test_change_password_requires_otp_and_revokes_old_sessions(client, login):
+def test_change_password_requires_current_password_and_revokes_old_sessions(client, login):
     H = login("tengkulak")
-    assert client.post("/api/auth/otp", json={"purpose": "change_password"}).status_code == 401
-    code = client.post("/api/auth/otp", headers=H, json={"purpose": "change_password"}).json()["devCode"]
-    r = client.post("/api/auth/password/change", headers=H, json={"code": code, "password": "passwordbaru"})
+    body = {"currentPassword": PASSWORD, "password": "passwordbaru"}
+    assert client.post("/api/auth/password/change", json=body).status_code == 401
+    wrong = client.post("/api/auth/password/change", headers=H, json={**body, "currentPassword": "salah-salah"})
+    assert wrong.status_code == 400 and "saat ini salah" in wrong.json()["detail"]
+    same = client.post("/api/auth/password/change", headers=H, json={"currentPassword": PASSWORD, "password": PASSWORD})
+    assert same.status_code == 400
+    r = client.post("/api/auth/password/change", headers=H, json=body)
     assert r.status_code == 200, r.text
     assert client.get("/api/state", headers=H).status_code == 401  # token lama tidak berlaku
     assert client.get("/api/state", headers={"Authorization": "Bearer " + r.json()["token"]}).status_code == 200

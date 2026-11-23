@@ -433,7 +433,7 @@ class ResetPasswordIn(BaseModel):
 
 
 class ChangePasswordIn(BaseModel):
-    code: str = Field(pattern=r"^\d{6}$")
+    currentPassword: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=8, max_length=128)
 
 
@@ -654,7 +654,16 @@ def reset_password(body: ResetPasswordIn):
 
 @app.post("/api/auth/password/change", tags=["akun"])
 def change_password(body: ChangePasswordIn, actor: Actor = Depends(get_actor)):
-    _consume_otp(actor.phone, "change_password", body.code)
+    """Ubah password dengan memasukkan password lama. Lupa password lama: pakai /password/reset (kode WhatsApp)."""
+    with tx() as cur:
+        cur.execute(f"select {USER_COLS} from users where id = %s", (actor.user,))
+        user = cur.fetchone()
+    if not user or not user["password_hash"]:
+        err(400, "Akun ini belum memiliki password. Gunakan menu Lupa Password untuk membuatnya.")
+    if not auth.verify_password(body.currentPassword, user["password_hash"]):
+        err(400, "Password saat ini salah.")
+    if body.currentPassword == body.password:
+        err(400, "Password baru harus berbeda dari password saat ini.")
     # Token baru (sidik password berubah): sesi di perangkat lain otomatis keluar.
     return {**_session(_set_password(actor.user, body.password)), "message": "Password berhasil diubah."}
 

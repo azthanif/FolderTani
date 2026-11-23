@@ -1,12 +1,14 @@
 "use client";
 /* Halaman Profil Saya (petani, tengkulak, admin). Tata letak satu kolom: kartu identitas,
-   form data diri, lalu ubah password dengan kode verifikasi WhatsApp. */
+   form data diri, lalu ubah password (password lama + password baru). Lupa password lama
+   diarahkan ke /lupa-password (kode WhatsApp). */
+import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { PasswordField } from "@/components/auth/AuthShell";
 import { Icon } from "@/components/Icon";
 import { useUI } from "@/components/UIProvider";
 import { api, ApiError } from "@/lib/api";
-import { changePassword, getSession, REGIONS, requestOtp, setSession, updateProfile, type SessionUser } from "@/lib/auth";
+import { changePassword, getSession, REGIONS, setSession, updateProfile, type SessionUser } from "@/lib/auth";
 import "@/styles/auth.css";
 import "@/styles/profile.css";
 
@@ -35,15 +37,11 @@ export function ProfileView() {
   const [saving, setSaving] = useState(false);
   const [profileErr, setProfileErr] = useState("");
 
-  const [otpInfo, setOtpInfo] = useState("");
-  const [devCode, setDevCode] = useState("");
-  const [code, setCode] = useState("");
+  const [current, setCurrent] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
-  const [sending, setSending] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
   const [pwErr, setPwErr] = useState("");
-  const [cooldown, setCooldown] = useState(0);
 
   function fill(u: SessionUser) {
     setUser(u);
@@ -64,12 +62,6 @@ export function ProfileView() {
       })
       .catch(() => undefined);
   }, []);
-
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [cooldown]);
 
   if (!user) return <div className="empty-state">Memuat profil…</div>;
   const isFarmer = user.role === "petani";
@@ -92,36 +84,19 @@ export function ProfileView() {
     }
   }
 
-  async function sendCode() {
-    setPwErr("");
-    setSending(true);
-    try {
-      const r = await requestOtp("change_password");
-      setOtpInfo(r.message);
-      setDevCode(r.devCode || "");
-      setCooldown(60);
-    } catch (err) {
-      setPwErr(err instanceof ApiError ? err.message : "Kode gagal dikirim.");
-    } finally {
-      setSending(false);
-    }
-  }
-
   async function savePassword(e: FormEvent) {
     e.preventDefault();
     setPwErr("");
     if (!pwValid) return setPwErr("Password baru belum memenuhi semua persyaratan.");
-    if (pw !== pw2) return setPwErr("Konfirmasi password tidak sama.");
-    if (!/^\d{6}$/.test(code)) return setPwErr("Masukkan 6 digit kode verifikasi dari WhatsApp.");
+    if (pw === current) return setPwErr("Password baru harus berbeda dari password saat ini.");
+    if (pw !== pw2) return setPwErr("Konfirmasi password baru tidak sama.");
     setPwBusy(true);
     try {
-      const r = await changePassword(code, pw);
+      const r = await changePassword(current, pw);
       toast(r.message + " Sesi di perangkat lain otomatis keluar.");
-      setOtpInfo("");
-      setCode("");
+      setCurrent("");
       setPw("");
       setPw2("");
-      setDevCode("");
     } catch (err) {
       setPwErr(err instanceof ApiError ? err.message : "Password gagal diubah.");
     } finally {
@@ -180,6 +155,15 @@ export function ProfileView() {
         <h2 className="pf-heading">Ubah Password</h2>
         <form className="pf-form" onSubmit={savePassword}>
           <div className="pf-field">
+            <div className="pf-label-row">
+              <span>Password Saat Ini</span>
+              <Link href={`/lupa-password?phone=${encodeURIComponent(user.phone)}`} className="pf-link">
+                Lupa password?
+              </Link>
+            </div>
+            <PasswordField id="currentPassword" value={current} onChange={setCurrent} autoComplete="current-password" />
+          </div>
+          <div className="pf-field">
             <span>Password Baru</span>
             <PasswordField id="newPassword" value={pw} onChange={setPw} autoComplete="new-password" minLength={8} />
           </div>
@@ -196,28 +180,8 @@ export function ProfileView() {
           <div className="pf-field">
             <span>Ulangi Password Baru</span>
             <PasswordField id="newPassword2" value={pw2} onChange={setPw2} autoComplete="new-password" minLength={8} />
+            {pw2 && pw !== pw2 ? <small className="pf-mismatch">Password belum sama.</small> : null}
           </div>
-          <div className="pf-field">
-            <span>Kode Verifikasi WhatsApp</span>
-            <div className="pf-code-row">
-              <input
-                className="pf-input auth-code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="\d{6}"
-                maxLength={6}
-                placeholder="6 digit"
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              />
-              <button type="button" className="pf-btn ghost" disabled={sending || cooldown > 0} onClick={sendCode}>
-                <Icon name="phone" size={14} /> {sending ? "Mengirim…" : cooldown ? `Kirim ulang (${cooldown})` : otpInfo ? "Kirim ulang" : "Kirim kode"}
-              </button>
-            </div>
-            <small>Kode dikirim ke WhatsApp {user.phone}.</small>
-          </div>
-          {otpInfo ? <div className="auth-info">{otpInfo}</div> : null}
-          {devCode ? <div className="auth-info">Mode pengembangan: kode Anda <b>{devCode}</b></div> : null}
           {pwErr ? <div className="auth-error" role="alert">{pwErr}</div> : null}
           <div>
             <button className="pf-btn" type="submit" disabled={pwBusy}>

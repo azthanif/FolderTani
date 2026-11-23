@@ -21,6 +21,11 @@
 .pf-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .pf-field > span { font-size: 14px; font-weight: 700; color: var(--ink); }
 .pf-field small { font-size: 12px; color: var(--muted); }
+.pf-label-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.pf-label-row > span { font-size: 14px; font-weight: 700; color: var(--ink); }
+.profile-page .pf-link { font-size: 13px; font-weight: 700; color: #2e7d3a; text-decoration: none; }
+.profile-page .pf-link:hover { text-decoration: underline; }
+.profile-page .pf-field small.pf-mismatch { color: #b3423b; }
 .pf-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
 .profile-page .pf-input,
@@ -41,9 +46,6 @@
 .pf-input-icon .pf-input { padding-right: 44px; }
 .pf-input-icon svg { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: var(--text); pointer-events: none; }
 
-.pf-code-row { display: flex; gap: 10px; }
-.pf-code-row .pf-input { flex: 1; min-width: 0; height: 44px; font-size: 18px !important; letter-spacing: 6px; text-align: center; }
-.pf-code-row .pf-input::placeholder { font-size: 14px; letter-spacing: 0; }
 
 .profile-page .pf-btn {
   display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 20px;
@@ -52,8 +54,6 @@
 }
 .profile-page .pf-btn:hover:not(:disabled) { background: #256a30; border-color: #256a30; }
 .profile-page .pf-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.profile-page .pf-btn.ghost { height: 44px; background: #fff; color: #2e7d3a; border-color: var(--line); }
-.profile-page .pf-btn.ghost:hover:not(:disabled) { background: #f1f8ec; border-color: #c9dfc9; }
 
 .pf-heading { margin: 34px 0 18px; font-size: 19px; font-weight: 700; color: var(--ink); }
 
@@ -66,6 +66,10 @@
 @media (max-width: 620px) {
   .profile-page .pf-card { padding: 22px 18px 26px; }
   .pf-avatar { width: 68px; height: 68px; font-size: 24px; }
-  .pf-row { grid-template-columns: 1fr; }
-  .pf-code-row { flex-direction: column; }
+  .pf-label-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.pf-label-row > span { font-size: 14px; font-weight: 700; color: var(--ink); }
+.profile-page .pf-link { font-size: 13px; font-weight: 700; color: #2e7d3a; text-decoration: none; }
+.profile-page .pf-link:hover { text-decoration: underline; }
+.profile-page .pf-field small.pf-mismatch { color: #b3423b; }
+.pf-row { grid-template-columns: 1fr; }
 }

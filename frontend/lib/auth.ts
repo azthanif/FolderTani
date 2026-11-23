@@ -114,8 +114,8 @@ export async function resetPassword(phone: string, code: string, password: strin
   return s;
 }
 
-export async function changePassword(code: string, password: string): Promise<Session & { message: string }> {
-  const r = await api<Session & { message: string }>("/auth/password/change", { method: "POST", body: { code, password } });
+export async function changePassword(currentPassword: string, password: string): Promise<Session & { message: string }> {
+  const r = await api<Session & { message: string }>("/auth/password/change", { method: "POST", body: { currentPassword, password } });
   setSession({ token: r.token, user: r.user }); // token lama tidak berlaku lagi
   return r;
 }
