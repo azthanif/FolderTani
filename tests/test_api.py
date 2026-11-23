@@ -23,36 +23,78 @@ def test_endpoints_require_login(client):
     assert client.get("/api/state", headers={"Authorization": "Bearer palsu.token"}).status_code == 401
 
 
-def test_register_petani_and_tengkulak(client, sql):
-    body = {"role": "petani", "name": "Pak Engkos", "phone": "+62 813-1112-2233", "password": "rahasia123", "region": "kab. cianjur", "district": "Cugenang"}
-    r = client.post("/api/auth/register", json=body)
+TK_BODY = {"name": "CV Padi Jaya", "phone": "+62 813-7778-8899", "password": "Rahasia123",
+           "region": "kab. garut", "district": "tarogong kidul", "village": "Sukagalih"}
+
+
+def test_register_tengkulak_waits_for_admin_approval(client, login, sql):
+    r = client.post("/api/auth/register", json=TK_BODY)
     assert r.status_code == 201, r.text
-    u = r.json()["user"]
-    assert (u["role"], u["phone"], u["region"], u["district"]) == ("petani", "081311122233", "Cianjur", "Cugenang")
-    row = sql("select phone, display_name, password_hash is not null as has_pw from users where phone = %s", ("+6281311122233",))[0]
-    assert row["has_pw"] and row["display_name"] == "Pak Engkos"
-    assert sql("select quantity_kg from stocks s join users u on u.id = s.farmer_id where u.phone = '+6281311122233'")[0]["quantity_kg"] == 0
-    assert client.post("/api/auth/register", json={**body, "phone": "081311122233"}).status_code == 409
-    t = client.post("/api/auth/register", json={"role": "tengkulak", "name": "CV Padi Jaya", "phone": "081377788899", "password": "rahasia123"})
-    assert t.status_code == 201 and t.json()["user"]["role"] == "tengkulak"
+    assert r.json()["status"] == "pending" and "token" not in r.json()
+    row = sql("select role, kabupaten, kecamatan, kelurahan, account_status from users where phone = '+6281377788899'")[0]
+    assert row == {"role": "tengkulak", "kabupaten": "Garut", "kecamatan": "Tarogong Kidul", "kelurahan": "Sukagalih", "account_status": "pending"}
+    # belum bisa masuk / daftar ulang
+    r = client.post("/api/auth/login", json={"phone": "081377788899", "password": "Rahasia123"})
+    assert r.status_code == 403 and "menunggu verifikasi" in r.json()["detail"]
+    assert client.post("/api/auth/register", json=TK_BODY).status_code == 409
+    # admin melihat & menyetujui
+    HA = login("admin")
+    lst = client.get("/api/admin/users?status=pending", headers=HA).json()
+    assert [a["phone"] for a in lst["items"]] == ["081377788899"] and lst["counts"]["pending"] == 1
+    assert client.get("/api/admin/dashboard", headers=HA).json()["pendingAccounts"] == 1
+    uid = lst["items"][0]["id"]
+    assert client.post(f"/api/admin/users/{uid}/verify", headers=login("tengkulak"), json={"action": "approve"}).status_code == 403
+    r = client.post(f"/api/admin/users/{uid}/verify", headers=HA, json={"action": "approve"})
+    assert r.status_code == 200 and r.json()["account"]["status"] == "active" and r.json()["account"]["verifiedBy"] == "Admin Temu Tani"
+    r = client.post("/api/auth/login", json={"phone": "081377788899", "password": "Rahasia123"})
+    assert r.status_code == 200 and r.json()["user"]["village"] == "Sukagalih"
+
+
+def test_admin_rejects_registration_and_applicant_can_reapply(client, login, sql):
+    client.post("/api/auth/register", json=TK_BODY)
+    HA = login("admin")
+    uid = client.get("/api/admin/users?status=pending", headers=HA).json()["items"][0]["id"]
+    assert client.post(f"/api/admin/users/{uid}/verify", headers=HA, json={"action": "reject"}).status_code == 400  # alasan wajib
+    r = client.post(f"/api/admin/users/{uid}/verify", headers=HA, json={"action": "reject", "reason": "Nama usaha tidak jelas"})
+    assert r.status_code == 200 and r.json()["account"]["status"] == "rejected"
+    r = client.post("/api/auth/login", json={"phone": "081377788899", "password": "Rahasia123"})
+    assert r.status_code == 403 and "Nama usaha tidak jelas" in r.json()["detail"]
+    # ajukan ulang -> kembali pending
+    assert client.post("/api/auth/register", json={**TK_BODY, "name": "CV Padi Jaya Garut"}).status_code == 201
+    assert sql("select account_status, rejection_reason from users where phone = '+6281377788899'")[0] == {"account_status": "pending", "rejection_reason": None}
+    # petani tidak diverifikasi lewat endpoint ini
+    petani = client.get("/api/admin/users?role=petani", headers=HA).json()["items"]
+    assert len(petani) == 3 and all(p["status"] == "active" for p in petani)
+    assert client.post(f"/api/admin/users/{petani[0]['id']}/verify", headers=HA, json={"action": "approve"}).status_code == 400
 
 
 def test_register_validation(client):
-    base = {"role": "petani", "name": "Bu Ani", "phone": "081300000000", "password": "rahasia123", "district": "Cibeber"}
-    r = client.post("/api/auth/register", json={**base, "region": "Sukabumi"})
+    post = lambda **kw: client.post("/api/auth/register", json={**TK_BODY, **kw})
+    r = post(region="Sukabumi")
     assert r.status_code == 400 and "Garut atau Cianjur" in r.json()["detail"]
-    assert client.post("/api/auth/register", json={**base, "region": "Garut", "district": ""}).status_code == 400
-    assert client.post("/api/auth/register", json={**base, "region": "Garut", "phone": "021555666777"}).status_code == 400
-    assert client.post("/api/auth/register", json={**base, "region": "Garut", "password": "pendek"}).status_code == 422
-    assert client.post("/api/auth/register", json={**base, "role": "admin", "region": "Garut"}).status_code == 422
+    assert post(district="Cugenang").status_code == 400            # kecamatan Cianjur, bukan Garut
+    assert post(village="Desa Fiktif").status_code == 400
+    assert post(phone="021555666777").status_code == 400
+    r = post(password="rahasia123")
+    assert r.status_code == 400 and "huruf besar" in r.json()["detail"]
+    assert post(password="Pendek1").status_code == 422
+    assert post(role="petani").status_code == 422                  # petani tidak bisa daftar mandiri
+    assert post(role="admin").status_code == 422
 
 
 def test_whatsapp_registered_number_must_use_forgot_password(client):
-    r = client.post("/api/auth/register", json={"role": "petani", "name": "Pak Ujang", "phone": PHONES["wa_farmer"],
-                                                "password": "rahasia123", "region": "Garut", "district": "Leles"})
+    r = client.post("/api/auth/register", json={**TK_BODY, "phone": PHONES["wa_farmer"]})
     assert r.status_code == 409 and "Lupa Password" in r.json()["detail"]
     r = client.post("/api/auth/login", json={"phone": PHONES["wa_farmer"], "password": "apasaja1"})
     assert r.status_code == 401 and "Lupa Password" in r.json()["detail"]
+
+
+def test_wilayah_endpoint(client):
+    data = client.get("/api/wilayah").json()
+    kabs = {k["nama"]: k for k in data["kabupaten"]}
+    assert set(kabs) == {"Garut", "Cianjur"}
+    assert len(kabs["Garut"]["kecamatan"]) == 42 and len(kabs["Cianjur"]["kecamatan"]) == 32
+    assert "Kepmendagri" in data["source"]
 
 
 def test_login(client):
@@ -91,10 +133,13 @@ def test_update_profile(client, login, sql):
     HD = login("petani_cianjur")
     client.put("/api/auth/profile", headers=HD, json={"name": "Dewi Lestari", "region": "Cianjur", "district": "Ciranjang"})
     assert sql("select display_name from users where phone = %s", (e164(PHONES["petani_cianjur"]),))[0]["display_name"] == "Petani E"
-    # tengkulak: hanya nama
-    r = client.put("/api/auth/profile", headers=login("tengkulak"), json={"name": "Budi S.", "region": "Garut", "district": "Leles", "shareContact": True})
+    # tengkulak: nama + alamat lengkap (kabupaten, kecamatan, desa/kelurahan); tidak punya izin kontak
+    HT = login("tengkulak")
+    r = client.put("/api/auth/profile", headers=HT, json={"name": "Budi S.", "region": "Garut", "district": "Leles", "village": "Leles", "shareContact": True})
     u = r.json()["user"]
-    assert u["name"] == "Budi S." and u["region"] == "" and u["shareContact"] is False
+    assert (u["name"], u["region"], u["district"], u["village"], u["shareContact"]) == ("Budi S.", "Garut", "Leles", "Leles", False)
+    assert client.put("/api/auth/profile", headers=HT, json={"name": "Budi S.", "region": "Garut", "district": "Leles", "village": "Sukagalih"}).status_code == 400
+    assert client.put("/api/auth/profile", headers=HT, json={"name": "Budi"}).json()["user"]["village"] == "Leles"
 
 
 def test_forgot_password_flow(client, sql):
@@ -107,13 +152,13 @@ def test_forgot_password_flow(client, sql):
     assert client.post("/api/auth/otp", json={"purpose": "reset_password", "phone": phone}).status_code == 429
     # kode salah dicatat
     bad = "000000" if code != "000000" else "111111"
-    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": bad, "password": "barubaru1"}).status_code == 400
+    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": bad, "password": "Barubaru1"}).status_code == 400
     assert sql("select attempts from otp_codes where phone = %s", (e164(phone),))[0]["attempts"] == 1
-    r = client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "barubaru1"})
+    r = client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "Barubaru1"})
     assert r.status_code == 200 and r.json()["user"]["role"] == "petani"
     # kode sekali pakai
-    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "barubaru2"}).status_code == 400
-    assert client.post("/api/auth/login", json={"phone": phone, "password": "barubaru1"}).status_code == 200
+    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "Barubaru2"}).status_code == 400
+    assert client.post("/api/auth/login", json={"phone": phone, "password": "Barubaru1"}).status_code == 200
 
 
 def test_forgot_password_does_not_reveal_unknown_number(client, sql):
@@ -127,14 +172,16 @@ def test_otp_locked_after_max_attempts(client):
     code = client.post("/api/auth/otp", json={"purpose": "reset_password", "phone": phone}).json()["devCode"]
     bad = "000000" if code != "000000" else "111111"
     for _ in range(5):
-        assert client.post("/api/auth/password/reset", json={"phone": phone, "code": bad, "password": "barubaru1"}).status_code == 400
-    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "barubaru1"}).status_code == 429
+        assert client.post("/api/auth/password/reset", json={"phone": phone, "code": bad, "password": "Barubaru1"}).status_code == 400
+    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "Barubaru1"}).status_code == 429
 
 
 def test_change_password_requires_current_password_and_revokes_old_sessions(client, login):
     H = login("tengkulak")
-    body = {"currentPassword": PASSWORD, "password": "passwordbaru"}
+    body = {"currentPassword": PASSWORD, "password": "PasswordBaru1"}
     assert client.post("/api/auth/password/change", json=body).status_code == 401
+    weak = client.post("/api/auth/password/change", headers=H, json={**body, "password": "passwordbaru"})
+    assert weak.status_code == 400 and "huruf besar" in weak.json()["detail"]
     wrong = client.post("/api/auth/password/change", headers=H, json={**body, "currentPassword": "salah-salah"})
     assert wrong.status_code == 400 and "saat ini salah" in wrong.json()["detail"]
     same = client.post("/api/auth/password/change", headers=H, json={"currentPassword": PASSWORD, "password": PASSWORD})
@@ -143,7 +190,7 @@ def test_change_password_requires_current_password_and_revokes_old_sessions(clie
     assert r.status_code == 200, r.text
     assert client.get("/api/state", headers=H).status_code == 401  # token lama tidak berlaku
     assert client.get("/api/state", headers={"Authorization": "Bearer " + r.json()["token"]}).status_code == 200
-    assert client.post("/api/auth/login", json={"phone": PHONES["tengkulak"], "password": "passwordbaru"}).status_code == 200
+    assert client.post("/api/auth/login", json={"phone": PHONES["tengkulak"], "password": "PasswordBaru1"}).status_code == 200
 
 
 def test_otp_unavailable_without_whatsapp_in_production(client, monkeypatch):

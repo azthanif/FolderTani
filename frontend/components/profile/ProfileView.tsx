@@ -4,11 +4,14 @@
    diarahkan ke /lupa-password (kode WhatsApp). */
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
+import { AddressFields, type Address } from "@/components/auth/AddressFields";
 import { PasswordField } from "@/components/auth/AuthShell";
+import { ConfirmHint, PasswordRules } from "@/components/auth/PasswordRules";
 import { Icon } from "@/components/Icon";
 import { useUI } from "@/components/UIProvider";
 import { api, ApiError } from "@/lib/api";
-import { changePassword, getSession, REGIONS, setSession, updateProfile, type SessionUser } from "@/lib/auth";
+import { initials } from "@/lib/format";
+import { changePassword, getSession, isStrongPassword, REGIONS, setSession, updateProfile, type SessionUser } from "@/lib/auth";
 import "@/styles/auth.css";
 import "@/styles/profile.css";
 
@@ -16,24 +19,13 @@ const ROLE_LABEL = { petani: "Petani", tengkulak: "Tengkulak", admin: "Administr
 /** Event agar dashboard memuat ulang data setelah profil berubah. */
 export const PROFILE_EVENT = "temutani:profile";
 
-const PW_RULES = [
-  { label: "Minimal 8 karakter", test: (v: string) => v.length >= 8 },
-  { label: "Minimal 1 huruf kecil", test: (v: string) => /[a-z]/.test(v) },
-  { label: "Minimal 1 huruf besar", test: (v: string) => /[A-Z]/.test(v) },
-  { label: "Minimal 1 angka", test: (v: string) => /\d/.test(v) },
-];
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  return ((parts[0]?.[0] || "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
-}
-
 export function ProfileView() {
   const { toast } = useUI();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [name, setName] = useState("");
   const [region, setRegion] = useState("");
   const [district, setDistrict] = useState("");
+  const [address, setAddress] = useState<Address>({ region: "", district: "", village: "" });
   const [saving, setSaving] = useState(false);
   const [profileErr, setProfileErr] = useState("");
 
@@ -48,6 +40,7 @@ export function ProfileView() {
     setName(u.name);
     setRegion(u.region || "");
     setDistrict(u.district || "");
+    setAddress({ region: u.region || "", district: u.district || "", village: u.village || "" });
   }
 
   useEffect(() => {
@@ -65,7 +58,7 @@ export function ProfileView() {
 
   if (!user) return <div className="empty-state">Memuat profil…</div>;
   const isFarmer = user.role === "petani";
-  const pwValid = PW_RULES.every((r) => r.test(pw));
+  const isBuyer = user.role === "tengkulak";
 
   async function saveProfile(e: FormEvent) {
     e.preventDefault();
@@ -73,7 +66,9 @@ export function ProfileView() {
     setSaving(true);
     try {
       // shareContact dikirim apa adanya agar pengaturan lama tidak berubah.
-      const r = await updateProfile(isFarmer ? { name, region, district, shareContact: !!user?.shareContact } : { name });
+      const r = await updateProfile(
+        isFarmer ? { name, region, district, shareContact: !!user?.shareContact } : isBuyer ? { name, ...address } : { name },
+      );
       fill(r.user);
       window.dispatchEvent(new Event(PROFILE_EVENT));
       toast(r.message);
@@ -87,7 +82,7 @@ export function ProfileView() {
   async function savePassword(e: FormEvent) {
     e.preventDefault();
     setPwErr("");
-    if (!pwValid) return setPwErr("Password baru belum memenuhi semua persyaratan.");
+    if (!isStrongPassword(pw)) return setPwErr("Password baru belum memenuhi semua persyaratan.");
     if (pw === current) return setPwErr("Password baru harus berbeda dari password saat ini.");
     if (pw !== pw2) return setPwErr("Konfirmasi password baru tidak sama.");
     setPwBusy(true);
@@ -144,6 +139,11 @@ export function ProfileView() {
               </label>
             </div>
           ) : null}
+          {isBuyer ? (
+            <div className="pf-row pf-row-3">
+              <AddressFields value={address} onChange={setAddress} fieldClass="pf-field" selectClass="pf-input" idPrefix="profil" />
+            </div>
+          ) : null}
           {profileErr ? <div className="auth-error" role="alert">{profileErr}</div> : null}
           <div>
             <button className="pf-btn" type="submit" disabled={saving}>
@@ -167,20 +167,11 @@ export function ProfileView() {
             <span>Password Baru</span>
             <PasswordField id="newPassword" value={pw} onChange={setPw} autoComplete="new-password" minLength={8} />
           </div>
-          <div className="pf-rules">
-            <p>* Persyaratan password:</p>
-            <ul>
-              {PW_RULES.map((r) => (
-                <li key={r.label} className={pw && r.test(pw) ? "ok" : ""}>
-                  {r.label}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <PasswordRules value={pw} />
           <div className="pf-field">
             <span>Ulangi Password Baru</span>
             <PasswordField id="newPassword2" value={pw2} onChange={setPw2} autoComplete="new-password" minLength={8} />
-            {pw2 && pw !== pw2 ? <small className="pf-mismatch">Password belum sama.</small> : null}
+            <ConfirmHint password={pw} confirm={pw2} />
           </div>
           {pwErr ? <div className="auth-error" role="alert">{pwErr}</div> : null}
           <div>

@@ -39,7 +39,7 @@ export default function MasukPage() {
       subtitle="Gunakan nomor HP dan password yang Anda daftarkan."
       footer={
         <>
-          Belum punya akun? <Link href="/daftar">Daftar sekarang</Link>
+          Tengkulak belum punya akun? <Link href="/daftar">Daftar sekarang</Link>
         </>
       }
     >

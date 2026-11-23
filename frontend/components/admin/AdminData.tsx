@@ -28,7 +28,7 @@ export function useAdmin(): AdminContextValue {
   return ctx;
 }
 
-const EMPTY: AdminData = { stocks: [], offers: [], transactions: [], events: [], prices: null };
+const EMPTY: AdminData = { stocks: [], offers: [], transactions: [], events: [], pendingAccounts: 0, prices: null };
 
 export function AdminDataProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AdminData>(EMPTY);

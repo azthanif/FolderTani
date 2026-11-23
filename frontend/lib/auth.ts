@@ -2,7 +2,6 @@
 import { api } from "./api";
 
 export type AccountRole = "petani" | "tengkulak" | "admin";
-export type SignupRole = "petani" | "tengkulak";
 
 /** Wilayah layanan Temu Tani (sesuai database). */
 export const REGIONS = ["Garut", "Cianjur"] as const;
@@ -12,8 +11,9 @@ export interface SessionUser {
   role: AccountRole;
   phone: string;
   name: string;
-  region?: string; // kabupaten (petani)
-  district?: string; // kecamatan (petani)
+  region?: string; // kabupaten
+  district?: string; // kecamatan
+  village?: string; // desa/kelurahan (tengkulak)
   /** Petani mengizinkan nomor HP dibagikan ke pembeli setelah sepakat. */
   shareContact?: boolean;
 }
@@ -52,19 +52,59 @@ export function clearSession() {
   }
 }
 
+/** Daftar mandiri hanya untuk tengkulak; akun petani dimasukkan admin. */
 export interface RegisterPayload {
-  role: SignupRole;
   name: string;
   phone: string;
   password: string;
-  region?: string;
-  district?: string;
+  region: string;
+  district: string;
+  village: string;
 }
 
-export async function register(payload: RegisterPayload): Promise<Session> {
-  const s = await api<Session>("/auth/register", { method: "POST", body: payload, auth: false });
-  setSession(s);
-  return s;
+export interface RegisterResult {
+  status: "pending";
+  message: string;
+}
+
+/** Akun baru berstatus menunggu verifikasi admin, jadi belum ada sesi yang disimpan. */
+export function register(payload: RegisterPayload): Promise<RegisterResult> {
+  return api<RegisterResult>("/auth/register", { method: "POST", body: { ...payload, role: "tengkulak" }, auth: false });
+}
+
+/** Aturan password baru (sama dengan backend). */
+export const PASSWORD_RULES = [
+  { label: "Minimal 8 karakter", test: (v: string) => v.length >= 8 },
+  { label: "Minimal 1 huruf kecil", test: (v: string) => /[a-z]/.test(v) },
+  { label: "Minimal 1 huruf besar", test: (v: string) => /[A-Z]/.test(v) },
+  { label: "Minimal 1 angka", test: (v: string) => /\d/.test(v) },
+] as const;
+
+export const isStrongPassword = (v: string) => PASSWORD_RULES.every((r) => r.test(v));
+
+export interface Desa {
+  nama: string;
+  jenis: "Desa" | "Kelurahan";
+}
+export interface Kecamatan {
+  nama: string;
+  desa: Desa[];
+}
+export interface Kabupaten {
+  nama: string;
+  kecamatan: Kecamatan[];
+}
+
+let wilayahCache: Promise<Kabupaten[]> | null = null;
+/** Kabupaten -> kecamatan -> desa/kelurahan wilayah layanan (Kepmendagri), dimuat sekali per sesi. */
+export function loadWilayah(): Promise<Kabupaten[]> {
+  wilayahCache ??= api<{ kabupaten: Kabupaten[] }>("/wilayah", { auth: false })
+    .then((r) => r.kabupaten)
+    .catch((e) => {
+      wilayahCache = null;
+      throw e;
+    });
+  return wilayahCache;
 }
 
 export async function login(phone: string, password: string): Promise<Session> {
@@ -86,6 +126,7 @@ export interface ProfilePayload {
   name: string;
   region?: string;
   district?: string;
+  village?: string;
   shareContact?: boolean;
 }
 

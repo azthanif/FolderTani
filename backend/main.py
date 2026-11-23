@@ -10,12 +10,15 @@ Jalankan lokal:  DATABASE_URL=postgresql://... uvicorn backend.main:app --reload
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional
+from uuid import UUID
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -39,6 +42,7 @@ NEWS_CSV = Path(os.getenv("TEMUTANI_NEWS_CSV", BASE_DIR / "data" / "berita.csv")
 # "supabase" = baca news_articles hasil news_pipeline (butuh SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY di server)
 NEWS_SOURCE = os.getenv("TEMUTANI_NEWS_SOURCE", "csv").strip().lower()
 CHATBOT_MAX_BYTES = 2_000_000
+WILAYAH_FILE = BASE_DIR / "data" / "wilayah.json"  # kecamatan & desa/kelurahan Garut + Cianjur (Kepmendagri)
 
 WIB = timezone(timedelta(hours=7))
 REGIONS = ("Garut", "Cianjur")  # wilayah layanan (sesuai constraint database)
@@ -146,7 +150,8 @@ class Actor(BaseModel):
     consent: bool = False
 
 
-USER_COLS = "id, phone, role, name, display_name, kabupaten, kecamatan, contact_sharing_consent, password_hash"
+USER_COLS = ("id, phone, role, name, display_name, kabupaten, kecamatan, kelurahan, contact_sharing_consent, password_hash,"
+             " account_status, rejection_reason")
 
 
 def _actor_from_row(u: dict) -> Actor:
@@ -165,6 +170,8 @@ def _bearer_user(authorization: str) -> Optional[dict]:
         u = cur.fetchone()
     if not u or u["role"] != data.get("r") or not u["password_hash"] or auth.password_fingerprint(u["password_hash"]) != data.get("pv"):
         err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
+    if u["account_status"] != "active":
+        err(401, "Akun belum aktif. Silakan masuk kembali setelah diverifikasi admin.")
     return u
 
 
@@ -190,7 +197,8 @@ def _session(u: dict) -> dict:
         "token": auth.issue_token(str(u["id"]), u["role"], u["password_hash"]),
         "user": {
             "id": str(u["id"]), "role": u["role"], "phone": auth.from_e164(u["phone"]), "name": u["name"],
-            "region": u["kabupaten"] or "", "district": u["kecamatan"] or "", "shareContact": u["contact_sharing_consent"],
+            "region": u["kabupaten"] or "", "district": u["kecamatan"] or "", "village": u["kelurahan"] or "",
+            "shareContact": u["contact_sharing_consent"],
         },
     }
 
@@ -391,14 +399,16 @@ def _clean(v: Optional[str]) -> Optional[str]:
 
 
 class RegisterIn(BaseModel):
-    role: Literal["petani", "tengkulak"]
+    """Daftar mandiri di web hanya untuk tengkulak. Akun petani dimasukkan admin / chatbot."""
+    role: Literal["tengkulak"] = "tengkulak"
     name: str = Field(min_length=3, max_length=80)
     phone: str = Field(min_length=9, max_length=20)
     password: str = Field(min_length=8, max_length=128)
-    region: Optional[str] = Field(default=None, max_length=60)    # kabupaten (petani)
-    district: Optional[str] = Field(default=None, max_length=60)  # kecamatan (petani)
+    region: str = Field(min_length=1, max_length=60)    # kabupaten
+    district: str = Field(min_length=1, max_length=60)  # kecamatan
+    village: str = Field(min_length=1, max_length=80)   # desa/kelurahan
 
-    @field_validator("name", "region", "district")
+    @field_validator("name", "region", "district", "village")
     @classmethod
     def _strip(cls, v: Optional[str]) -> Optional[str]:
         return _clean(v)
@@ -413,9 +423,10 @@ class ProfileIn(BaseModel):
     name: str = Field(min_length=3, max_length=80)
     region: Optional[str] = Field(default=None, max_length=60)
     district: Optional[str] = Field(default=None, max_length=60)
+    village: Optional[str] = Field(default=None, max_length=80)  # tengkulak
     shareContact: Optional[bool] = None
 
-    @field_validator("name", "region", "district")
+    @field_validator("name", "region", "district", "village")
     @classmethod
     def _strip(cls, v: Optional[str]) -> Optional[str]:
         return _clean(v)
@@ -435,6 +446,16 @@ class ResetPasswordIn(BaseModel):
 class ChangePasswordIn(BaseModel):
     currentPassword: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=8, max_length=128)
+
+
+class VerifyAccountIn(BaseModel):
+    action: Literal["approve", "reject"]
+    reason: Optional[str] = Field(default=None, max_length=300)
+
+    @field_validator("reason")
+    @classmethod
+    def _strip(cls, v: Optional[str]) -> Optional[str]:
+        return _clean(v) or None
 
 
 class StockIn(BaseModel):
@@ -477,6 +498,59 @@ def _valid_region(region: Optional[str], district: Optional[str]) -> tuple[str, 
     return kab, district
 
 
+PASSWORD_RULES = (
+    (lambda p: len(p) >= 8, "minimal 8 karakter"),
+    (lambda p: re.search(r"[a-z]", p), "minimal 1 huruf kecil"),
+    (lambda p: re.search(r"[A-Z]", p), "minimal 1 huruf besar"),
+    (lambda p: re.search(r"\d", p), "minimal 1 angka"),
+)
+
+
+def _check_password(password: str) -> None:
+    """Aturan password baru (daftar, lupa & ubah password). Login tetap menerima password lama."""
+    missing = [label for ok, label in PASSWORD_RULES if not ok(password)]
+    if missing:
+        err(400, "Password belum memenuhi syarat: " + ", ".join(missing) + ".")
+
+
+@lru_cache(maxsize=1)
+def _wilayah() -> dict:
+    with open(WILAYAH_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _valid_address(region: Optional[str], district: Optional[str], village: Optional[str]) -> tuple[str, str, str]:
+    """Cocokkan kabupaten -> kecamatan -> desa/kelurahan dengan data Kepmendagri; kembalikan nama baku."""
+    kab = pricing.canonical_region(region or "")
+    data = _wilayah()["kabupaten"].get(kab) if kab in REGIONS else None
+    if not data:
+        err(400, "Kabupaten harus Garut atau Cianjur.")
+    kec = next((k for k in data["kecamatan"] if k["nama"].casefold() == (district or "").casefold()), None)
+    if not kec:
+        err(400, f"Kecamatan tidak ditemukan di Kabupaten {kab}.")
+    desa = next((d for d in kec["desa"] if d["nama"].casefold() == (village or "").casefold()), None)
+    if not desa:
+        err(400, f"Desa/kelurahan tidak ditemukan di Kecamatan {kec['nama']}.")
+    return kab, kec["nama"], desa["nama"]
+
+
+def _notify(phone_e164: str, text: str) -> None:
+    """Kirim WhatsApp bila WAHA aktif; kegagalan tidak membatalkan aksi admin."""
+    if not wa.configured():
+        return
+    try:
+        wa.send_text(phone_e164, text)
+    except Exception:  # noqa: BLE001
+        log.warning("Notifikasi WhatsApp gagal dikirim ke %s", auth.mask_phone(auth.from_e164(phone_e164)))
+
+
+def _inactive_message(u: dict) -> str:
+    if u["account_status"] == "pending":
+        return "Akun Anda masih menunggu verifikasi admin. Kami kabari lewat WhatsApp setelah akun disetujui."
+    reason = f" Alasan: {u['rejection_reason']}." if u.get("rejection_reason") else ""
+    return f"Pendaftaran akun Anda ditolak admin.{reason} Hubungi admin Temu Tani untuk informasi lebih lanjut."
+
+
 # ---------------------------------------------------------------------------
 # Endpoint umum
 # ---------------------------------------------------------------------------
@@ -494,27 +568,51 @@ def health():
 # ---------------------------------------------------------------------------
 # Akun
 # ---------------------------------------------------------------------------
+@app.get("/api/wilayah", tags=["umum"])
+def get_wilayah():
+    """Daftar kabupaten -> kecamatan -> desa/kelurahan wilayah layanan (untuk dropdown alamat)."""
+    data = _wilayah()
+    return {
+        "source": data.get("source", ""),
+        "kabupaten": [
+            {"nama": kab, "kecamatan": [{"nama": k["nama"], "desa": [{"nama": d["nama"], "jenis": d["jenis"]} for d in k["desa"]]}
+                                         for k in data["kabupaten"][kab]["kecamatan"]]}
+            for kab in REGIONS if kab in data["kabupaten"]
+        ],
+    }
+
+
 @app.post("/api/auth/register", tags=["akun"], status_code=201)
 def register(body: RegisterIn):
+    """Tengkulak daftar mandiri -> status 'pending' sampai disetujui admin (belum bisa masuk)."""
     phone = _valid_phone(body.phone)
-    kab, kec = _valid_region(body.region, body.district) if body.role == "petani" else (None, None)
+    _check_password(body.password)
+    kab, kec, kel = _valid_address(body.region, body.district, body.village)
     password_hash = auth.hash_password(body.password)
     with tx() as cur:
-        cur.execute("select password_hash from users where phone = %s", (phone,))
+        cur.execute("select id, role, password_hash, account_status from users where phone = %s", (phone,))
         existing = cur.fetchone()
-        if existing:
+        if existing and not (existing["role"] == "tengkulak" and existing["account_status"] == "rejected"):
+            if existing["account_status"] == "pending":
+                err(409, "Nomor ini sudah mendaftar dan sedang menunggu verifikasi admin.")
             if not existing["password_hash"]:
                 err(409, "Nomor ini sudah terdaftar melalui WhatsApp. Gunakan menu Lupa Password untuk membuat password.")
             err(409, "Nomor HP sudah terdaftar. Silakan masuk.")
-        cur.execute(
-            f"insert into users (phone, role, name, display_name, kabupaten, kecamatan, password_hash)"
-            f" values (%s, %s, %s, %s, %s, %s, %s) returning {USER_COLS}",
-            (phone, body.role, body.name, body.name, kab, kec, password_hash),
-        )
-        user = cur.fetchone()
-        if body.role == "petani":
-            cur.execute("insert into stocks (farmer_id, grain_type, quantity_kg) values (%s, 'GKP', 0) on conflict do nothing", (user["id"],))
-    return _session(user)
+        if existing:  # pernah ditolak: ajukan ulang dengan data baru
+            cur.execute(
+                """update users set name = %s, display_name = %s, kabupaten = %s, kecamatan = %s, kelurahan = %s,
+                       password_hash = %s, account_status = 'pending', rejection_reason = null, verified_at = null, verified_by = null
+                   where id = %s""",
+                (body.name, body.name, kab, kec, kel, password_hash, existing["id"]),
+            )
+        else:
+            cur.execute(
+                "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, password_hash, account_status)"
+                " values (%s, 'tengkulak', %s, %s, %s, %s, %s, %s, 'pending')",
+                (phone, body.name, body.name, kab, kec, kel, password_hash),
+            )
+    return {"status": "pending",
+            "message": "Pendaftaran berhasil dikirim. Akun Anda akan aktif setelah diverifikasi admin; kabar dikirim lewat WhatsApp."}
 
 
 @app.post("/api/auth/login", tags=["akun"])
@@ -529,6 +627,8 @@ def login(body: LoginIn):
         err(401, "Akun ini belum memiliki password. Gunakan menu Lupa Password untuk membuatnya.")
     if not user or not auth.verify_password(body.password, user["password_hash"]):
         err(401, "Nomor HP atau password salah.")
+    if user["account_status"] != "active":
+        err(403, _inactive_message(user))
     return _session(user)
 
 
@@ -541,16 +641,20 @@ def me(actor: Actor = Depends(get_actor)):
 
 @app.put("/api/auth/profile", tags=["akun"])
 def update_profile(body: ProfileIn, actor: Actor = Depends(get_actor)):
-    kab, kec = _valid_region(body.region, body.district) if actor.role == "petani" else (None, None)
+    kab = kec = kel = None
+    if actor.role == "petani":
+        kab, kec = _valid_region(body.region, body.district)
+    elif actor.role == "tengkulak" and (body.region or body.district or body.village):
+        kab, kec, kel = _valid_address(body.region, body.district, body.village)
     with tx() as cur:
         cur.execute(
             f"""update users set
                    display_name = case when display_name = name then %s else display_name end,
                    name = %s,
-                   kabupaten = coalesce(%s, kabupaten), kecamatan = coalesce(%s, kecamatan),
+                   kabupaten = coalesce(%s, kabupaten), kecamatan = coalesce(%s, kecamatan), kelurahan = coalesce(%s, kelurahan),
                    contact_sharing_consent = case when role = 'petani' then coalesce(%s, contact_sharing_consent) else contact_sharing_consent end
                 where id = %s returning {USER_COLS}""",
-            (body.name, body.name, kab, kec, body.shareContact, actor.user),
+            (body.name, body.name, kab, kec, kel, body.shareContact, actor.user),
         )
         user = cur.fetchone()
     return {**_session(user), "message": "Profil berhasil diperbarui."}
@@ -643,12 +747,15 @@ def _set_password(user_id: str, password: str) -> dict:
 @app.post("/api/auth/password/reset", tags=["akun"])
 def reset_password(body: ResetPasswordIn):
     phone = _valid_phone(body.phone)
+    _check_password(body.password)
     _consume_otp(phone, "reset_password", body.code)
     with tx() as cur:
-        cur.execute("select id from users where phone = %s", (phone,))
+        cur.execute("select id, account_status, rejection_reason from users where phone = %s", (phone,))
         row = cur.fetchone()
     if not row:
         err(400, "Kode verifikasi salah.")
+    if row["account_status"] != "active":
+        err(403, _inactive_message(row))
     return {**_session(_set_password(str(row["id"]), body.password)), "message": "Password berhasil diatur ulang."}
 
 
@@ -664,6 +771,7 @@ def change_password(body: ChangePasswordIn, actor: Actor = Depends(get_actor)):
         err(400, "Password saat ini salah.")
     if body.currentPassword == body.password:
         err(400, "Password baru harus berbeda dari password saat ini.")
+    _check_password(body.password)
     # Token baru (sidik password berubah): sesi di perangkat lain otomatis keluar.
     return {**_session(_set_password(actor.user, body.password)), "message": "Password berhasil diubah."}
 
@@ -724,6 +832,89 @@ def get_news(
 
 
 # ---------------------------------------------------------------------------
+# Admin: kelola akun (petani dari database/chatbot + tengkulak daftar mandiri)
+# ---------------------------------------------------------------------------
+def _account_out(u: dict) -> dict:
+    return {
+        "id": str(u["id"]), "name": u["name"], "phone": auth.from_e164(u["phone"]), "role": u["role"],
+        "region": u["kabupaten"] or "", "district": u["kecamatan"] or "", "village": u["kelurahan"] or "",
+        "status": u["account_status"], "rejectionReason": u["rejection_reason"] or "",
+        "hasPassword": bool(u["password_hash"]),
+        "createdAt": u["created_at"].isoformat() if u["created_at"] else None,
+        "verifiedAt": u["verified_at"].isoformat() if u["verified_at"] else None,
+        "verifiedBy": u.get("verifier") or "",
+    }
+
+
+ACCOUNT_SELECT = (f"select {', '.join('u.' + c.strip() for c in USER_COLS.split(','))}, u.created_at, u.verified_at, v.name as verifier"
+                  " from users u left join users v on v.id = u.verified_by")
+
+
+@app.get("/api/admin/users", tags=["admin"])
+def admin_list_users(
+    role: Optional[Literal["petani", "tengkulak", "admin"]] = Query(default=None),
+    status: Optional[Literal["pending", "active", "rejected"]] = Query(default=None),
+    actor: Actor = Depends(get_actor),
+):
+    require(actor, "admin")
+    where, params = ["true"], []
+    if role:
+        where.append("u.role = %s")
+        params.append(role)
+    if status:
+        where.append("u.account_status = %s")
+        params.append(status)
+    with tx() as cur:
+        cur.execute(
+            f"{ACCOUNT_SELECT} where {' and '.join(where)}"
+            " order by (u.account_status = 'pending') desc, u.created_at desc",
+            tuple(params),
+        )
+        rows = cur.fetchall()
+        cur.execute(
+            """select count(*) filter (where account_status = 'pending') as pending,
+                      count(*) filter (where role = 'petani') as petani,
+                      count(*) filter (where role = 'tengkulak') as tengkulak,
+                      count(*) as total
+               from users"""
+        )
+        counts = cur.fetchone()
+    return {"items": [_account_out(r) for r in rows], "counts": counts}
+
+
+@app.post("/api/admin/users/{user_id}/verify", tags=["admin"])
+def admin_verify_user(user_id: UUID, body: VerifyAccountIn, actor: Actor = Depends(get_actor)):
+    """Setujui / tolak pendaftaran tengkulak. Akun yang sudah aktif juga bisa dinonaktifkan (tolak)."""
+    require(actor, "admin")
+    if body.action == "reject" and not body.reason:
+        err(400, "Tuliskan alasan penolakan agar pendaftar tahu apa yang perlu diperbaiki.")
+    with tx() as cur:
+        cur.execute(f"select {USER_COLS} from users where id = %s for update", (str(user_id),))
+        u = cur.fetchone()
+        if not u:
+            err(404, "Akun tidak ditemukan.")
+        if u["role"] != "tengkulak":
+            err(400, "Verifikasi hanya untuk akun tengkulak. Akun petani dikelola dari database/chatbot.")
+        target = "active" if body.action == "approve" else "rejected"
+        if u["account_status"] == target:
+            err(409, "Status akun sudah " + ("aktif." if target == "active" else "ditolak."))
+        cur.execute(
+            """update users set account_status = %s, rejection_reason = %s, verified_at = now(), verified_by = %s
+               where id = %s""",
+            (target, body.reason if target == "rejected" else None, actor.user, str(user_id)),
+        )
+        cur.execute(f"{ACCOUNT_SELECT} where u.id = %s", (str(user_id),))
+        out = _account_out(cur.fetchone())
+    if target == "active":
+        _notify(u["phone"], f"Halo {u['name']}, akun tengkulak Temu Tani Anda sudah disetujui admin. Silakan masuk dengan nomor HP dan password Anda.")
+        message = f"Akun {u['name']} disetujui dan sekarang bisa masuk."
+    else:
+        _notify(u["phone"], f"Halo {u['name']}, pendaftaran akun Temu Tani Anda belum dapat disetujui. Alasan: {body.reason}")
+        message = f"Pendaftaran {u['name']} ditolak."
+    return {"account": out, "message": message}
+
+
+# ---------------------------------------------------------------------------
 # Admin: ringkasan dari data asli database
 # ---------------------------------------------------------------------------
 @app.get("/api/admin/dashboard", tags=["admin"])
@@ -738,6 +929,8 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
             "select l.*, u.name, u.kabupaten from stock_logs l join users u on u.id = l.farmer_id order by l.created_at desc limit 30"
         )
         logs = cur.fetchall()
+        cur.execute("select count(*) as n from users where account_status = 'pending'")
+        pending_accounts = cur.fetchone()["n"]
     open_offers: dict[int, int] = {}
     for o in offers:
         if o["status"] in ("FARMER_TURN", "BUYER_TURN"):
@@ -788,6 +981,7 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
         "offers": [a_offer(o) for o in reversed(offers)],
         "transactions": trx,
         "events": [e for _, e in ev[:20]],
+        "pendingAccounts": pending_accounts,
     }
 
 

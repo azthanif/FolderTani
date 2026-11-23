@@ -53,8 +53,8 @@ export default function Home() {
                 <span className="accent">bertumbuh bersama.</span>
               </h1>
               <p className="hero-copy">
-                TemuTani menghubungkan petani dengan pembeli dan menghadirkan referensi harga gabah berbasis AI. Daftar sebagai petani atau
-                tengkulak untuk mulai menggunakan TemuTani.
+                TemuTani menghubungkan petani dengan pembeli dan menghadirkan referensi harga gabah berbasis AI. Tengkulak bisa
+                daftar mandiri; akun petani dibuatkan oleh admin TemuTani.
               </p>
               <div className="hero-cta">
                 <Link className="hero-login" href="/masuk">
@@ -65,7 +65,7 @@ export default function Home() {
                   </svg>
                 </Link>
                 <Link className="hero-signup" href="/daftar">
-                  Daftar Akun Baru
+                  Daftar sebagai Tengkulak
                 </Link>
               </div>
               <p className="hero-cta-note">Untuk petani dan tengkulak di Garut &amp; Cianjur</p>

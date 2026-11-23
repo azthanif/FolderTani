@@ -16,6 +16,8 @@ const BADGE: Record<string, string> = {
   Selesai: "green",
   Berhasil: "green",
   "Perlu Tinjauan": "red",
+  "Menunggu Verifikasi": "gold",
+  Aktif: "green",
 };
 
 export function Badge({ status }: { status: string }) {
