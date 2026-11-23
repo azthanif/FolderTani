@@ -3,12 +3,6 @@ import "@/styles/landing.css";
 
 export const metadata = { title: "TemuTani" };
 
-const ChevronRight = () => (
-  <svg className="action-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="m9 18 6-6-6-6" />
-  </svg>
-);
-
 const svgProps = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, viewBox: "0 0 24 24" } as const;
 
 export default function Home() {
@@ -207,9 +201,6 @@ export default function Home() {
                 TemuTani dikembangkan sebagai bagian dari ekosistem MaxxiTani. Integrasi informasi pasar dengan data pertanian dan lingkungan membuka
                 peluang pengambilan keputusan yang lebih menyeluruh.
               </p>
-              <a className="btn btn-secondary" href="#mulai">
-                Kenali inisiatif TemuTani <ChevronRight />
-              </a>
             </div>
             <div className="ecosystem-points">
               <div className="eco-point">
@@ -257,13 +248,7 @@ export default function Home() {
               <p>Kenali inisiatif TemuTani dalam ekosistem digital MaxxiTani.</p>
             </div>
             <div className="cta-actions">
-              <a className="btn btn-primary" href="#tentang">
-                Kenali TemuTani{" "}
-                <svg className="action-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M7 17 17 7M8 7h9v9" />
-                </svg>
-              </a>
-              <a className="btn btn-secondary" href="#beranda">
+              <a className="btn btn-primary" href="#beranda">
                 Kembali ke atas{" "}
                 <svg className="action-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m6 14 6-6 6 6" />
