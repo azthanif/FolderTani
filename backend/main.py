@@ -163,7 +163,7 @@ def _bearer_user(authorization: str) -> Optional[dict]:
     if not authorization.lower().startswith("bearer "):
         return None
     data = auth.read_token(authorization[7:].strip())
-    if not data:
+    if not data or data.get("k"):  # token halaman tunggu pendaftaran bukan sesi login
         err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
     with tx() as cur:
         cur.execute(f"select {USER_COLS} from users where id = %s", (data["u"],))
@@ -606,14 +606,31 @@ def register(body: RegisterIn):
                    where id = %s""",
                 (body.name, body.name, kab, kec, kel, password_hash, existing["id"]),
             )
+            user_id = str(existing["id"])
         else:
             cur.execute(
                 "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, password_hash, status, registered_via)"
-                " values (%s, 'tengkulak', %s, %s, %s, %s, %s, %s, 'pending', 'web')",
+                " values (%s, 'tengkulak', %s, %s, %s, %s, %s, %s, 'pending', 'web') returning id",
                 (phone, body.name, body.name, kab, kec, kel, password_hash),
             )
-    return {"status": "pending",
+            user_id = str(cur.fetchone()["id"])
+    return {"status": "pending", "statusToken": auth.issue_signup_token(user_id, password_hash),
             "message": "Pendaftaran berhasil dikirim. Akun Anda akan aktif setelah diverifikasi admin; kabar dikirim lewat WhatsApp."}
+
+
+@app.get("/api/auth/register/status", tags=["akun"])
+def register_status(token: str = Query(min_length=10, max_length=600)):
+    """Dipanggil berkala oleh halaman tunggu pendaftaran: status terbaru (pending/approved/rejected)."""
+    data = auth.read_token(token)
+    if not data or data.get("k") != "signup":
+        err(401, "Tautan status pendaftaran tidak berlaku. Silakan coba masuk atau daftar ulang.")
+    with tx() as cur:
+        cur.execute("select name, status, review_note, password_hash from users where id = %s", (data["u"],))
+        u = cur.fetchone()
+    if not u or not u["password_hash"] or auth.password_fingerprint(u["password_hash"]) != data.get("pv"):
+        err(401, "Tautan status pendaftaran tidak berlaku. Silakan coba masuk atau daftar ulang.")
+    return {"status": u["status"], "name": u["name"],
+            "reason": (u["review_note"] or "") if u["status"] == "rejected" else ""}
 
 
 @app.post("/api/auth/login", tags=["akun"])

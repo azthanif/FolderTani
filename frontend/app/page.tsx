@@ -42,6 +42,10 @@ export default function Home() {
       </header>
       <main>
         <section className="hero" id="beranda">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="hero-mascot left" src="/assets/maskot/menyambut.webp" alt="" aria-hidden="true" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="hero-mascot right" src="/assets/maskot/cek-harga.webp" alt="" aria-hidden="true" />
           <div className="wrap">
             <div className="hero-inner">
               <div className="eyebrow">

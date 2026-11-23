@@ -3,12 +3,13 @@
    password + ulangi, alamat kabupaten -> kecamatan -> desa/kelurahan. Akun aktif setelah diverifikasi admin. */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { AddressFields, type Address } from "@/components/auth/AddressFields";
 import { AuthShell, PasswordField } from "@/components/auth/AuthShell";
 import { ConfirmHint, PasswordRules } from "@/components/auth/PasswordRules";
+import { SignupWaiting } from "@/components/auth/SignupWaiting";
 import { ApiError } from "@/lib/api";
-import { dashboardPath, getSession, isStrongPassword, register } from "@/lib/auth";
+import { dashboardPath, getPendingSignup, getSession, isStrongPassword, register, setPendingSignup, type PendingSignup } from "@/lib/auth";
 
 export default function DaftarPage() {
   const router = useRouter();
@@ -20,12 +21,19 @@ export default function DaftarPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [waRegistered, setWaRegistered] = useState(false);
-  const [done, setDone] = useState("");
+  const [pending, setPending] = useState<PendingSignup | null>(null);
 
   useEffect(() => {
     const s = getSession();
     if (s) router.replace(dashboardPath(s.user.role));
+    else setPending(getPendingSignup()); // masih menunggu verifikasi dari kunjungan sebelumnya
   }, [router]);
+
+  const resetPending = useCallback(() => {
+    setPendingSignup(null);
+    setPending(null);
+  }, []);
+  const finishPending = useCallback(() => setPendingSignup(null), []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -36,7 +44,11 @@ export default function DaftarPage() {
     setBusy(true);
     try {
       const r = await register({ name: name.trim(), phone, password, ...address });
-      setDone(r.message);
+      const p = { token: r.statusToken, name: name.trim(), phone };
+      setPendingSignup(p);
+      setPending(p);
+      setPassword("");
+      setConfirm("");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Pendaftaran gagal. Coba lagi.");
       if (err instanceof ApiError && err.message.includes("Lupa Password")) setWaRegistered(true);
@@ -45,19 +57,10 @@ export default function DaftarPage() {
     }
   }
 
-  if (done) {
+  if (pending) {
     return (
-      <AuthShell title="Pendaftaran terkirim" subtitle="Terima kasih telah mendaftar sebagai tengkulak." footer={<Link href="/">Kembali ke beranda</Link>}>
-        <div className="auth-success" role="status">
-          <div className="auth-success-icon" aria-hidden="true">
-            ✓
-          </div>
-          <h2>Menunggu verifikasi admin</h2>
-          <p>{done}</p>
-          <Link className="auth-submit" href="/masuk" style={{ textDecoration: "none", width: "100%" }}>
-            Ke halaman Masuk
-          </Link>
-        </div>
+      <AuthShell title="Status pendaftaran" subtitle="Pendaftaran tengkulak Temu Tani." mascot="menunjuk" footer={null}>
+        <SignupWaiting pending={pending} onReset={resetPending} onDone={finishPending} />
       </AuthShell>
     );
   }
@@ -65,6 +68,7 @@ export default function DaftarPage() {
   return (
     <AuthShell
       title="Daftar sebagai Tengkulak"
+      mascot="menunjuk"
       subtitle="Lengkapi data di bawah. Akun aktif setelah diverifikasi admin Temu Tani."
       footer={
         <>

@@ -63,6 +63,7 @@ function ForgotForm() {
   return (
     <AuthShell
       title="Lupa password"
+      mascot="ide"
       subtitle={step === 1 ? "Masukkan nomor HP Anda. Kode verifikasi akan dikirim lewat WhatsApp." : "Masukkan kode dari WhatsApp dan buat password baru."}
       footer={
         <>

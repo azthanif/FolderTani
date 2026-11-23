@@ -279,3 +279,10 @@
     .landing .hero-login:focus-visible,.landing .hero-signup:focus-visible{outline:3px solid #2b805b66;outline-offset:3px}
     .landing .hero-cta-note{margin:16px 0 0;font-size:13px;color:#7a887f}
     @media(max-width:520px){.landing .hero-cta{flex-direction:column;align-items:stretch;max-width:340px;margin-left:auto;margin-right:auto}.landing .hero-login,.landing .hero-signup{justify-content:center}.landing .hero-login{font-size:17px;padding:17px 28px}}
+
+/* Maskot kerbau tani di hero (disembunyikan di layar sempit agar teks tetap lega) */
+.landing .hero-mascot{position:absolute;bottom:20px;height:min(52%,330px);width:auto;z-index:0;pointer-events:none;filter:drop-shadow(0 16px 24px rgba(30,60,40,.16))}
+.landing .hero-mascot.left{left:max(12px,calc(50% - 720px))}
+.landing .hero-mascot.right{right:max(12px,calc(50% - 720px))}
+@media(max-width:1380px){.landing .hero-mascot{height:min(40%,250px)}}
+@media(max-width:980px){.landing .hero-mascot{display:none}}

@@ -65,6 +65,44 @@ export interface RegisterPayload {
 export interface RegisterResult {
   status: "pending";
   message: string;
+  /** Token untuk halaman tunggu: hanya bisa membaca status pendaftaran sendiri. */
+  statusToken: string;
+}
+
+export type SignupStatus = "pending" | "approved" | "rejected";
+export interface SignupStatusResponse {
+  status: SignupStatus;
+  name: string;
+  reason: string;
+}
+
+export function getSignupStatus(token: string): Promise<SignupStatusResponse> {
+  return api<SignupStatusResponse>(`/auth/register/status?token=${encodeURIComponent(token)}`, { auth: false });
+}
+
+/** Pendaftaran yang sedang menunggu disimpan di perangkat agar halaman tunggu tetap muncul setelah dimuat ulang. */
+const PENDING_KEY = "temutani.pendingSignup";
+export interface PendingSignup {
+  token: string;
+  name: string;
+  phone: string;
+}
+export function getPendingSignup(): PendingSignup | null {
+  try {
+    const raw = window.localStorage.getItem(PENDING_KEY);
+    const p = raw ? (JSON.parse(raw) as PendingSignup) : null;
+    return p?.token ? p : null;
+  } catch {
+    return null;
+  }
+}
+export function setPendingSignup(p: PendingSignup | null) {
+  try {
+    if (p) window.localStorage.setItem(PENDING_KEY, JSON.stringify(p));
+    else window.localStorage.removeItem(PENDING_KEY);
+  } catch {
+    /* storage diblokir: halaman tunggu hanya bertahan sampai dimuat ulang */
+  }
 }
 
 /** Akun baru berstatus menunggu verifikasi admin, jadi belum ada sesi yang disimpan. */

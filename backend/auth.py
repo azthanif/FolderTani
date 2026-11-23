@@ -132,3 +132,16 @@ def read_token(token: str) -> Optional[dict]:
         return data
     except (ValueError, json.JSONDecodeError):
         return None
+
+
+SIGNUP_TOKEN_TTL_SECONDS = 30 * 24 * 3600
+
+
+def issue_signup_token(user_id: str, password_hash: str) -> str:
+    """Token khusus halaman tunggu pendaftaran: hanya bisa membaca status pendaftaran sendiri, bukan sesi login.
+    Terikat ke hash password, jadi daftar ulang (password baru) membatalkan token lama."""
+    payload = _b64(json.dumps({
+        "k": "signup", "u": user_id, "pv": password_fingerprint(password_hash), "exp": int(time.time()) + SIGNUP_TOKEN_TTL_SECONDS,
+    }).encode())
+    sig = _b64(hmac.new(_SECRET, payload.encode(), hashlib.sha256).digest())
+    return f"{payload}.{sig}"

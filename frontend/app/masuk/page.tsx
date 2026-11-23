@@ -18,6 +18,9 @@ export default function MasukPage() {
   useEffect(() => {
     const s = getSession();
     if (s) router.replace(dashboardPath(s.user.role));
+    // Dari halaman tunggu pendaftaran (akun disetujui): isi nomor HP otomatis.
+    const fromSignup = new URLSearchParams(window.location.search).get("phone");
+    if (fromSignup) setPhone(fromSignup);
   }, [router]);
 
   async function submit(e: FormEvent) {
