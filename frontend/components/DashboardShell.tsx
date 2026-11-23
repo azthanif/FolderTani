@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getSession } from "@/lib/auth";
+import { showConfirm } from "@/lib/dialog";
 import { Icon, type IconName } from "./Icon";
 import { UIProvider, useUI, type UIContextValue } from "./UIProvider";
 
@@ -221,9 +222,16 @@ function ProfileMenu({
             type="button"
             className="profile-item danger"
             role="menuitem"
-            onClick={() => {
+            onClick={async () => {
               setOpen(false);
-              if (confirm("Keluar dari akun ini?")) onLogout();
+              const ok = await showConfirm({
+                title: "Keluar dari akun ini?",
+                message: "Anda perlu masuk lagi dengan nomor HP dan password untuk membuka dashboard.",
+                confirmLabel: "Keluar",
+                tone: "danger",
+                mascot: "melambai",
+              });
+              if (ok) onLogout();
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

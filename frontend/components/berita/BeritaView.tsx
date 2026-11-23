@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { getSession } from "@/lib/auth";
+import { showAlert } from "@/lib/dialog";
 
 interface NerEntity {
   word?: string;
@@ -169,11 +170,11 @@ export function BeritaView() {
 
   function apply(f: string, t: string) {
     if (!f || !t) {
-      alert("Pilih tanggal awal dan akhir terlebih dahulu.");
+      void showAlert({ title: "Tanggal belum lengkap", message: "Pilih tanggal awal dan akhir terlebih dahulu.", tone: "info" });
       return;
     }
     if (f > t) {
-      alert("Tanggal awal tidak boleh melebihi tanggal akhir.");
+      void showAlert({ title: "Rentang tanggal tidak valid", message: "Tanggal awal tidak boleh melebihi tanggal akhir." });
       return;
     }
     setRange([f, t]);
