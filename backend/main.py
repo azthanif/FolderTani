@@ -24,10 +24,10 @@ import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, pricing, wa
+from . import auth, pricing, wa, xlsx
 from .db import DatabaseNotConfigured, set_log_context, tx
 from .news import load_news, load_news_supabase
 from .store import BlobStore
@@ -62,6 +62,7 @@ if _origins:
         allow_origins=_origins,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
+        expose_headers=["Content-Disposition"],
     )
 
 
@@ -446,6 +447,26 @@ class ResetPasswordIn(BaseModel):
 class ChangePasswordIn(BaseModel):
     currentPassword: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=8, max_length=128)
+
+
+class AdminFarmerIn(BaseModel):
+    """Admin menambahkan akun petani. Password opsional: bila kosong, petani membuatnya lewat Lupa Password."""
+    name: str = Field(min_length=3, max_length=80)
+    phone: str = Field(min_length=9, max_length=20)
+    region: str = Field(min_length=1, max_length=60)
+    district: str = Field(min_length=1, max_length=60)
+    village: str = Field(min_length=1, max_length=80)
+    password: Optional[str] = Field(default=None, max_length=128)
+
+    @field_validator("name", "region", "district", "village")
+    @classmethod
+    def _strip(cls, v: Optional[str]) -> Optional[str]:
+        return _clean(v)
+
+    @field_validator("password")
+    @classmethod
+    def _empty_none(cls, v: Optional[str]) -> Optional[str]:
+        return v or None
 
 
 class VerifyAccountIn(BaseModel):
@@ -898,6 +919,95 @@ def admin_list_users(
         )
         counts = cur.fetchone()
     return {"items": [_account_out(r) for r in rows], "counts": counts}
+
+
+@app.post("/api/admin/users", tags=["admin"], status_code=201)
+def admin_create_farmer(body: AdminFarmerIn, actor: Actor = Depends(get_actor)):
+    """Tambah akun petani (langsung aktif). Stok GKP awal 0 kg dibuat seperti pendaftaran via chatbot."""
+    require(actor, "admin")
+    phone = _valid_phone(body.phone)
+    kab, kec, kel = _valid_address(body.region, body.district, body.village)
+    if body.password:
+        _check_password(body.password)
+    with tx() as cur:
+        cur.execute("select role, name from users where phone = %s", (phone,))
+        existing = cur.fetchone()
+        if existing:
+            err(409, f"Nomor HP sudah terdaftar atas nama {existing['name']} ({existing['role']}).")
+        cur.execute(
+            "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, password_hash,"
+            " status, registered_via, reviewed_at, reviewed_by, review_note)"
+            " values (%s, 'petani', %s, %s, %s, %s, %s, %s, 'approved', 'admin', now(), %s, 'ditambahkan admin') returning id",
+            (phone, body.name, body.name, kab, kec, kel, auth.hash_password(body.password) if body.password else None, actor.name),
+        )
+        uid = cur.fetchone()["id"]
+        cur.execute("insert into stocks (farmer_id, grain_type, quantity_kg) values (%s, 'GKP', 0) on conflict do nothing", (uid,))
+        cur.execute(f"{ACCOUNT_SELECT} where u.id = %s", (uid,))
+        out = _account_out(cur.fetchone())
+    how = ("Silakan masuk dengan nomor HP ini dan password dari admin." if body.password
+           else "Buat password lewat menu Lupa Password di web, atau langsung gunakan chatbot WhatsApp ini.")
+    _notify(phone, f"Halo {body.name}, akun petani Temu Tani Anda sudah dibuat oleh admin. {how}")
+    return {"account": out, "message": f"Akun petani {body.name} berhasil ditambahkan."}
+
+
+EXPORT_HEADERS = ["Nama", "Nomor HP", "Peran", "Status", "Kabupaten", "Kecamatan", "Desa/Kelurahan", "Terdaftar via",
+                  "Tanggal terdaftar", "Login web", "Ditinjau oleh", "Tanggal ditinjau", "Catatan peninjauan"]
+_STATUS_ID = {"pending": "Menunggu verifikasi", "approved": "Aktif", "rejected": "Ditolak"}
+_ROLE_ID = {"petani": "Petani", "tengkulak": "Tengkulak", "admin": "Admin"}
+_VIA_ID = {"seed": "Data awal / chatbot", "web": "Daftar mandiri (web)", "admin": "Ditambahkan admin"}
+
+
+def _wib(ts) -> str:
+    return ts.astimezone(WIB).strftime("%d-%m-%Y %H:%M") if ts else ""
+
+
+@app.get("/api/admin/users/export", tags=["admin"])
+def admin_export_users(
+    format: Literal["xlsx", "csv"] = Query(default="xlsx"),
+    role: Optional[Literal["petani", "tengkulak", "admin"]] = Query(default=None),
+    status: Optional[Literal["pending", "approved", "rejected"]] = Query(default=None),
+    q: str = Query(default="", max_length=80),
+    actor: Actor = Depends(get_actor),
+):
+    """Unduh daftar akun (mengikuti filter tab & pencarian di halaman Kelola Akun)."""
+    require(actor, "admin")
+    where, params = ["true"], []
+    if role:
+        where.append("u.role = %s")
+        params.append(role)
+    if status:
+        where.append("u.status = %s")
+        params.append(status)
+    with tx() as cur:
+        cur.execute(f"{ACCOUNT_SELECT} where {' and '.join(where)} order by u.role, u.name", tuple(params))
+        rows = cur.fetchall()
+    needle = q.strip().casefold()
+    data = []
+    for u in rows:
+        local = auth.from_e164(u["phone"])
+        if needle and needle not in " ".join([u["name"], local, u["kabupaten"] or "", u["kecamatan"] or "", u["kelurahan"] or ""]).casefold():
+            continue
+        data.append([u["name"], local, _ROLE_ID.get(u["role"], u["role"]), _STATUS_ID.get(u["status"], u["status"]),
+                     u["kabupaten"] or "", u["kecamatan"] or "", u["kelurahan"] or "", _VIA_ID.get(u["registered_via"], u["registered_via"]),
+                     _wib(u["created_at"]), "Sudah" if u["password_hash"] else "Belum", u["reviewed_by"] or "", _wib(u["reviewed_at"]),
+                     u["review_note"] or ""])
+    stamp = datetime.now(WIB).strftime("%Y%m%d-%H%M")
+    scope = status or role or "semua"
+    filename = f"temutani-akun-{scope}-{stamp}.{format}"
+    if format == "csv":
+        import csv, io
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(EXPORT_HEADERS)
+        w.writerows(data)
+        content = ("\ufeff" + buf.getvalue()).encode("utf-8")  # BOM agar Excel membaca UTF-8
+        media = "text/csv; charset=utf-8"
+    else:
+        content = xlsx.build_xlsx("Akun Temu Tani", EXPORT_HEADERS, data)
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                                                         "Access-Control-Expose-Headers": "Content-Disposition",
+                                                         "Cache-Control": "no-store"})
 
 
 @app.post("/api/admin/users/{user_id}/verify", tags=["admin"])

@@ -59,3 +59,33 @@ export async function api<T = unknown>(path: string, { method = "GET", body, aut
   }
   return data as T;
 }
+
+/** Unduh file dari API (mis. ekspor Excel/CSV) dengan token sesi, lalu simpan lewat browser. */
+export async function downloadFile(path: string, fallbackName: string): Promise<string> {
+  const token = sessionToken();
+  let res: Response;
+  try {
+    res = await fetch(API_BASE + path, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
+  } catch {
+    throw new ApiError("Server Temu Tani tidak dapat dihubungi. Pastikan FastAPI sedang berjalan.", 0);
+  }
+  if (!res.ok) {
+    let detail: unknown = null;
+    try {
+      detail = ((await res.json()) as { detail?: unknown }).detail;
+    } catch {
+      /* bukan JSON */
+    }
+    throw new ApiError(typeof detail === "string" ? detail : `Unduhan gagal (HTTP ${res.status}).`, res.status);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return name;
+}

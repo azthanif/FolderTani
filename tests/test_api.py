@@ -110,6 +110,49 @@ def test_cannot_delete_account_with_offer_history(client, login):
         assert r.status_code == 409 and "riwayat penawaran" in r.json()["detail"]
 
 
+FARMER = {"name": "Pak Dadang", "phone": "081355566677", "region": "Garut", "district": "Leles", "village": "Cangkuang"}
+
+
+def test_admin_adds_farmer(client, login, sql):
+    HA = login("admin")
+    assert client.post("/api/admin/users", headers=login("tengkulak"), json=FARMER).status_code == 403
+    # tanpa password: aktif, belum bisa login web (buat lewat Lupa Password)
+    r = client.post("/api/admin/users", headers=HA, json=FARMER)
+    assert r.status_code == 201, r.text
+    a = r.json()["account"]
+    assert (a["role"], a["status"], a["registeredVia"], a["village"], a["hasPassword"], a["verifiedBy"]) == (
+        "petani", "approved", "admin", "Cangkuang", False, "Admin Temu Tani")
+    assert sql("select s.quantity_kg from stocks s join users u on u.id = s.farmer_id where u.phone = '+6281355566677'")[0]["quantity_kg"] == 0
+    assert client.post("/api/admin/users", headers=HA, json=FARMER).status_code == 409
+    assert client.post("/api/admin/users", headers=HA, json={**FARMER, "phone": PHONES["tengkulak"]}).status_code == 409
+    # dengan password awal: langsung bisa masuk
+    r = client.post("/api/admin/users", headers=HA, json={**FARMER, "phone": "081355566688", "password": "Petani2026"})
+    assert r.status_code == 201
+    assert client.post("/api/auth/login", json={"phone": "081355566688", "password": "Petani2026"}).json()["user"]["role"] == "petani"
+    # validasi
+    assert client.post("/api/admin/users", headers=HA, json={**FARMER, "phone": "081355566699", "password": "lemah"}).status_code == 400
+    assert client.post("/api/admin/users", headers=HA, json={**FARMER, "phone": "081355566699", "village": "Fiktif"}).status_code == 400
+
+
+def test_admin_exports_accounts(client, login):
+    import csv, io, zipfile
+    HA = login("admin")
+    client.post("/api/auth/register", json=TK_BODY)
+    assert client.get("/api/admin/users/export", headers=login("petani")).status_code == 403
+    r = client.get("/api/admin/users/export", headers=HA, params={"format": "csv", "role": "petani"})
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"] and "petani" in r.headers["content-disposition"]
+    rows = list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
+    assert rows[0][:4] == ["Nama", "Nomor HP", "Peran", "Status"] and len(rows) == 4 and all(x[2] == "Petani" for x in rows[1:])
+    assert any(x[1] == PHONES["petani"] for x in rows[1:])  # nomor tetap diawali 0
+    r = client.get("/api/admin/users/export", headers=HA, params={"status": "pending"})
+    assert r.headers["content-type"].startswith("application/vnd.openxmlformats")
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    sheet = z.read("xl/worksheets/sheet1.xml").decode()
+    assert "CV Padi Jaya" in sheet and "Menunggu verifikasi" in sheet and "Pak Asep" not in sheet
+    r = client.get("/api/admin/users/export", headers=HA, params={"format": "csv", "q": "budi"})
+    assert [x[0] for x in list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))[1:]] == ["Pak Budi Santoso"]
+
+
 def test_register_validation(client):
     post = lambda **kw: client.post("/api/auth/register", json={**TK_BODY, **kw})
     r = post(region="Sukabumi")
