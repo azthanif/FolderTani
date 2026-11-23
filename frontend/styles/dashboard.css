@@ -1472,3 +1472,11 @@
 .dash .profile-item.danger:hover{background:#fff0ed}
 @media(prefers-reduced-motion:reduce){.dash .profile-dropdown{animation:none}}
 @media(max-width:620px){.dash .profile-dropdown{width:min(268px,calc(100vw - 32px))}}
+
+.dash .icon-btn.danger.sm{width:30px;height:30px;color:#b14d4e;border-color:#ffdcd8;background:#fff}
+.dash .icon-btn.danger.sm:hover:not(:disabled){background:#fff0ed}
+.dash .delete-warning{padding:12px 14px;border-radius:10px;background:#fff6f4;border:1px solid #ffdcd8;color:#6b2f2c;font-size:12.5px;line-height:1.55}
+.dash .delete-warning strong{display:block;margin-bottom:6px;color:#9b2c2c}
+.dash .delete-warning ul{margin:0;padding-left:18px;display:grid;gap:3px}
+.dash .delete-input{height:38px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;font-size:13px;letter-spacing:1px;outline:none}
+.dash .delete-input:focus{border-color:#e7a19c;box-shadow:0 0 0 3px #fdecea}

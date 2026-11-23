@@ -933,6 +933,33 @@ def admin_verify_user(user_id: UUID, body: VerifyAccountIn, actor: Actor = Depen
     return {"account": out, "message": message}
 
 
+@app.delete("/api/admin/users/{user_id}", tags=["admin"])
+def admin_delete_user(user_id: UUID, actor: Actor = Depends(get_actor)):
+    """Hapus akun petani/tengkulak secara permanen. Akun yang punya riwayat penawaran tidak bisa dihapus
+    agar riwayat negosiasi & kesepakatan tetap utuh. Stok dan riwayat stok petani ikut terhapus."""
+    require(actor, "admin")
+    if str(user_id) == actor.user:
+        err(400, "Anda tidak bisa menghapus akun Anda sendiri.")
+    with tx() as cur:
+        cur.execute("select id, phone, role, name from users where id = %s for update", (str(user_id),))
+        u = cur.fetchone()
+        if not u:
+            err(404, "Akun tidak ditemukan.")
+        if u["role"] == "admin":
+            err(400, "Akun admin tidak bisa dihapus dari menu ini.")
+        if u["role"] == "petani":
+            cur.execute("select count(*) as n from offers where farmer_id = %s", (u["id"],))
+        else:
+            cur.execute("select count(*) as n from requests where buyer_phone = %s", (u["phone"],))
+        if cur.fetchone()["n"]:
+            err(409, f"{u['name']} punya riwayat penawaran/kesepakatan, jadi akunnya tidak bisa dihapus agar riwayat transaksi tetap utuh."
+                     + (" Tolak akunnya saja bila tidak ingin ia masuk lagi." if u["role"] == "tengkulak" else ""))
+        cur.execute("delete from otp_codes where phone = %s", (u["phone"],))
+        cur.execute("delete from users where id = %s", (u["id"],))
+    log.info("Akun %s (%s) dihapus oleh admin %s", u["id"], u["role"], actor.user)
+    return {"message": f"Akun {u['name']} berhasil dihapus."}
+
+
 # ---------------------------------------------------------------------------
 # Admin: ringkasan dari data asli database
 # ---------------------------------------------------------------------------

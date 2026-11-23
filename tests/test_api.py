@@ -79,6 +79,37 @@ def test_admin_rejects_registration_and_applicant_can_reapply(client, login, sql
     assert client.post(f"/api/admin/users/{petani[0]['id']}/verify", headers=HA, json={"action": "approve"}).status_code == 400
 
 
+def test_admin_deletes_account(client, login, sql):
+    HA = login("admin")
+    client.post("/api/auth/register", json=TK_BODY)
+    items = {a["phone"]: a for a in client.get("/api/admin/users", headers=HA).json()["items"]}
+    # bukan admin: dilarang
+    assert client.delete(f"/api/admin/users/{items['081377788899']['id']}", headers=login("tengkulak")).status_code == 403
+    # tengkulak tanpa riwayat penawaran: bisa dihapus, OTP ikut bersih
+    sql("insert into otp_codes (phone, purpose, code_hash, expires_at) values ('+6281377788899', 'reset_password', 'x', now())")
+    r = client.delete(f"/api/admin/users/{items['081377788899']['id']}", headers=HA)
+    assert r.status_code == 200, r.text
+    assert sql("select count(*) as n from users where phone = '+6281377788899'")[0]["n"] == 0
+    assert sql("select count(*) as n from otp_codes where phone = '+6281377788899'")[0]["n"] == 0
+    # petani tanpa penawaran: stok & riwayat stok ikut terhapus
+    r = client.delete(f"/api/admin/users/{items['081200000009']['id']}", headers=HA)
+    assert r.status_code == 200, r.text
+    # admin tidak bisa menghapus dirinya / admin lain
+    assert client.delete(f"/api/admin/users/{items['081241831052']['id']}", headers=HA).status_code == 400
+    assert client.delete("/api/admin/users/00000000-0000-0000-0000-000000000000", headers=HA).status_code == 404
+
+
+def test_cannot_delete_account_with_offer_history(client, login):
+    _, sid = setup_stock(client, login)
+    r = client.post("/api/offers", headers=login("tengkulak"), json={"stockId": sid, "volume": 3000, "price": 6800})
+    assert r.status_code == 200, r.text
+    HA = login("admin")
+    items = {a["phone"]: a for a in client.get("/api/admin/users", headers=HA).json()["items"]}
+    for phone in (PHONES["petani"], PHONES["tengkulak"]):
+        r = client.delete(f"/api/admin/users/{items[phone]['id']}", headers=HA)
+        assert r.status_code == 409 and "riwayat penawaran" in r.json()["detail"]
+
+
 def test_register_validation(client):
     post = lambda **kw: client.post("/api/auth/register", json={**TK_BODY, **kw})
     r = post(region="Sukabumi")

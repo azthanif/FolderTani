@@ -45,7 +45,7 @@ const fmtDate = (s: string | null) =>
 const address = (a: Account) => [a.village, a.district, a.region].filter(Boolean).join(", ") || "-";
 
 export function AdminAccounts() {
-  const { refresh: refreshDashboard } = useAdmin();
+  const { refresh: refreshDashboard, session } = useAdmin();
   const { toast, openModal, closeModal } = useUI();
   const [data, setData] = useState<AccountsResponse | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -93,6 +93,26 @@ export function AdminAccounts() {
       setBusyId("");
     }
   }
+
+  async function remove(a: Account) {
+    setBusyId(a.id);
+    try {
+      const r = await api<{ message: string }>(`/admin/users/${a.id}`, { method: "DELETE" });
+      toast(r.message);
+      closeModal();
+      await Promise.all([load(), refreshDashboard().catch(() => undefined)]);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Akun gagal dihapus. Coba lagi.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  function askDelete(a: Account) {
+    openModal("Hapus akun", `${a.name} · ${ROLE_LABEL[a.role]}`, <DeleteConfirm account={a} onConfirm={() => remove(a)} />);
+  }
+
+  const canDelete = (a: Account) => a.role !== "admin" && a.id !== session?.user.id;
 
   function askReject(a: Account) {
     openModal("Tolak pendaftaran", a.name, <RejectForm onSubmit={(reason) => verify(a, "reject", reason)} />);
@@ -201,6 +221,18 @@ export function AdminAccounts() {
                         <button type="button" className="link-btn" onClick={() => showDetail(a)}>
                           Detail
                         </button>
+                        {canDelete(a) ? (
+                          <button
+                            type="button"
+                            className="icon-btn danger sm"
+                            title={`Hapus akun ${a.name}`}
+                            aria-label={`Hapus akun ${a.name}`}
+                            disabled={busyId === a.id}
+                            onClick={() => askDelete(a)}
+                          >
+                            <Icon name="trash" size={15} />
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -222,6 +254,42 @@ export function AdminAccounts() {
         </div>
       </section>
     </>
+  );
+}
+
+function DeleteConfirm({ account, onConfirm }: { account: Account; onConfirm: () => Promise<void> }) {
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ok = typed.trim().toUpperCase() === "HAPUS";
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!ok) return;
+    setBusy(true);
+    await onConfirm();
+    setBusy(false);
+  }
+  return (
+    <form className="reject-form" onSubmit={submit}>
+      <div className="delete-warning">
+        <strong>Akun dihapus permanen dan tidak bisa dikembalikan.</strong>
+        <ul>
+          <li>
+            {account.name} ({account.phone}) tidak bisa masuk lagi
+            {account.role === "tengkulak" ? " dan harus mendaftar ulang bila ingin memakai Temu Tani." : "."}
+          </li>
+          {account.role === "petani" ? <li>Data stok gabah dan riwayat stok petani ini ikut terhapus.</li> : null}
+          {account.role === "petani" ? <li>Bila petani mengirim pesan lagi ke chatbot WhatsApp, akunnya bisa terdaftar ulang.</li> : null}
+          <li>Akun yang sudah punya riwayat penawaran/kesepakatan akan ditolak sistem agar riwayat transaksi tetap utuh.</li>
+        </ul>
+      </div>
+      <label htmlFor="delete-confirm">
+        Ketik <b>HAPUS</b> untuk mengonfirmasi
+      </label>
+      <input id="delete-confirm" className="delete-input" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="HAPUS" />
+      <button type="submit" className="btn danger" disabled={busy || !ok}>
+        <Icon name="trash" size={14} /> {busy ? "Menghapus…" : "Hapus akun permanen"}
+      </button>
+    </form>
   );
 }
 
