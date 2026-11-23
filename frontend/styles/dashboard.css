@@ -1480,3 +1480,10 @@
 .dash .delete-warning ul{margin:0;padding-left:18px;display:grid;gap:3px}
 .dash .delete-input{height:38px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;font-size:13px;letter-spacing:1px;outline:none}
 .dash .delete-input:focus{border-color:#e7a19c;box-shadow:0 0 0 3px #fdecea}
+
+/* Banner hijau dashboard dengan maskot */
+.dash .page-banner.has-mascot{padding-right:150px;min-height:132px}
+.dash .page-banner .banner-mascot{position:absolute;right:18px;bottom:-6px;height:126px;width:auto;z-index:1;pointer-events:none;filter:drop-shadow(0 8px 12px rgba(0,0,0,.18))}
+@media(max-width:620px){.dash .page-banner.has-mascot{padding-right:108px;min-height:150px}.dash .page-banner .banner-mascot{height:116px;right:4px}}
+/* Breadcrumb ringkas di layar sempit: cukup nama halaman */
+@media(max-width:620px){.dash .breadcrumbs span:not(.current){display:none}.dash .breadcrumbs .current{font-size:14px}}

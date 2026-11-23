@@ -124,7 +124,9 @@ export function OverviewPage() {
           <Kpi icon="activity" title="Sedang Dinegosiasikan" val={o.filter((a) => a.status === "Penawaran Balik").length} foot="Harga balik yang diajukan" theme="blue" />
           <Kpi icon="check" title="Kesepakatan" val={t.length} foot="Pembayaran langsung dengan pembeli" theme="lime" />
         </div>
-        <div className="page-banner card">
+        <div className="page-banner card has-mascot">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="banner-mascot" src="/assets/maskot/cek-harga.webp" alt="" />
           <div>
             <strong>Harga gabah wajar {me?.region || ""}</strong>
             <p>
@@ -224,7 +226,9 @@ export function OverviewPage() {
         <Kpi icon="clock" title="Penawaran Aktif" val={active.length} foot="Menunggu petani / harga balik" theme="gold" />
         <Kpi icon="check" title="Kesepakatan" val={t.length} foot="Harga yang sudah disepakati" theme="blue" />
       </div>
-      <div className="page-banner card">
+      <div className="page-banner card has-mascot">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="banner-mascot" src="/assets/maskot/panen.webp" alt="" />
         <div>
           <strong>Butuh gabah untuk usaha Anda?</strong>
           <p>Bandingkan stok petani di berbagai kota/kabupaten, lalu ajukan harga pertama langsung dari menu Stok Gabah.</p>

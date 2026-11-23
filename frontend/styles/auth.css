@@ -139,3 +139,12 @@
 .signup-reason p { margin: 4px 0 0; color: #5a2b28; font-size: 13.5px; }
 .signup-state.approved h2 { color: #1f6b45; }
 @media (prefers-reduced-motion: reduce) { .signup-mascot.bounce, .signup-dot { animation: none; } }
+
+/* Maskot mengintip di atas kartu (hanya layar sempit) */
+.auth-mascot-mobile { display: none; }
+@media (max-width: 860px) {
+  .auth-main { justify-content: flex-start; padding-top: 22px; }
+  .auth-mascot-mobile { display: block; position: relative; z-index: 2; height: 132px; width: auto; margin: 0 auto -16px; filter: drop-shadow(0 10px 14px rgba(22, 57, 39, 0.16)); }
+  .auth-card { position: relative; z-index: 1; }
+}
+@media (max-width: 480px) { .auth-mascot-mobile { height: 116px; } }

@@ -38,6 +38,9 @@ export function AuthShell({
         <Link className="auth-back" href="/">
           ← Kembali ke beranda
         </Link>
+        {/* Di layar sempit kolom kiri disembunyikan: maskot "mengintip" di atas kartu. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="auth-mascot-mobile" src={`/assets/maskot/${mascot}.webp`} alt="" aria-hidden="true" />
         <div className="auth-card">
           <h1>{title}</h1>
           <p className="auth-sub">{subtitle}</p>

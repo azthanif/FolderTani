@@ -73,6 +73,9 @@ export default function Home() {
                 </Link>
               </div>
               <p className="hero-cta-note">Untuk petani dan tengkulak di Garut &amp; Cianjur</p>
+              {/* Maskot versi layar sempit (maskot kiri-kanan disembunyikan di bawah 980px) */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="hero-mascot-mobile" src="/assets/maskot/menyambut.webp" alt="" aria-hidden="true" />
             </div>
             <div className="trust-row" />
           </div>
@@ -247,7 +250,9 @@ export default function Home() {
 
         <section className="cta" id="mulai">
           <div className="wrap cta-box">
-            <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="cta-mascot" src="/assets/maskot/senang.webp" alt="" aria-hidden="true" />
+            <div className="cta-copy">
               <h2>Bangun pasar gabah yang lebih terbuka bersama TemuTani.</h2>
               <p>Kenali inisiatif TemuTani dalam ekosistem digital MaxxiTani.</p>
             </div>
