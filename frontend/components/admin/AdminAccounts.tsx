@@ -8,7 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAdmin } from "./AdminData";
 import { Badge, Heading, Kpi, Person } from "./ui";
 
-type Status = "pending" | "active" | "rejected";
+type Status = "pending" | "approved" | "rejected";
 interface Account {
   id: string;
   name: string;
@@ -19,6 +19,7 @@ interface Account {
   village: string;
   status: Status;
   rejectionReason: string;
+  registeredVia: "seed" | "web" | "admin";
   hasPassword: boolean;
   createdAt: string | null;
   verifiedAt: string | null;
@@ -29,7 +30,7 @@ interface AccountsResponse {
   counts: { pending: number; petani: number; tengkulak: number; total: number };
 }
 
-const STATUS_LABEL: Record<Status, string> = { pending: "Menunggu Verifikasi", active: "Aktif", rejected: "Ditolak" };
+const STATUS_LABEL: Record<Status, string> = { pending: "Menunggu Verifikasi", approved: "Aktif", rejected: "Ditolak" };
 const ROLE_LABEL = { petani: "Petani", tengkulak: "Tengkulak", admin: "Admin" } as const;
 const TABS = [
   { key: "pending", label: "Menunggu Verifikasi" },
@@ -107,7 +108,9 @@ export function AdminAccounts() {
         <dt>Alamat</dt>
         <dd>{address(a)}</dd>
         <dt>Terdaftar</dt>
-        <dd>{fmtDate(a.createdAt)}</dd>
+        <dd>
+          {fmtDate(a.createdAt)} · {a.registeredVia === "web" ? "daftar mandiri via web" : a.registeredVia === "admin" ? "dibuat admin" : "data awal / chatbot"}
+        </dd>
         <dt>Login web</dt>
         <dd>{a.hasPassword ? "Sudah punya password" : "Belum (terdaftar via WhatsApp)"}</dd>
         {a.verifiedAt ? (
@@ -185,7 +188,7 @@ export function AdminAccounts() {
                     </td>
                     <td>
                       <div className="account-actions">
-                        {a.role === "tengkulak" && a.status !== "active" ? (
+                        {a.role === "tengkulak" && a.status !== "approved" ? (
                           <button type="button" className="btn primary sm" disabled={busyId === a.id} onClick={() => verify(a, "approve")}>
                             <Icon name="check" size={14} /> Setujui
                           </button>

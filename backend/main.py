@@ -151,7 +151,7 @@ class Actor(BaseModel):
 
 
 USER_COLS = ("id, phone, role, name, display_name, kabupaten, kecamatan, kelurahan, contact_sharing_consent, password_hash,"
-             " account_status, rejection_reason")
+             " status, review_note")
 
 
 def _actor_from_row(u: dict) -> Actor:
@@ -170,7 +170,7 @@ def _bearer_user(authorization: str) -> Optional[dict]:
         u = cur.fetchone()
     if not u or u["role"] != data.get("r") or not u["password_hash"] or auth.password_fingerprint(u["password_hash"]) != data.get("pv"):
         err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
-    if u["account_status"] != "active":
+    if u["status"] != "approved":
         err(401, "Akun belum aktif. Silakan masuk kembali setelah diverifikasi admin.")
     return u
 
@@ -545,9 +545,9 @@ def _notify(phone_e164: str, text: str) -> None:
 
 
 def _inactive_message(u: dict) -> str:
-    if u["account_status"] == "pending":
+    if u["status"] == "pending":
         return "Akun Anda masih menunggu verifikasi admin. Kami kabari lewat WhatsApp setelah akun disetujui."
-    reason = f" Alasan: {u['rejection_reason']}." if u.get("rejection_reason") else ""
+    reason = f" Alasan: {u['review_note']}." if u.get("review_note") else ""
     return f"Pendaftaran akun Anda ditolak admin.{reason} Hubungi admin Temu Tani untuk informasi lebih lanjut."
 
 
@@ -590,10 +590,10 @@ def register(body: RegisterIn):
     kab, kec, kel = _valid_address(body.region, body.district, body.village)
     password_hash = auth.hash_password(body.password)
     with tx() as cur:
-        cur.execute("select id, role, password_hash, account_status from users where phone = %s", (phone,))
+        cur.execute("select id, role, password_hash, status from users where phone = %s", (phone,))
         existing = cur.fetchone()
-        if existing and not (existing["role"] == "tengkulak" and existing["account_status"] == "rejected"):
-            if existing["account_status"] == "pending":
+        if existing and not (existing["role"] == "tengkulak" and existing["status"] == "rejected"):
+            if existing["status"] == "pending":
                 err(409, "Nomor ini sudah mendaftar dan sedang menunggu verifikasi admin.")
             if not existing["password_hash"]:
                 err(409, "Nomor ini sudah terdaftar melalui WhatsApp. Gunakan menu Lupa Password untuk membuat password.")
@@ -601,14 +601,15 @@ def register(body: RegisterIn):
         if existing:  # pernah ditolak: ajukan ulang dengan data baru
             cur.execute(
                 """update users set name = %s, display_name = %s, kabupaten = %s, kecamatan = %s, kelurahan = %s,
-                       password_hash = %s, account_status = 'pending', rejection_reason = null, verified_at = null, verified_by = null
+                       password_hash = %s, status = 'pending', registered_via = 'web',
+                       review_note = null, reviewed_at = null, reviewed_by = null
                    where id = %s""",
                 (body.name, body.name, kab, kec, kel, password_hash, existing["id"]),
             )
         else:
             cur.execute(
-                "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, password_hash, account_status)"
-                " values (%s, 'tengkulak', %s, %s, %s, %s, %s, %s, 'pending')",
+                "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, password_hash, status, registered_via)"
+                " values (%s, 'tengkulak', %s, %s, %s, %s, %s, %s, 'pending', 'web')",
                 (phone, body.name, body.name, kab, kec, kel, password_hash),
             )
     return {"status": "pending",
@@ -627,7 +628,7 @@ def login(body: LoginIn):
         err(401, "Akun ini belum memiliki password. Gunakan menu Lupa Password untuk membuatnya.")
     if not user or not auth.verify_password(body.password, user["password_hash"]):
         err(401, "Nomor HP atau password salah.")
-    if user["account_status"] != "active":
+    if user["status"] != "approved":
         err(403, _inactive_message(user))
     return _session(user)
 
@@ -750,11 +751,11 @@ def reset_password(body: ResetPasswordIn):
     _check_password(body.password)
     _consume_otp(phone, "reset_password", body.code)
     with tx() as cur:
-        cur.execute("select id, account_status, rejection_reason from users where phone = %s", (phone,))
+        cur.execute("select id, status, review_note from users where phone = %s", (phone,))
         row = cur.fetchone()
     if not row:
         err(400, "Kode verifikasi salah.")
-    if row["account_status"] != "active":
+    if row["status"] != "approved":
         err(403, _inactive_message(row))
     return {**_session(_set_password(str(row["id"]), body.password)), "message": "Password berhasil diatur ulang."}
 
@@ -838,22 +839,22 @@ def _account_out(u: dict) -> dict:
     return {
         "id": str(u["id"]), "name": u["name"], "phone": auth.from_e164(u["phone"]), "role": u["role"],
         "region": u["kabupaten"] or "", "district": u["kecamatan"] or "", "village": u["kelurahan"] or "",
-        "status": u["account_status"], "rejectionReason": u["rejection_reason"] or "",
-        "hasPassword": bool(u["password_hash"]),
+        "status": u["status"], "rejectionReason": (u["review_note"] or "") if u["status"] == "rejected" else "",
+        "registeredVia": u["registered_via"], "hasPassword": bool(u["password_hash"]),
         "createdAt": u["created_at"].isoformat() if u["created_at"] else None,
-        "verifiedAt": u["verified_at"].isoformat() if u["verified_at"] else None,
-        "verifiedBy": u.get("verifier") or "",
+        "verifiedAt": u["reviewed_at"].isoformat() if u["reviewed_at"] else None,
+        "verifiedBy": u["reviewed_by"] or "",
     }
 
 
-ACCOUNT_SELECT = (f"select {', '.join('u.' + c.strip() for c in USER_COLS.split(','))}, u.created_at, u.verified_at, v.name as verifier"
-                  " from users u left join users v on v.id = u.verified_by")
+ACCOUNT_SELECT = (f"select {', '.join('u.' + c.strip() for c in USER_COLS.split(','))}, u.created_at, u.reviewed_at, u.reviewed_by,"
+                  " u.registered_via from users u")
 
 
 @app.get("/api/admin/users", tags=["admin"])
 def admin_list_users(
     role: Optional[Literal["petani", "tengkulak", "admin"]] = Query(default=None),
-    status: Optional[Literal["pending", "active", "rejected"]] = Query(default=None),
+    status: Optional[Literal["pending", "approved", "rejected"]] = Query(default=None),
     actor: Actor = Depends(get_actor),
 ):
     require(actor, "admin")
@@ -862,17 +863,17 @@ def admin_list_users(
         where.append("u.role = %s")
         params.append(role)
     if status:
-        where.append("u.account_status = %s")
+        where.append("u.status = %s")
         params.append(status)
     with tx() as cur:
         cur.execute(
             f"{ACCOUNT_SELECT} where {' and '.join(where)}"
-            " order by (u.account_status = 'pending') desc, u.created_at desc",
+            " order by (u.status = 'pending') desc, u.created_at desc",
             tuple(params),
         )
         rows = cur.fetchall()
         cur.execute(
-            """select count(*) filter (where account_status = 'pending') as pending,
+            """select count(*) filter (where status = 'pending') as pending,
                       count(*) filter (where role = 'petani') as petani,
                       count(*) filter (where role = 'tengkulak') as tengkulak,
                       count(*) as total
@@ -895,17 +896,18 @@ def admin_verify_user(user_id: UUID, body: VerifyAccountIn, actor: Actor = Depen
             err(404, "Akun tidak ditemukan.")
         if u["role"] != "tengkulak":
             err(400, "Verifikasi hanya untuk akun tengkulak. Akun petani dikelola dari database/chatbot.")
-        target = "active" if body.action == "approve" else "rejected"
-        if u["account_status"] == target:
-            err(409, "Status akun sudah " + ("aktif." if target == "active" else "ditolak."))
+        target = "approved" if body.action == "approve" else "rejected"
+        if u["status"] == target:
+            err(409, "Status akun sudah " + ("aktif." if target == "approved" else "ditolak."))
+        # reviewed_by bertipe teks di database: simpan nama admin (skema yang juga dipakai chatbot).
         cur.execute(
-            """update users set account_status = %s, rejection_reason = %s, verified_at = now(), verified_by = %s
+            """update users set status = %s, review_note = %s, reviewed_at = now(), reviewed_by = %s
                where id = %s""",
-            (target, body.reason if target == "rejected" else None, actor.user, str(user_id)),
+            (target, body.reason if target == "rejected" else None, actor.name, str(user_id)),
         )
         cur.execute(f"{ACCOUNT_SELECT} where u.id = %s", (str(user_id),))
         out = _account_out(cur.fetchone())
-    if target == "active":
+    if target == "approved":
         _notify(u["phone"], f"Halo {u['name']}, akun tengkulak Temu Tani Anda sudah disetujui admin. Silakan masuk dengan nomor HP dan password Anda.")
         message = f"Akun {u['name']} disetujui dan sekarang bisa masuk."
     else:
@@ -929,7 +931,7 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
             "select l.*, u.name, u.kabupaten from stock_logs l join users u on u.id = l.farmer_id order by l.created_at desc limit 30"
         )
         logs = cur.fetchall()
-        cur.execute("select count(*) as n from users where account_status = 'pending'")
+        cur.execute("select count(*) as n from users where status = 'pending'")
         pending_accounts = cur.fetchone()["n"]
     open_offers: dict[int, int] = {}
     for o in offers:

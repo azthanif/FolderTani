@@ -31,8 +31,9 @@ def test_register_tengkulak_waits_for_admin_approval(client, login, sql):
     r = client.post("/api/auth/register", json=TK_BODY)
     assert r.status_code == 201, r.text
     assert r.json()["status"] == "pending" and "token" not in r.json()
-    row = sql("select role, kabupaten, kecamatan, kelurahan, account_status from users where phone = '+6281377788899'")[0]
-    assert row == {"role": "tengkulak", "kabupaten": "Garut", "kecamatan": "Tarogong Kidul", "kelurahan": "Sukagalih", "account_status": "pending"}
+    row = sql("select role, kabupaten, kecamatan, kelurahan, status, registered_via from users where phone = '+6281377788899'")[0]
+    assert row == {"role": "tengkulak", "kabupaten": "Garut", "kecamatan": "Tarogong Kidul", "kelurahan": "Sukagalih",
+                   "status": "pending", "registered_via": "web"}
     # belum bisa masuk / daftar ulang
     r = client.post("/api/auth/login", json={"phone": "081377788899", "password": "Rahasia123"})
     assert r.status_code == 403 and "menunggu verifikasi" in r.json()["detail"]
@@ -45,7 +46,7 @@ def test_register_tengkulak_waits_for_admin_approval(client, login, sql):
     uid = lst["items"][0]["id"]
     assert client.post(f"/api/admin/users/{uid}/verify", headers=login("tengkulak"), json={"action": "approve"}).status_code == 403
     r = client.post(f"/api/admin/users/{uid}/verify", headers=HA, json={"action": "approve"})
-    assert r.status_code == 200 and r.json()["account"]["status"] == "active" and r.json()["account"]["verifiedBy"] == "Admin Temu Tani"
+    assert r.status_code == 200 and r.json()["account"]["status"] == "approved" and r.json()["account"]["verifiedBy"] == "Admin Temu Tani"
     r = client.post("/api/auth/login", json={"phone": "081377788899", "password": "Rahasia123"})
     assert r.status_code == 200 and r.json()["user"]["village"] == "Sukagalih"
 
@@ -61,10 +62,10 @@ def test_admin_rejects_registration_and_applicant_can_reapply(client, login, sql
     assert r.status_code == 403 and "Nama usaha tidak jelas" in r.json()["detail"]
     # ajukan ulang -> kembali pending
     assert client.post("/api/auth/register", json={**TK_BODY, "name": "CV Padi Jaya Garut"}).status_code == 201
-    assert sql("select account_status, rejection_reason from users where phone = '+6281377788899'")[0] == {"account_status": "pending", "rejection_reason": None}
+    assert sql("select status, review_note from users where phone = '+6281377788899'")[0] == {"status": "pending", "review_note": None}
     # petani tidak diverifikasi lewat endpoint ini
     petani = client.get("/api/admin/users?role=petani", headers=HA).json()["items"]
-    assert len(petani) == 3 and all(p["status"] == "active" for p in petani)
+    assert len(petani) == 3 and all(p["status"] == "approved" for p in petani)  # termasuk petani WA (trigger auto-approve)
     assert client.post(f"/api/admin/users/{petani[0]['id']}/verify", headers=HA, json={"action": "approve"}).status_code == 400
 
 
