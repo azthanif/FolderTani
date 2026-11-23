@@ -20,7 +20,7 @@ export interface Transaction {
   contact?: string | null;
 }
 /** Riwayat perubahan total stok fisik petani (terbaru dulu). */
-export interface StockLog { id: string; farmerId: string; at: string; activity: string; delta: number; total: number }
+export interface StockLog { id: string; farmerId: string; at: string; activity: string; harvest?: string | null; delta: number; total: number }
 export interface Activity { id: string; at: string; title: string; note: string }
 
 export interface RoleState {

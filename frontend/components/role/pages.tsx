@@ -283,12 +283,10 @@ function FarmerStockPage() {
   const [showAll, setShowAll] = useState(false);
   const own = S.ownStock();
   const total = own.reduce((n, x) => n + x.volume, 0);
-  const available = own.filter((x) => x.status === "Tersedia").reduce((n, x) => n + availability(x), 0);
-  const allocated = own.reduce((n, x) => n + (x.volume - availability(x)), 0);
   const log = db.stockLog || [];
   const rows = showAll ? log : log.slice(0, 8);
   const shortDate = (iso: string) => new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
-  const allocInfo = "Volume yang sudah disepakati dengan pembeli melalui Temu Tani. Bagian ini tidak bisa ditawarkan lagi.";
+  const harvestShort = (d: string) => new Date(d + "T00:00:00+07:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
   return (
     <>
       <PageHeader
@@ -309,25 +307,10 @@ function FarmerStockPage() {
             <Icon name="package" size={17} />
           </div>
           <strong>{kg(total)}</strong>
-          <p>Jumlah gabah yang saat ini Anda miliki.</p>
-        </div>
-        <div className="stock-split">
-          <div className="stock-sub">
-            <span>
-              Dialokasikan via Temu Tani{" "}
-              <span className="stock-info" title={allocInfo} aria-label={allocInfo} role="img">
-                <Icon name="info" size={14} />
-              </span>
-            </span>
-            <strong>{kg(allocated)}</strong>
-          </div>
-          <div className="stock-sub good">
-            <span>Tersedia untuk Ditawarkan</span>
-            <strong>{kg(available)}</strong>
-          </div>
+          <p>Jumlah gabah yang saat ini Anda miliki. Volume yang disepakati via Temu Tani otomatis dikurangi.</p>
         </div>
         <div className="stock-actions">
-          <button type="button" className="btn primary" onClick={A.updateStockTotal}>
+          <button type="button" className="btn primary" onClick={A.updateStockRemaining}>
             <Icon name="refresh" size={16} /> Perbarui Stok
           </button>
           <button type="button" className="btn" onClick={() => A.newStock()}>
@@ -354,7 +337,10 @@ function FarmerStockPage() {
                 {rows.map((x) => (
                   <tr key={x.id}>
                     <td>{shortDate(x.at)}</td>
-                    <td>{x.activity}</td>
+                    <td>
+                      {x.activity}
+                      {x.harvest ? <small className="stock-log-sub">Panen {harvestShort(x.harvest)}</small> : null}
+                    </td>
                     <td className={x.delta >= 0 ? "delta-up" : "delta-down"}>
                       {x.delta >= 0 ? "+" : "−"}
                       {kg(Math.abs(x.delta))}
@@ -414,7 +400,7 @@ function BuyerStockPage() {
               <td><strong>{number(availability(s))} kg</strong></td>
               <td><Badge s={s.status} /></td>
               <td>
-                <Btn onClick={() => A.newStock(s.id)}>
+                <Btn onClick={A.updateStockRemaining}>
                   <Icon name="edit" size={13} /> Ubah
                 </Btn>
               </td>

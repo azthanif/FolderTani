@@ -1,5 +1,5 @@
 "use client";
-/* Aksi & modal dashboard petani/tengkulak (port newStock, updateStockTotal, newOffer, offerDetail, trxDetail,
+/* Aksi & modal dashboard petani/tengkulak (port newStock, updateStockRemaining, newOffer, offerDetail, trxDetail,
    counterOffer, actions() dan handleForm() dari app.js). Isi modal dirender oleh UIProvider (di luar
    RoleDataProvider), jadi semua data/aksi diteruskan lewat props/closure, bukan context. */
 import type { FormEvent } from "react";
@@ -17,105 +17,105 @@ export function useRoleActions() {
   const enc = encodeURIComponent;
 
   /* ---------- Stok (petani) ---------- */
-  function newStock(id = "") {
+  const harvestLabel = (d: string) => new Date(d + "T00:00:00+07:00").toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta" });
+
+  /** Tambah Stok: cukup tanggal panen dan volume. Panen di tanggal yang sama digabung oleh server. */
+  function newStock() {
     if (!isFarmer) return;
-    const s = id ? sel().stock(id) ?? null : null;
-    if (s && s.farmerId !== me()) return;
-    const committed = s ? s.volume - availability(s) : 0;
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
     const submit = (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       const data = new FormData(e.currentTarget);
-      const cur = s ? sel().stock(s.id) ?? s : null;
       const volume = Number(data.get("volume"));
-      const comm = cur ? cur.volume - availability(cur) : 0;
-      if (!Number.isFinite(volume) || volume <= 0 || volume + 1e-8 < comm)
-        return toast("Volume harus positif dan tidak kurang dari volume yang telah disepakati.");
-      if (cur && cur.farmerId !== me()) return;
-      const body = {
-        type: "GKP",
-        volume,
-        harvest: String(data.get("harvest")),
-        status: String(data.get("status")),
-        moisture: Number(data.get("moisture")) || null,
-      };
-      mutate(cur ? `/stocks/${enc(cur.id)}` : "/stocks", { method: cur ? "PUT" : "POST", body });
+      const harvest = String(data.get("harvest") || "");
+      if (!harvest) return toast("Tanggal panen wajib diisi.");
+      if (!Number.isFinite(volume) || volume <= 0) return toast("Volume stok harus lebih dari 0 kg.");
+      mutate("/stocks", { method: "POST", body: { volume, harvest } });
     };
     openModal(
-      s ? "Perbarui Stok Gabah" : "Tambah Stok Gabah",
-      (() => {
-        const f = sel().myFarmer();
-        return f ? `Semua stok otomatis terkait ${f.name} • ${f.village}, ${f.region}` : "Stok otomatis terkait akun Anda";
-      })(),
-      <form key={"stock-" + (s?.id || "new")} onSubmit={submit}>
+      "Tambah Stok Gabah",
+      "Catat hasil panen baru Anda.",
+      <form key="stock-new" onSubmit={submit}>
         <div className="form-grid">
           <div className="field">
-            <label htmlFor="stockType">Jenis gabah</label>
-            {/* Hanya GKP (Gabah Kering Panen) yang didukung. */}
-            <input id="stockType" value="GKP (Gabah Kering Panen)" readOnly disabled />
-            <input type="hidden" name="type" value="GKP" />
+            <label htmlFor="stockDate">Tanggal panen</label>
+            <input id="stockDate" name="harvest" type="date" max={today} defaultValue={today} required />
           </div>
           <div className="field">
-            <label htmlFor="stockVolume">Volume stok total (kg)</label>
-            <input id="stockVolume" type="number" name="volume" min={Math.max(committed, 1)} step="1" defaultValue={s?.volume || ""} placeholder="Contoh: 2500" required />
+            <label htmlFor="stockVolume">Volume stok (kg)</label>
+            <input id="stockVolume" type="number" name="volume" min="1" step="1" placeholder="Contoh: 2500" required />
           </div>
-          <div className="field">
-            <label htmlFor="stockDate">Tanggal panen / tersedia</label>
-            <input id="stockDate" name="harvest" type="date" defaultValue={s?.harvest || "2026-11-12"} required />
-          </div>
-          <div className="field">
-            <label htmlFor="stockStatus">Status stok</label>
-            <select id="stockStatus" name="status" defaultValue={s?.status || "Tersedia"}>
-              <option>Tersedia</option>
-              <option>Akan Panen</option>
-              <option>Ditutup</option>
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="stockMoisture">Kadar air (%) — opsional</label>
-            <input id="stockMoisture" type="number" min="0" max="100" step="0.1" name="moisture" defaultValue={s?.moisture || ""} placeholder="Contoh: 24" />
-          </div>
-          <div className="span-2 field-note">Stok yang sudah disepakati: {number(committed)} kg. Volume total tidak boleh lebih kecil dari jumlah ini.</div>
         </div>
         <div className="form-actions">
           <button type="button" className="btn" onClick={closeModal}>Batal</button>
-          <button className="btn primary" type="submit">{s ? "Simpan Perubahan" : "Tambah Stok"}</button>
+          <button className="btn primary" type="submit">Tambah Stok</button>
         </div>
       </form>,
     );
   }
 
-  /* ---------- Perbarui total stok fisik (petani) ---------- */
-  function updateStockTotal() {
+  /** Perbarui Stok: ubah sisa stok untuk tiap tanggal panen. */
+  function updateStockRemaining() {
     if (!isFarmer) return;
-    const own = sel().ownStock();
-    const total = own.reduce((n, x) => n + x.volume, 0);
-    const committed = own.reduce((n, x) => n + (x.volume - availability(x)), 0);
+    const lots = sel()
+      .ownStock()
+      .filter((x) => x.volume > 0)
+      .sort((a, b) => a.harvest.localeCompare(b.harvest));
     const submit = (e: FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      const volume = Number(new FormData(e.currentTarget).get("volume"));
-      if (!Number.isFinite(volume) || volume < 0) return toast("Volume tidak valid.");
-      if (volume + 1e-8 < committed) return toast(`Total stok tidak boleh kurang dari ${number(committed)} kg yang sudah dialokasikan.`);
-      mutate("/stocks/total", { method: "PUT", body: { volume } });
+      const data = new FormData(e.currentTarget);
+      const items: { id: string; volume: number }[] = [];
+      for (const lot of lots) {
+        const v = Number(data.get("v_" + lot.id));
+        if (!Number.isFinite(v) || v < 0) return toast(`Sisa stok panen ${harvestLabel(lot.harvest)} tidak valid.`);
+        if (Math.abs(v - lot.volume) > 1e-8) items.push({ id: lot.id, volume: v });
+      }
+      if (!items.length) return toast("Tidak ada perubahan stok.");
+      mutate("/stocks/remaining", { method: "PUT", body: { items } });
     };
     openModal(
-      "Perbarui Stok",
-      "Masukkan jumlah gabah yang saat ini benar-benar Anda miliki.",
-      <form key="stock-total" onSubmit={submit}>
-        <div className="form-grid">
-          <div className="field span-2">
-            <label htmlFor="stockTotal">Total stok fisik saat ini (kg)</label>
-            <input id="stockTotal" type="number" name="volume" min={Math.ceil(committed)} step="1" defaultValue={total} required />
+      "Perbarui Stok Gabah",
+      "Ubah sisa stok untuk setiap tanggal panen. Isi 0 bila stok panen tersebut sudah habis.",
+      lots.length ? (
+        <form key="stock-remaining" onSubmit={submit}>
+          <div className="stock-edit-list">
+            <div className="stock-edit-head">
+              <span>Tanggal panen</span>
+              <span>Sisa stok (kg)</span>
+            </div>
+            {lots.map((lot) => (
+              <div className="stock-edit-row" key={lot.id}>
+                <label htmlFor={"v_" + lot.id}>
+                  <strong>Panen {harvestLabel(lot.harvest)}</strong>
+                  <small>Tercatat {number(lot.volume)} kg</small>
+                </label>
+                <input id={"v_" + lot.id} name={"v_" + lot.id} type="number" min="0" step="1" defaultValue={lot.volume} required />
+              </div>
+            ))}
           </div>
-          <div className="span-2 field-note">
-            Sudah dialokasikan via Temu Tani: <b>{number(committed)} kg</b>. Total stok tidak bisa kurang dari angka ini. Gunakan
-            &nbsp;<b>Tambah Stok</b> bila ada hasil panen baru.
+          <div className="form-actions">
+            <button type="button" className="btn" onClick={closeModal}>Batal</button>
+            <button className="btn primary" type="submit">Simpan Perubahan</button>
+          </div>
+        </form>
+      ) : (
+        <div key="stock-remaining-empty">
+          <div className="empty-state">Belum ada stok untuk diperbarui. Tambahkan hasil panen terlebih dahulu.</div>
+          <div className="form-actions">
+            <button type="button" className="btn" onClick={closeModal}>Tutup</button>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => {
+                closeModal();
+                newStock();
+              }}
+            >
+              Tambah Stok
+            </button>
           </div>
         </div>
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={closeModal}>Batal</button>
-          <button className="btn primary" type="submit">Simpan</button>
-        </div>
-      </form>,
+      ),
     );
   }
 
@@ -430,5 +430,5 @@ export function useRoleActions() {
     );
   }
 
-  return { newStock, updateStockTotal, newOffer, offerDetail, trxDetail, counterOffer, notifications, navigate, base };
+  return { newStock, updateStockRemaining, newOffer, offerDetail, trxDetail, counterOffer, notifications, navigate, base };
 }

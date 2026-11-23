@@ -109,16 +109,17 @@ def find(items: list[dict], item_id: str) -> Optional[dict]:
 
 
 def availability(db: dict, stock: dict) -> float:
-    committed = sum(t["volume"] for t in db["transactions"] if t["stockId"] == stock["id"])
-    return max(0.0, round2(stock["volume"] - committed))
+    """Sisa stok yang bisa ditawarkan. Volume yang sudah disepakati langsung dikurangi dari stok
+    saat kesepakatan terjadi (lihat _agree), jadi sisa = volume listing."""
+    return max(0.0, round2(stock["volume"]))
 
 
-def log_stock(db: dict, farmer_id: str, activity: str, delta: float) -> None:
-    """Catat perubahan total stok fisik petani (untuk tabel Riwayat Perubahan Stok)."""
+def log_stock(db: dict, farmer_id: str, activity: str, delta: float, harvest: Optional[str] = None) -> None:
+    """Catat perubahan total stok petani (tabel Riwayat Perubahan Stok). harvest = tanggal panen listing terkait."""
     log = db.setdefault("stockLog", [])
     total = sum(s["volume"] for s in db["stocks"] if s["farmerId"] == farmer_id)
     log.append({"id": uid("LOG", {x["id"] for x in log}), "farmerId": farmer_id, "at": now_iso(),
-                "activity": activity, "delta": delta, "total": total})
+                "activity": activity, "harvest": harvest, "delta": delta, "total": total})
 
 
 def append_event(db: dict, title: str, note: str) -> None:
@@ -243,8 +244,13 @@ class OfferIn(BaseModel):
     price: int = Field(gt=0)
 
 
-class StockTotalIn(BaseModel):
-    volume: float = Field(ge=0)  # total stok fisik terkini (kg)
+class StockRemainingItem(BaseModel):
+    id: str
+    volume: float = Field(ge=0)  # sisa stok (kg) untuk listing panen tersebut
+
+
+class StockRemainingIn(BaseModel):
+    items: list[StockRemainingItem] = Field(min_length=1, max_length=100)
 
 
 class PriceIn(BaseModel):
@@ -431,59 +437,51 @@ def create_stock(body: StockIn, actor: Actor = Depends(get_actor)):
     require(actor, "petani")
     with store.transaction() as db:
         farmer = find(db["farmers"], actor.user)
-        stock = {
-            "id": uid("STK", {s["id"] for s in db["stocks"]}),
-            "farmerId": actor.user,
-            "region": farmer["region"],
-            "type": body.type,
-            "volume": body.volume,
-            "harvest": body.harvest,
-            "status": body.status,
-            "moisture": body.moisture or None,
-        }
-        db["stocks"].append(stock)
-        log_stock(db, actor.user, "Tambah panen", body.volume)
+        # Panen dengan tanggal yang sama digabung ke listing yang sudah ada.
+        stock = next((s for s in db["stocks"] if s["farmerId"] == actor.user and s["harvest"] == body.harvest and s["status"] == "Tersedia"), None)
+        if stock:
+            stock["volume"] = round2(stock["volume"] + body.volume)
+        else:
+            stock = {
+                "id": uid("STK", {s["id"] for s in db["stocks"]}),
+                "farmerId": actor.user,
+                "region": farmer["region"],
+                "type": body.type,
+                "volume": body.volume,
+                "harvest": body.harvest,
+                "status": body.status,
+                "moisture": body.moisture or None,
+            }
+            db["stocks"].append(stock)
+        log_stock(db, actor.user, "Tambah panen", body.volume, body.harvest)
         append_event(db, "Stok baru ditambahkan", f"{fmt_number(body.volume)} kg {body.type} • {farmer['region']}")
     return result(db, actor, "Stok gabah berhasil ditambahkan.", id=stock["id"])
 
 
-@app.put("/api/stocks/total", tags=["petani"])
-def update_stock_total(body: StockTotalIn, actor: Actor = Depends(get_actor)):
-    """Perbarui total stok fisik petani. Selisih diterapkan ke listing milik petani:
-    penambahan masuk ke listing terbaru; pengurangan diambil dari bagian yang belum dialokasikan
-    (listing terbaru dulu). Total tidak boleh kurang dari volume yang sudah disepakati."""
+@app.put("/api/stocks/remaining", tags=["petani"])
+def update_stock_remaining(body: StockRemainingIn, actor: Actor = Depends(get_actor)):
+    """Perbarui sisa stok per tanggal panen (mis. panen 4 Nov sisa 800 kg, panen 9 Nov sisa 3.000 kg).
+    Setiap perubahan dicatat di riwayat. Listing yang habis & tidak dirujuk penawaran/transaksi dihapus."""
     require(actor, "petani")
     with store.transaction() as db:
-        own = sorted((s for s in db["stocks"] if s["farmerId"] == actor.user), key=lambda s: s["harvest"], reverse=True)
-        current = sum(s["volume"] for s in own)
-        committed = sum(s["volume"] - availability(db, s) for s in own)
-        if body.volume + EPS < committed:
-            err(400, f"Total stok tidak boleh kurang dari volume yang sudah dialokasikan ({fmt_number(committed)} kg).")
-        delta = body.volume - current
-        if abs(delta) <= EPS:
+        changed = 0
+        for item in body.items:
+            s = find(db["stocks"], item.id)
+            if not s or s["farmerId"] != actor.user:
+                err(404, "Stok tidak ditemukan.")
+            delta = round2(item.volume - s["volume"])
+            if abs(delta) <= EPS:
+                continue
+            s["volume"] = round2(item.volume)
+            log_stock(db, actor.user, "Update stok", delta, s["harvest"])
+            changed += 1
+        if not changed:
             return result(db, actor, "Tidak ada perubahan stok.")
+        referenced = {o["stockId"] for o in db["offers"]} | {t["stockId"] for t in db["transactions"]}
+        db["stocks"] = [s for s in db["stocks"] if not (s["farmerId"] == actor.user and s["volume"] <= EPS and s["id"] not in referenced)]
         farmer = find(db["farmers"], actor.user)
-        if delta > 0:
-            if own:
-                own[0]["volume"] += delta
-            else:
-                db["stocks"].append({
-                    "id": uid("STK", {s["id"] for s in db["stocks"]}), "farmerId": actor.user, "region": farmer["region"],
-                    "type": "GKP", "volume": delta, "harvest": pricing.today_wib(), "status": "Tersedia", "moisture": None,
-                })
-        else:
-            need = -delta
-            for s in own:
-                take = min(need, availability(db, s))
-                s["volume"] -= take
-                need -= take
-                if need <= EPS:
-                    break
-            # Listing kosong yang tidak dirujuk penawaran mana pun dihapus.
-            referenced = {o["stockId"] for o in db["offers"]}
-            db["stocks"] = [s for s in db["stocks"] if not (s["farmerId"] == actor.user and s["volume"] <= EPS and s["id"] not in referenced)]
-        log_stock(db, actor.user, "Update stok", delta)
-        append_event(db, "Stok diperbarui", f"Total {fmt_number(body.volume)} kg GKP • {farmer['region']}")
+        total = sum(s["volume"] for s in db["stocks"] if s["farmerId"] == actor.user)
+        append_event(db, "Stok diperbarui", f"Total {fmt_number(total)} kg GKP • {farmer['region']}")
     return result(db, actor, "Stok berhasil diperbarui.")
 
 
@@ -494,19 +492,16 @@ def update_stock(stock_id: str, body: StockIn, actor: Actor = Depends(get_actor)
         s = find(db["stocks"], stock_id)
         if not s or s["farmerId"] != actor.user:
             err(404, "Stok tidak ditemukan.")
-        committed = s["volume"] - availability(db, s)
-        if body.volume + EPS < committed:
-            err(400, "Volume harus positif dan tidak kurang dari volume yang telah disepakati.")
         delta = body.volume - s["volume"]
         s.update({
-            "type": s["type"] if committed > 0 else body.type,  # jenis dikunci bila sudah ada kesepakatan
+            "type": "GKP",
             "volume": body.volume,
             "harvest": body.harvest,
             "status": body.status,
             "moisture": body.moisture or None,
         })
         if abs(delta) > EPS:
-            log_stock(db, actor.user, "Update stok", delta)
+            log_stock(db, actor.user, "Update stok", delta, s["harvest"])
         farmer = find(db["farmers"], actor.user)
         append_event(db, "Stok diperbarui", f"{fmt_number(body.volume)} kg {s['type']} • {farmer['region']}")
     return result(db, actor, "Stok berhasil diperbarui.", id=stock_id)
@@ -560,6 +555,9 @@ def _agree(db: dict, actor: Actor, o: dict, price: int) -> dict:
         "volume": o["volume"], "price": price, "date": pricing.today_wib(),
     }
     db["transactions"].append(tx)
+    # Volume yang disepakati langsung mengurangi stok petani dan tercatat di riwayat stok.
+    s["volume"] = round2(s["volume"] - o["volume"])
+    log_stock(db, o["farmerId"], f"Terjual via Temu Tani ({tx['id']})", -o["volume"], s["harvest"])
     append_event(db, "Kesepakatan baru " + o["id"], f"{tx['id']} • {fmt_number(o['volume'])} kg")
     return tx
 

@@ -87,15 +87,6 @@ def test_role_permissions(client):
     assert client.post("/api/offers/OFF-001/accept", headers=other).status_code == 404
 
 
-def test_stock_volume_cannot_drop_below_committed(client):
-    # STK-008: 1.800 kg, 1.000 kg sudah disepakati
-    r = client.put("/api/stocks/STK-008", headers=P, json={"type": "GKP", "volume": 500, "harvest": "2026-11-05", "status": "Tersedia"})
-    assert r.status_code == 400
-    r = client.put("/api/stocks/STK-008", headers=P, json={"type": "GKP", "volume": 3000, "harvest": "2026-11-05", "status": "Tersedia"})
-    s = next(x for x in r.json()["state"]["stocks"] if x["id"] == "STK-008")
-    assert s["type"] == "GKP" and s["available"] == 2000
-
-
 def test_only_gkp_accepted(client):
     r = client.post("/api/stocks", headers=P, json={"type": "GKG", "volume": 1000, "harvest": "2026-11-12"})
     assert r.status_code == 422
@@ -239,38 +230,6 @@ def test_buyer_names_are_people(client):
     assert {b["label"] for b in s["buyers"]} >= {"Pak Budi Santoso", "Pak Hendra Wijaya"}
 
 
-def test_stock_total_update_and_history(client):
-    s = client.get("/api/state", headers=P).json()
-    own = s["stocks"]
-    total = sum(x["volume"] for x in own)
-    committed = sum(x["volume"] - x["available"] for x in own)
-    assert (total, committed) == (9000, 2200)
-    assert s["stockLog"][0]["total"] == 9000  # terbaru dulu
-    # tidak boleh di bawah volume yang sudah dialokasikan
-    assert client.put("/api/stocks/total", headers=P, json={"volume": 2000}).status_code == 400
-    r = client.put("/api/stocks/total", headers=P, json={"volume": 6000})
-    assert r.status_code == 200, r.text
-    st = r.json()["state"]
-    assert sum(x["volume"] for x in st["stocks"]) == 6000
-    assert sum(x["available"] for x in st["stocks"]) == 3800
-    assert st["stockLog"][0] | {"id": "", "at": ""} == {"id": "", "at": "", "farmerId": "F-001", "activity": "Update stok", "delta": -3000, "total": 6000}
-    # tambah panen masuk riwayat
-    st = client.post("/api/stocks", headers=P, json={"volume": 500, "harvest": "2026-11-20"}).json()["state"]
-    assert st["stockLog"][0]["activity"] == "Tambah panen" and st["stockLog"][0]["total"] == 6500
-    # tengkulak tidak menerima riwayat stok & tidak boleh memperbarui
-    assert "stockLog" not in client.get("/api/state", headers=T).json()
-    assert client.put("/api/stocks/total", headers=T, json={"volume": 1}).status_code == 403
-
-
-def test_stock_total_for_new_farmer_without_listing(client):
-    body = {"role": "petani", "name": "Bu Imas", "phone": "081355544433", "password": "rahasia123", "region": "Garut", "district": "Leles"}
-    H = {"Authorization": "Bearer " + client.post("/api/auth/register", json=body).json()["token"]}
-    st = client.put("/api/stocks/total", headers=H, json={"volume": 1200}).json()["state"]
-    assert len(st["stocks"]) == 1 and st["stocks"][0]["available"] == 1200
-    st = client.put("/api/stocks/total", headers=H, json={"volume": 0}).json()["state"]
-    assert st["stocks"] == [] and [x["delta"] for x in st["stockLog"]] == [-1200, 1200]
-
-
 def test_transaction_contact_only_for_parties(client):
     # Daftarkan petani & tengkulak, buat kesepakatan, cek nomor lawan transaksi
     fp = {"role": "petani", "name": "Pak Engkos", "phone": "081311122233", "password": "rahasia123", "region": "Garut", "district": "Leles"}
@@ -282,3 +241,56 @@ def test_transaction_contact_only_for_parties(client):
     client.post(f"/api/offers/{oid}/accept", headers=F)
     assert client.get("/api/state", headers=F).json()["transactions"][0]["contact"] == "081344455566"
     assert client.get("/api/state", headers=B).json()["transactions"][0]["contact"] == "081311122233"
+
+
+def test_agreed_volume_is_deducted_and_logged(client):
+    s = client.get("/api/state", headers=P).json()
+    assert sum(x["volume"] for x in s["stocks"]) == 6800  # 9000 dipanen - 2200 terjual via Temu Tani
+    oid = client.post("/api/offers", headers=T, json={"stockId": "STK-001", "volume": 2000, "price": 7000}).json()["id"]
+    st = client.post(f"/api/offers/{oid}/accept", headers=P).json()["state"]
+    assert next(x for x in st["stocks"] if x["id"] == "STK-001")["volume"] == 3000
+    last = st["stockLog"][0]
+    assert last["activity"].startswith("Terjual via Temu Tani (TRX-") and last["delta"] == -2000
+    assert last["total"] == 4800 and last["harvest"] == "2026-11-09"
+
+
+def test_add_stock_merges_same_harvest_date(client):
+    st = client.post("/api/stocks", headers=P, json={"volume": 500, "harvest": "2026-11-09"}).json()["state"]
+    assert next(x for x in st["stocks"] if x["id"] == "STK-001")["volume"] == 5500
+    assert len(st["stocks"]) == 3
+    st = client.post("/api/stocks", headers=P, json={"volume": 700, "harvest": "2026-11-20"}).json()["state"]
+    assert len(st["stocks"]) == 4 and st["stockLog"][0] | {"id": "", "at": ""} == {
+        "id": "", "at": "", "farmerId": "F-001", "activity": "Tambah panen", "harvest": "2026-11-20", "delta": 700, "total": 8000}
+
+
+def test_update_remaining_per_harvest(client):
+    r = client.put("/api/stocks/remaining", headers=P, json={"items": [
+        {"id": "STK-007", "volume": 400},   # panen 4 Nov: 1.000 -> 400
+        {"id": "STK-001", "volume": 5000},  # tidak berubah, tidak dicatat
+        {"id": "STK-008", "volume": 0},     # panen 5 Nov habis (tetap disimpan karena dirujuk transaksi)
+    ]})
+    assert r.status_code == 200, r.text
+    st = r.json()["state"]
+    vol = {x["id"]: x["volume"] for x in st["stocks"]}
+    assert vol == {"STK-001": 5000, "STK-007": 400, "STK-008": 0}
+    assert [(x["harvest"], x["delta"], x["total"]) for x in st["stockLog"][:2]] == [("2026-11-05", -800, 5400), ("2026-11-04", -600, 6200)]
+    # stok habis: sisa 0 (frontend tengkulak hanya menampilkan sisa > 0)
+    assert next(x for x in client.get("/api/state", headers=T).json()["stocks"] if x["id"] == "STK-008")["available"] == 0
+    # bukan milik sendiri / tengkulak
+    assert client.put("/api/stocks/remaining", headers=P, json={"items": [{"id": "STK-002", "volume": 1}]}).status_code == 404
+    assert client.put("/api/stocks/remaining", headers=T, json={"items": [{"id": "STK-001", "volume": 1}]}).status_code == 403
+    assert client.put("/api/stocks/remaining", headers=P, json={"items": [{"id": "STK-001", "volume": -1}]}).status_code == 422
+
+
+def test_empty_unreferenced_listing_is_removed(client):
+    body = {"role": "petani", "name": "Bu Imas", "phone": "081355544433", "password": "rahasia123", "region": "Garut", "district": "Leles"}
+    H = {"Authorization": "Bearer " + client.post("/api/auth/register", json=body).json()["token"]}
+    sid = client.post("/api/stocks", headers=H, json={"volume": 1200, "harvest": "2026-11-20"}).json()["id"]
+    st = client.put("/api/stocks/remaining", headers=H, json={"items": [{"id": sid, "volume": 0}]}).json()["state"]
+    assert st["stocks"] == [] and [x["delta"] for x in st["stockLog"]] == [-1200, 1200]
+
+
+def test_offer_exceeding_reduced_stock_cannot_be_accepted(client):
+    # OFF-001: 3.000 kg dari STK-001; petani mengurangi sisa panen 9 Nov jadi 2.000 kg
+    client.put("/api/stocks/remaining", headers=P, json={"items": [{"id": "STK-001", "volume": 2000}]})
+    assert client.post("/api/offers/OFF-001/accept", headers=P).status_code == 409

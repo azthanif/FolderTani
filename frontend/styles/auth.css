@@ -86,3 +86,7 @@
   .auth-card { padding: 24px 20px; border-radius: 18px; }
   .auth-row, .auth-roles { grid-template-columns: 1fr; }
 }
+
+/* Sembunyikan tombol "lihat password" bawaan browser (Microsoft Edge / IE) agar ikon mata tidak dobel */
+.auth-pass input::-ms-reveal,
+.auth-pass input::-ms-clear { display: none; }

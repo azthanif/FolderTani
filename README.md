@@ -56,6 +56,16 @@ Hubungkan repo ke Vercel. Root Directory = folder yang berisi `vercel.json`. Fra
 
 > **Batasan Vercel:** `/tmp` bersifat sementara dan tidak dibagi antar-instance. Data simulasi bisa kembali ke kondisi awal setelah function idle, dan dua pengguna bisa sesekali melihat data berbeda. Untuk demo yang stabil, pindahkan penyimpanan ke database (mis. Supabase/Postgres).
 
+## Akun (Masuk / Daftar)
+
+- Halaman `/daftar` (petani: peran, nama, nomor HP, password, kota/kab, kecamatan; tengkulak: peran, nama, nomor HP, password) dan `/masuk` (nomor HP + password).
+- Endpoint: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`. Dashboard petani/tengkulak memakai header `Authorization: Bearer <token>`.
+- Password di-hash PBKDF2-SHA256; token ditandatangani HMAC. **Wajib set env `TEMUTANI_SECRET`** (string acak panjang) di project backend Vercel, jika tidak token akan tidak valid setiap instance berganti.
+- Akun demo: petani `081200000001`, tengkulak `081200000002`, password `temutani123`.
+- Satuan volume seluruh API dan UI: **kg**. Jenis gabah: **GKP** saja.
+- Volume yang disepakati via Temu Tani langsung mengurangi stok petani dan tercatat di riwayat stok. Sisa stok per tanggal panen diperbarui lewat `PUT /api/stocks/remaining`.
+- Dashboard admin (`/admin`) belum memakai login; masih memakai header demo (SIMULASI).
+
 ## Endpoint utama
 
 | Method | Endpoint | Peran | Fungsi |
