@@ -69,8 +69,9 @@ function ShellInner({ variant, brandSmall, nav, user, profileHref, onLogout, top
   const pathname = usePathname();
   const ui = useUI();
   const [open, setOpen] = useState(false);
-  const active = activeHref(pathname, nav);
   const onProfile = pathname.replace(/\/$/, "") === profileHref;
+  // Halaman profil dibuka dari menu kanan atas: tidak ada menu sidebar yang ditandai aktif.
+  const active = onProfile ? undefined : activeHref(pathname, nav);
   const crumb = onProfile ? "Profil Saya" : (nav.find((n) => n.href === active)?.label ?? "Overview");
   const close = () => setOpen(false);
 
