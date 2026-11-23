@@ -1,41 +1,55 @@
-/* Tombol WhatsApp melayang (kanan bawah) yang tampil di setiap halaman.
-   Diadaptasi dari snippet HTML yang diberikan; CSS tooltip & animasi ada di app/globals.css (.wabtn). */
+"use client";
+/* Tombol WhatsApp melayang (kanan bawah) di setiap halaman.
+   Pesan & ukuran mengikuti halaman: dashboard petani -> tanya prediksi harga,
+   dashboard tengkulak -> cari/beli gabah, halaman lain -> tombol default dengan tooltip.
+   CSS tooltip & animasi ada di app/globals.css ([wa-tooltip]). */
+import { usePathname } from "next/navigation";
+import type { CSSProperties } from "react";
 
-const WA_URL =
-  "https://wa.me/6281241831052?text=Halo,%20Temu%20Tani!%20%F0%9F%91%8B%0A%0ASaya%20ingin%20mencari%20dan%20membeli%20gabah%20dari%20petani.";
+const WA = "https://wa.me/6281241831052?text=";
+const URLS = {
+  petani: WA + "Halo,%20Temu%20Tani!%F0%9F%91%8B%F0%9F%8F%BB%0A%0ASaya%20ingin%20melihat%20prediksi%20harga%20gabah%20hari%20ini.",
+  tengkulak: WA + "Halo,%20Temu%20Tani!%F0%9F%91%8B%F0%9F%8F%BB%0A%0ASaya%20ingin%20mencari%20dan%20membeli%20gabah%20dari%20petani.",
+  default: WA + "Halo,%20Temu%20Tani!%20%F0%9F%91%8B%0A%0ASaya%20ingin%20mencari%20dan%20membeli%20gabah%20dari%20petani.",
+};
+
+const BASE: CSSProperties = {
+  cursor: "pointer",
+  width: "auto",
+  position: "fixed",
+  color: "#fff",
+  bottom: 20,
+  right: 20,
+  display: "flex",
+  textDecoration: "none",
+  fontSize: 18,
+  fontWeight: 600,
+  fontFamily: "sans-serif",
+  alignItems: "center",
+  zIndex: 999999999,
+  backgroundColor: "#00E785",
+  boxShadow: "4px 5px 10px rgba(0, 0, 0, 0.4)",
+  borderRadius: 100,
+  animation: "none",
+};
 
 export function WaButton() {
+  const path = usePathname() || "/";
+  const role = path.startsWith("/petani") ? "petani" : path.startsWith("/tengkulak") ? "tengkulak" : "default";
+  // Dashboard: tombol ringkas (tinggi 48px, ikon 34px) tanpa tooltip, sesuai snippet.
+  const compact = role !== "default";
+  const icon = compact ? 34 : 42;
   return (
     <div className="wabtn" id="wabutton">
       <a
-        wa-tooltip="We are available! Click here to chat"
+        {...(compact ? {} : { "wa-tooltip": "We are available! Click here to chat" })}
         target="_blank"
         rel="noopener noreferrer"
-        href={WA_URL}
+        href={URLS[role]}
         aria-label="Chat Temu Tani di WhatsApp"
-        style={{
-          cursor: "pointer",
-          height: "auto",
-          width: "auto",
-          padding: "10px",
-          position: "fixed",
-          color: "#fff",
-          bottom: 20,
-          right: 20,
-          display: "flex",
-          textDecoration: "none",
-          fontSize: 18,
-          fontWeight: 600,
-          fontFamily: "sans-serif",
-          alignItems: "center",
-          zIndex: 999999999,
-          backgroundColor: "#00E785",
-          boxShadow: "4px 5px 10px rgba(0, 0, 0, 0.4)",
-          borderRadius: 100,
-          animation: "none",
-        }}
+        style={{ ...BASE, height: compact ? 48 : "auto", padding: compact ? "7px" : "10px" }}
       >
-        <svg width="42" height="42" style={{ padding: 5 }} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <svg width={icon} height={icon} style={{ padding: 5 }} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <g clipPath="url(#clip0_1024_354)">
             <path
               d="M23.8759 4.06939C21.4959 1.68839 18.3316 0.253548 14.9723 0.0320463C11.613 -0.189455 8.28774 0.817483 5.61565 2.86535C2.94357 4.91323 1.10682 7.86244 0.447451 11.1638C-0.21192 14.4652 0.351026 17.8937 2.03146 20.8109L0.0625 28.0004L7.42006 26.0712C9.45505 27.1794 11.7353 27.7601 14.0524 27.7602H14.0583C16.8029 27.7599 19.4859 26.946 21.768 25.4212C24.0502 23.8965 25.829 21.7294 26.8798 19.1939C27.9305 16.6583 28.206 13.8682 27.6713 11.1761C27.1367 8.48406 25.8159 6.01095 23.8759 4.06939ZM14.0583 25.4169H14.0538C11.988 25.417 9.96008 24.8617 8.1825 23.8091L7.7611 23.5593L3.3945 24.704L4.56014 20.448L4.28546 20.0117C2.92594 17.8454 2.32491 15.2886 2.57684 12.7434C2.82877 10.1982 3.91938 7.80894 5.67722 5.95113C7.43506 4.09332 9.76045 2.87235 12.2878 2.48017C14.8152 2.08799 17.4013 2.54684 19.6395 3.78457C21.8776 5.02231 23.641 6.96875 24.6524 9.3179C25.6638 11.6671 25.8659 14.2857 25.2268 16.7622C24.5877 19.2387 23.1438 21.4326 21.122 22.999C19.1001 24.5655 16.6151 25.4156 14.0575 25.4157L14.0583 25.4169Z"

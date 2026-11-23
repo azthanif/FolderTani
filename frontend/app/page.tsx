@@ -56,6 +56,19 @@ export default function Home() {
                 TemuTani menghubungkan petani dengan pembeli dan menghadirkan referensi harga gabah berbasis AI. Daftar sebagai petani atau
                 tengkulak untuk mulai menggunakan TemuTani.
               </p>
+              <div className="hero-cta">
+                <Link className="hero-login" href="/masuk">
+                  Masuk ke TemuTani
+                  <svg {...svgProps} height="20" width="20" aria-hidden="true">
+                    <path d="M5 12h14" />
+                    <path d="m13 6 6 6-6 6" />
+                  </svg>
+                </Link>
+                <Link className="hero-signup" href="/daftar">
+                  Daftar Akun Baru
+                </Link>
+              </div>
+              <p className="hero-cta-note">Untuk petani dan tengkulak di Garut &amp; Cianjur</p>
             </div>
             <div className="trust-row" />
           </div>
