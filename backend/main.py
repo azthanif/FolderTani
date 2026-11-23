@@ -1247,6 +1247,7 @@ def create_offer(body: OfferIn, actor: Actor = Depends(get_actor)):
         )
         o = cur.fetchone()
         cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, 'buyer', 'initial', %s, 'web')", (o["id"], body.price))
+    _push_offer_notifications(o["id"], "created")
     return result(actor, "Penawaran dikirim kepada petani.", id=o["code"])
 
 
@@ -1262,6 +1263,100 @@ def _own_offer(cur, actor: Actor, code: str) -> dict:
     return o
 
 
+# ---- Notifikasi WhatsApp untuk aksi penawaran dari web ---------------------
+# Pesan dikirim dari nomor chatbot (WAHA). Sesi chat penerima ikut diatur agar ia bisa
+# langsung membalas dengan angka di WhatsApp (langkah yang sama dengan alur n8n).
+WA_HINT = "Balas dengan angka pilihan di atas, atau ketik *0* untuk ke menu."
+WEB_URL = os.getenv("TEMUTANI_WEB_URL", "https://temutani-web.vercel.app").rstrip("/")
+
+
+def _offer_info(cur, offer_id: int) -> Optional[dict]:
+    cur.execute(
+        """select o.id, o.code, o.qty_kg, o.initial_price, o.current_price, o.status,
+                  f.phone as farmer_phone, f.name as farmer_name, f.kabupaten,
+                  r.buyer_phone, coalesce(b.name, 'Tengkulak') as buyer_name
+           from offers o
+           join users f on f.id = o.farmer_id
+           join requests r on r.id = o.request_id
+           left join users b on b.phone = r.buyer_phone
+           where o.id = %s""",
+        (offer_id,),
+    )
+    return cur.fetchone()
+
+
+def _set_chat_step(cur, phone: str, step: Optional[str], context: dict) -> None:
+    """Samakan sesi chatbot penerima notifikasi (tabel chat_sessions milik n8n)."""
+    cur.execute(
+        "insert into chat_sessions (phone, step, context, updated_at) values (%s, %s, %s::jsonb, now())"
+        " on conflict (phone) do update set step = excluded.step, context = excluded.context, updated_at = now()",
+        (phone, step, json.dumps(context)),
+    )
+
+
+def _wa_contact(phone: str) -> str:
+    return "https://wa.me/" + phone.lstrip("+")
+
+
+def _notify_farmer_offer(i: dict, title: str, ai: Optional[int]) -> tuple[str, dict]:
+    text = (f"📩 *{title}*\n\n*{i['code']}* • {i['kabupaten']} • {GRAIN} • {fmt_number(i['qty_kg'])} kg\n"
+            f"Dari: *{i['buyer_name']}*\nHarga dari tengkulak: *{rupiah(i['current_price'])}/kg*")
+    if ai:
+        text += f"\n📊 Referensi harga wajar AI saat ini: *{rupiah(ai)}/kg*\n_Harga AI hanya referensi, bukan harga wajib._"
+    text += (f"\n\n1. Setuju {rupiah(i['current_price'])}/kg\n2. Tawar balik\n3. Tolak penawaran\n4. Lihat semua penawaran\n\n"
+             f"{WA_HINT}\nBisa juga ditanggapi di web: {WEB_URL}/petani/penawaran")
+    return text, {"offer_id": int(i["id"]), "actions": ["accept", "counter", "reject", "list"]}
+
+
+def _push_offer_notifications(offer_id: int, event: str, prev_price: Optional[int] = None) -> None:
+    """Kirim notifikasi WA setelah transaksi web di-commit. Kegagalan tidak membatalkan aksi."""
+    if not wa.configured():
+        return
+    try:
+        msgs: list[tuple[str, str]] = []
+        with tx() as cur:
+            i = _offer_info(cur, offer_id)
+            if not i:
+                return
+            detail = f"*{i['code']}* • {fmt_number(i['qty_kg'])} kg • {GRAIN}"
+            if event in ("created", "buyer_counter"):
+                title = "Penawaran baru dari tengkulak" if event == "created" else "Tengkulak mengajukan harga baru"
+                text, ctx = _notify_farmer_offer(i, title, ai_reference(cur, i["kabupaten"]).get(GRAIN))
+                _set_chat_step(cur, i["farmer_phone"], "farmer_offer_action", ctx)
+                msgs.append((i["farmer_phone"], text))
+            elif event == "farmer_counter":
+                text = (f"🔁 *{i['farmer_name']}* mengajukan *harga balik*\n\n{detail}\n"
+                        + (f"Harga Anda sebelumnya: {rupiah(prev_price)}/kg\n" if prev_price else "")
+                        + f"Harga balik petani: *{rupiah(i['current_price'])}/kg*\n\n"
+                        f"1. Setuju {rupiah(i['current_price'])}/kg\n2. Tawar lagi\n3. Batalkan penawaran\n\n"
+                        f"{WA_HINT}\nBisa juga ditanggapi di web: {WEB_URL}/tengkulak/penawaran")
+                _set_chat_step(cur, i["buyer_phone"], "buyer_offer_action",
+                               {"offer_id": int(i["id"]), "actions": ["accept", "counter", "cancel"]})
+                msgs.append((i["buyer_phone"], text))
+            elif event == "agreed":
+                # Sama dengan alur chatbot n8n: tengkulak menerima kontak petani, petani menunggu dihubungi.
+                harga = (f"Harga akhir: *{rupiah(i['current_price'])}/kg*\n"
+                         f"Nilai kesepakatan: *{rupiah(i['current_price'] * i['qty_kg'])}*")
+                info = f"*{i['code']}* • {i['kabupaten']} • {GRAIN} • {fmt_number(i['qty_kg'])} kg\n{harga}"
+                msgs.append((i["buyer_phone"], f"✅ *Harga disepakati dengan {i['farmer_name']}!*\n\n{info}\n\n"
+                             f"📱 *Kontak WhatsApp petani:* {_wa_contact(i['farmer_phone'])}\n"
+                             "Silakan hubungi petani langsung untuk mengatur waktu, lokasi pengambilan, dan pembayaran.\n\n"
+                             "Status: *Harga Disepakati* (belum berarti pembayaran atau serah terima selesai)."))
+                msgs.append((i["farmer_phone"], f"✅ *Harga sudah disepakati!*\n\n{info}\n\n"
+                             "📩 *Tengkulak akan menghubungi Anda langsung melalui WhatsApp* untuk janji temu, "
+                             "pengambilan gabah, dan pembayaran."))
+                for ph in (i["farmer_phone"], i["buyer_phone"]):
+                    _set_chat_step(cur, ph, None, {})
+            elif event == "farmer_rejected":
+                msgs.append((i["buyer_phone"], f"❌ *{i['farmer_name']}* menolak penawaran Anda ({detail} • {rupiah(i['current_price'])}/kg).\n\n"
+                                               f"Anda bisa mengajukan kebutuhan ini ke petani lain. Ketik *menu* untuk mulai."))
+                _set_chat_step(cur, i["buyer_phone"], None, {})
+        for phone, text in msgs:
+            _notify(phone, text)
+    except Exception:  # noqa: BLE001
+        log.exception("Notifikasi penawaran %s (%s) gagal disiapkan", offer_id, event)
+
+
 def _accept(actor: Actor, code: str, who: str, message: str) -> dict:
     with tx() as cur:
         o = _own_offer(cur, actor, code)
@@ -1272,6 +1367,7 @@ def _accept(actor: Actor, code: str, who: str, message: str) -> dict:
         if res.get("reason") == "insufficient_stock":
             err(409, "Stok sudah berkurang. Penawaran tidak dapat disetujui.")
         err(409, "Status penawaran sudah berubah.")
+    _push_offer_notifications(o["id"], "agreed")
     return result(actor, message, id=f"TRX-{o['id']}")
 
 
@@ -1297,6 +1393,7 @@ def reject_offer(offer_id: str, actor: Actor = Depends(get_actor)):
         cur.execute("update offers set status = 'FAILED' where id = %s", (o["id"],))
         cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, 'farmer', 'fail', %s, 'rejected')",
                     (o["id"], o["current_price"]))
+    _push_offer_notifications(o["id"], "farmer_rejected")
     return result(actor, "Penawaran ditolak.")
 
 
@@ -1323,6 +1420,10 @@ def counter_offer(offer_id: str, body: PriceIn, actor: Actor = Depends(get_actor
             cur.execute("update offers set current_price = %s, current_by = 'buyer', status = 'FARMER_TURN' where id = %s", (p, o["id"]))
             cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, 'buyer', 'counter', %s, 'web')", (o["id"], p))
             message = "Harga penawaran baru dikirim."
+    if actor.role == "petani":
+        _push_offer_notifications(o["id"], "farmer_counter", prev_price=o["current_price"])
+    else:
+        _push_offer_notifications(o["id"], "buyer_counter")
     return result(actor, message)
 
 
