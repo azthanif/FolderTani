@@ -48,6 +48,33 @@ def mask_phone(phone: str) -> str:
     return phone[:4] + "••••" + phone[-3:]
 
 
+def to_e164(local: str) -> str:
+    """'081234567890' -> '+6281234567890' (format kolom phone di database)."""
+    return "+62" + local[1:]
+
+
+def from_e164(phone: str) -> str:
+    """'+6281234567890' -> '081234567890' (format tampilan)."""
+    return "0" + phone[3:] if phone.startswith("+62") else phone
+
+
+# ---------------------------------------------------------------------------
+# Kode verifikasi (OTP)
+# ---------------------------------------------------------------------------
+OTP_TTL_SECONDS = 5 * 60
+OTP_COOLDOWN_SECONDS = 60
+OTP_MAX_ATTEMPTS = 5
+OTP_MAX_PER_HOUR = 5
+
+
+def new_otp() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_otp(phone: str, purpose: str, code: str) -> str:
+    return hmac.new(_SECRET, f"{phone}|{purpose}|{code}".encode(), hashlib.sha256).hexdigest()
+
+
 # ---------------------------------------------------------------------------
 # Password
 # ---------------------------------------------------------------------------
@@ -79,14 +106,21 @@ def _unb64(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
-def issue_token(user_id: str, role: str) -> str:
-    payload = _b64(json.dumps({"u": user_id, "r": role, "exp": int(time.time()) + TOKEN_TTL_SECONDS}).encode())
+def password_fingerprint(password_hash: str) -> str:
+    """Sidik pendek dari hash password. Disimpan di token: ganti password = semua sesi lama tidak berlaku."""
+    return hmac.new(_SECRET, password_hash.encode(), hashlib.sha256).hexdigest()[:16]
+
+
+def issue_token(user_id: str, role: str, password_hash: str) -> str:
+    payload = _b64(json.dumps({
+        "u": user_id, "r": role, "pv": password_fingerprint(password_hash), "exp": int(time.time()) + TOKEN_TTL_SECONDS,
+    }).encode())
     sig = _b64(hmac.new(_SECRET, payload.encode(), hashlib.sha256).digest())
     return f"{payload}.{sig}"
 
 
 def read_token(token: str) -> Optional[dict]:
-    """Kembalikan {'u','r','exp'} bila tanda tangan sah dan belum kedaluwarsa."""
+    """Kembalikan {'u','r','pv','exp'} bila tanda tangan sah dan belum kedaluwarsa."""
     try:
         payload, sig = token.split(".", 1)
         expected = _b64(hmac.new(_SECRET, payload.encode(), hashlib.sha256).digest())

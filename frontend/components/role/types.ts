@@ -1,4 +1,4 @@
-/* Bentuk snapshot GET /api/state (lihat backend/main.py snapshot() dan seed.py). */
+/* Bentuk snapshot GET /api/state (lihat backend/main.py snapshot()). */
 export type RoleKind = "petani" | "tengkulak";
 
 export interface Farmer { id: string; name: string; region: string; village: string; maxxiId?: string }
@@ -20,8 +20,10 @@ export interface Transaction {
   contact?: string | null;
 }
 /** Riwayat perubahan total stok fisik petani (terbaru dulu). */
-export interface StockLog { id: string; farmerId: string; at: string; activity: string; delta: number; total: number }
+export interface StockLog { id: string; farmerId: string; at: string; activity: string; harvest?: string | null; delta: number; total: number }
 export interface Activity { id: string; at: string; title: string; note: string }
+/** Sisa stok per tanggal panen milik petani yang login (stock_batches). */
+export interface StockBatch { id: string; harvest: string; volume: number }
 
 export interface RoleState {
   version: number;
@@ -31,6 +33,7 @@ export interface RoleState {
   activities: Activity[];
   stocks: Stock[];
   stockLog?: StockLog[];
+  batches?: StockBatch[];
   offers: Offer[];
   transactions: Transaction[];
   aiReference?: Record<string, number>;

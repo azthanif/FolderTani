@@ -41,14 +41,14 @@ export function HargaView({ role }: { role: Role }) {
     );
 
   const locked = prices.lockedArea && prices.regions[prices.lockedArea] ? prices.lockedArea : null;
-  const loc = locked ?? (area === "Sukabumi" ? "Sukabumi" : "Garut");
+  const loc = locked ?? (area === "Cianjur" ? "Cianjur" : "Garut");
   const d = prices.regions[loc] || Object.values(prices.regions)[0];
   if (!d)
     return (
       <div className="page-harga">
         <div className="empty-state">
           {prices.lockedArea
-            ? `Prediksi harga untuk ${prices.lockedArea} belum tersedia. Saat ini model baru mencakup Garut dan Sukabumi.`
+            ? `Prediksi harga untuk ${prices.lockedArea} belum tersedia. Saat ini model mencakup Garut dan Cianjur.`
             : "Data harga belum tersedia."}
         </div>
       </div>
@@ -68,7 +68,7 @@ export function HargaView({ role }: { role: Role }) {
             </span>
           ) : (
             <select className="select" value={loc} onChange={(e) => setArea(e.target.value)} aria-label="Pilih kabupaten">
-              {["Garut", "Sukabumi"].map((v) => (
+              {["Garut", "Cianjur"].map((v) => (
                 <option key={v}>{v}</option>
               ))}
             </select>

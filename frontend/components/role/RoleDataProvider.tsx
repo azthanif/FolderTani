@@ -144,6 +144,17 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
     [actor, closeModal, load, setDb, toast],
   );
 
+  // Profil diubah (halaman Profil Saya): perbarui sesi & muat ulang data.
+  useEffect(() => {
+    const onProfile = () => {
+      const s = getSession();
+      if (s) setSession(s);
+      load().catch(() => undefined);
+    };
+    window.addEventListener("temutani:profile", onProfile);
+    return () => window.removeEventListener("temutani:profile", onProfile);
+  }, [load]);
+
   // Muat awal (setelah sesi tersedia).
   useEffect(() => {
     if (!session) return;

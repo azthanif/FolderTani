@@ -10,7 +10,8 @@ from .auth import hash_password
 # Versi skema data. Naikkan bila bentuk data berubah agar file runtime lama di-reset otomatis.
 # v2: satuan volume kg (sebelumnya ton), jenis gabah hanya GKP, akun pengguna (login/daftar).
 # v3: nama pembeli = nama orang, fitur permintaan & status pembayaran dihapus, riwayat perubahan stok.
-SCHEMA_VERSION = 3
+# v4: volume yang disepakati langsung mengurangi stok (volume listing = sisa stok).
+SCHEMA_VERSION = 4
 
 # Akun demo untuk mencoba login (SIMULASI). Password sama untuk keduanya.
 DEMO_PASSWORD = "temutani123"
@@ -48,15 +49,16 @@ def role_demo_data() -> dict:
             {"id": "STK-004", "farmerId": "F-004", "region": "Sukabumi", "type": "GKP", "volume": 6000, "harvest": "2026-11-12", "status": "Tersedia", "moisture": 23},
             {"id": "STK-005", "farmerId": "F-005", "region": "Garut", "type": "GKP", "volume": 4800, "harvest": "2026-11-11", "status": "Tersedia", "moisture": 24},
             {"id": "STK-006", "farmerId": "F-006", "region": "Sukabumi", "type": "GKP", "volume": 7500, "harvest": "2026-11-12", "status": "Tersedia", "moisture": 24},
-            {"id": "STK-007", "farmerId": "F-001", "region": "Garut", "type": "GKP", "volume": 2200, "harvest": "2026-11-04", "status": "Tersedia", "moisture": 24},
-            {"id": "STK-008", "farmerId": "F-001", "region": "Garut", "type": "GKP", "volume": 1800, "harvest": "2026-11-05", "status": "Tersedia", "moisture": 24},
+            {"id": "STK-007", "farmerId": "F-001", "region": "Garut", "type": "GKP", "volume": 1000, "harvest": "2026-11-04", "status": "Tersedia", "moisture": 24},
+            {"id": "STK-008", "farmerId": "F-001", "region": "Garut", "type": "GKP", "volume": 800, "harvest": "2026-11-05", "status": "Tersedia", "moisture": 24},
         ],
         # Riwayat perubahan total stok fisik per petani (terbaru di akhir).
         "stockLog": [
-            {"id": "LOG-001", "farmerId": "F-001", "at": "2026-11-04T07:30:00+07:00", "activity": "Tambah panen", "delta": 2200, "total": 2200},
-            {"id": "LOG-002", "farmerId": "F-001", "at": "2026-11-05T07:15:00+07:00", "activity": "Tambah panen", "delta": 2300, "total": 4500},
-            {"id": "LOG-003", "farmerId": "F-001", "at": "2026-11-07T16:00:00+07:00", "activity": "Update stok", "delta": -500, "total": 4000},
-            {"id": "LOG-004", "farmerId": "F-001", "at": "2026-11-09T08:00:00+07:00", "activity": "Tambah panen", "delta": 5000, "total": 9000},
+            {"id": "LOG-001", "farmerId": "F-001", "at": "2026-11-04T07:30:00+07:00", "activity": "Tambah panen", "harvest": "2026-11-04", "delta": 2200, "total": 2200},
+            {"id": "LOG-002", "farmerId": "F-001", "at": "2026-11-04T10:30:00+07:00", "activity": "Terjual via Temu Tani (TRX-002)", "harvest": "2026-11-04", "delta": -1200, "total": 1000},
+            {"id": "LOG-003", "farmerId": "F-001", "at": "2026-11-05T07:15:00+07:00", "activity": "Tambah panen", "harvest": "2026-11-05", "delta": 1800, "total": 2800},
+            {"id": "LOG-004", "farmerId": "F-001", "at": "2026-11-05T09:40:00+07:00", "activity": "Terjual via Temu Tani (TRX-001)", "harvest": "2026-11-05", "delta": -1000, "total": 1800},
+            {"id": "LOG-005", "farmerId": "F-001", "at": "2026-11-09T08:00:00+07:00", "activity": "Tambah panen", "harvest": "2026-11-09", "delta": 5000, "total": 6800},
         ],
         "offers": [
             {"id": "OFF-001", "buyerId": "GUEST-001", "farmerId": "F-001", "stockId": "STK-001", "volume": 3000, "initialBid": 6800, "currentBid": 6800, "counter": None, "aiRef": 7100, "status": "Menunggu Petani", "created": "2026-11-06T09:10:00+07:00",

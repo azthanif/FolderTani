@@ -59,7 +59,10 @@ export default function MasukPage() {
           />
         </div>
         <div className="auth-field">
-          <label htmlFor="password">Password</label>
+          <div className="auth-label-row">
+            <label htmlFor="password">Password</label>
+            <Link href={phone ? `/lupa-password?phone=${encodeURIComponent(phone)}` : "/lupa-password"}>Lupa password?</Link>
+          </div>
           <PasswordField id="password" value={password} onChange={setPassword} autoComplete="current-password" />
         </div>
         {error ? (

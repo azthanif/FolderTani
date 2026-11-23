@@ -86,3 +86,17 @@
   .auth-card { padding: 24px 20px; border-radius: 18px; }
   .auth-row, .auth-roles { grid-template-columns: 1fr; }
 }
+
+/* Sembunyikan tombol "lihat password" bawaan browser (Microsoft Edge / IE) agar ikon mata tidak dobel */
+.auth-pass input::-ms-reveal,
+.auth-pass input::-ms-clear { display: none; }
+
+.auth-field select { width: 100%; padding: 12px 14px; border: 1px solid #cfdacf; border-radius: 12px; font: inherit; font-size: 14px; background: #fff; color: var(--ink); }
+.auth-label-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.auth-label-row a, .auth-error a, .auth-link { color: var(--green); font-size: 13px; font-weight: 700; text-decoration: none; }
+.auth-label-row a:hover, .auth-error a:hover, .auth-link:hover { text-decoration: underline; }
+.auth-info { padding: 11px 13px; border-radius: 12px; background: #eef7ea; color: #24573d; font-size: 13px; line-height: 1.5; }
+.auth-steps { display: flex; gap: 8px; margin: -8px 0 18px; font-size: 12px; color: var(--muted); }
+.auth-steps span { padding: 4px 10px; border-radius: 999px; background: #f1f4ef; }
+.auth-steps span.on { background: #e1f0dc; color: var(--forest); font-weight: 800; }
+.auth-code { letter-spacing: 6px; font-size: 20px !important; text-align: center; font-weight: 700; }

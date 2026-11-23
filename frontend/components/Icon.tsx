@@ -30,6 +30,7 @@ const SVG: Record<string, string> = {
  "phone": "<path d=\"M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z\"/>",
  "trending": "<path d=\"m3 17 7-7 4 4 7-7M15 7h6v6\"/>",
  "lock": "<rect x=\"4\" y=\"11\" width=\"16\" height=\"10\" rx=\"2\"/><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"/>",
+ "user": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21a8 8 0 0 1 16 0\"/>",
  "layout-dashboard": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/>",
  "chart-no-axes-combined": "<path d=\"M3 3v18h18\"/> <path d=\"m7 16 5-5 4 3 5-7\"/> <path d=\"M17 7h4v4\"/>",
  "receipt-text": "<path d=\"M4 3h16v18l-4-2-4 2-4-2-4 2V3Z\"/> <path d=\"M8 8h8\"/> <path d=\"M8 12h8\"/> <path d=\"M8 16h5\"/>",

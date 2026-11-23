@@ -6,16 +6,16 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { AuthShell, PasswordField } from "@/components/auth/AuthShell";
 import { ApiError } from "@/lib/api";
-import { dashboardPath, getSession, register, type AccountRole } from "@/lib/auth";
+import { dashboardPath, getSession, register, REGIONS, type SignupRole } from "@/lib/auth";
 
-const ROLE_OPTIONS: { value: AccountRole; label: string; desc: string }[] = [
+const ROLE_OPTIONS: { value: SignupRole; label: string; desc: string }[] = [
   { value: "petani", label: "Petani", desc: "Catat stok gabah dan tanggapi penawaran" },
   { value: "tengkulak", label: "Tengkulak", desc: "Cari stok gabah dan ajukan penawaran" },
 ];
 
 export default function DaftarPage() {
   const router = useRouter();
-  const [role, setRole] = useState<AccountRole>("petani");
+  const [role, setRole] = useState<SignupRole>("petani");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -23,6 +23,7 @@ export default function DaftarPage() {
   const [district, setDistrict] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [waRegistered, setWaRegistered] = useState(false);
   const isFarmer = role === "petani";
 
   useEffect(() => {
@@ -45,6 +46,7 @@ export default function DaftarPage() {
       router.replace(dashboardPath(s.user.role));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Pendaftaran gagal. Coba lagi.");
+      if (err instanceof ApiError && err.message.includes("Lupa Password")) setWaRegistered(true);
       setBusy(false);
     }
   }
@@ -92,8 +94,17 @@ export default function DaftarPage() {
         {isFarmer ? (
           <div className="auth-row">
             <div className="auth-field">
-              <label htmlFor="region">Kota/Kabupaten</label>
-              <input id="region" name="region" autoComplete="address-level2" required minLength={2} maxLength={60} value={region} onChange={(e) => setRegion(e.target.value)} placeholder="Contoh: Garut" />
+              <label htmlFor="region">Kabupaten</label>
+              <select id="region" name="region" required value={region} onChange={(e) => setRegion(e.target.value)}>
+                <option value="" disabled>
+                  Pilih kabupaten
+                </option>
+                {REGIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="auth-field">
               <label htmlFor="district">Kecamatan</label>
@@ -105,6 +116,12 @@ export default function DaftarPage() {
         {error ? (
           <div className="auth-error" role="alert">
             {error}
+            {waRegistered ? (
+              <>
+                {" "}
+                <Link href={`/lupa-password?phone=${encodeURIComponent(phone)}`}>Buat password sekarang</Link>
+              </>
+            ) : null}
           </div>
         ) : null}
         <button className="auth-submit" type="submit" disabled={busy}>
