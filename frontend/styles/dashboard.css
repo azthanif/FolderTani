@@ -1325,6 +1325,8 @@
 .dash .page-berita .field label{font-size:10px;font-weight:800;color:#89968f;letter-spacing:.3px}
 .dash .page-berita .field input{height:40px;border:1px solid var(--line);border-radius:10px;padding:0 11px;color:#40534a;background:#fff;outline:none}
 .dash .page-berita .field input:focus{border-color:#83b797;box-shadow:0 0 0 3px #e9f5ec}
+.dash .page-berita .field select{height:40px;min-width:160px;border:1px solid var(--line);border-radius:10px;padding:0 34px 0 11px;color:#40534a;font-size:13px;font-weight:600;cursor:pointer;outline:none;appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2340534a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 11px center}
+.dash .page-berita .field select:focus{border-color:#83b797;box-shadow:0 0 0 3px #e9f5ec}
 .dash .page-berita .btn{height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--line);background:white;color:#405348;font-size:12px;font-weight:800;cursor:pointer}
 .dash .page-berita .btn.primary{background:#245e44;color:white;border-color:#245e44}
 .dash .page-berita .btn:hover{filter:brightness(.97)}

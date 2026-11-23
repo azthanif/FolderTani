@@ -1,5 +1,6 @@
 "use client";
-/* Halaman Profil Saya (petani, tengkulak, admin): ubah data diri + ubah password dengan kode WhatsApp. */
+/* Halaman Profil Saya (petani, tengkulak, admin). Tata letak satu kolom: kartu identitas,
+   form data diri, lalu ubah password dengan kode verifikasi WhatsApp. */
 import { useEffect, useState, type FormEvent } from "react";
 import { PasswordField } from "@/components/auth/AuthShell";
 import { Icon } from "@/components/Icon";
@@ -7,10 +8,23 @@ import { useUI } from "@/components/UIProvider";
 import { api, ApiError } from "@/lib/api";
 import { changePassword, getSession, REGIONS, requestOtp, setSession, updateProfile, type SessionUser } from "@/lib/auth";
 import "@/styles/auth.css";
+import "@/styles/profile.css";
 
 const ROLE_LABEL = { petani: "Petani", tengkulak: "Tengkulak", admin: "Administrator" } as const;
 /** Event agar dashboard memuat ulang data setelah profil berubah. */
 export const PROFILE_EVENT = "temutani:profile";
+
+const PW_RULES = [
+  { label: "Minimal 8 karakter", test: (v: string) => v.length >= 8 },
+  { label: "Minimal 1 huruf kecil", test: (v: string) => /[a-z]/.test(v) },
+  { label: "Minimal 1 huruf besar", test: (v: string) => /[A-Z]/.test(v) },
+  { label: "Minimal 1 angka", test: (v: string) => /\d/.test(v) },
+];
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] || "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
+}
 
 export function ProfileView() {
   const { toast } = useUI();
@@ -18,16 +32,15 @@ export function ProfileView() {
   const [name, setName] = useState("");
   const [region, setRegion] = useState("");
   const [district, setDistrict] = useState("");
-  const [share, setShare] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profileErr, setProfileErr] = useState("");
 
-  const [otpSent, setOtpSent] = useState(false);
   const [otpInfo, setOtpInfo] = useState("");
   const [devCode, setDevCode] = useState("");
   const [code, setCode] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
+  const [sending, setSending] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
   const [pwErr, setPwErr] = useState("");
   const [cooldown, setCooldown] = useState(0);
@@ -37,7 +50,6 @@ export function ProfileView() {
     setName(u.name);
     setRegion(u.region || "");
     setDistrict(u.district || "");
-    setShare(!!u.shareContact);
   }
 
   useEffect(() => {
@@ -61,13 +73,15 @@ export function ProfileView() {
 
   if (!user) return <div className="empty-state">Memuat profil…</div>;
   const isFarmer = user.role === "petani";
+  const pwValid = PW_RULES.every((r) => r.test(pw));
 
   async function saveProfile(e: FormEvent) {
     e.preventDefault();
     setProfileErr("");
     setSaving(true);
     try {
-      const r = await updateProfile(isFarmer ? { name, region, district, shareContact: share } : { name });
+      // shareContact dikirim apa adanya agar pengaturan lama tidak berubah.
+      const r = await updateProfile(isFarmer ? { name, region, district, shareContact: !!user?.shareContact } : { name });
       fill(r.user);
       window.dispatchEvent(new Event(PROFILE_EVENT));
       toast(r.message);
@@ -80,29 +94,30 @@ export function ProfileView() {
 
   async function sendCode() {
     setPwErr("");
-    setPwBusy(true);
+    setSending(true);
     try {
       const r = await requestOtp("change_password");
-      setOtpSent(true);
       setOtpInfo(r.message);
       setDevCode(r.devCode || "");
       setCooldown(60);
     } catch (err) {
       setPwErr(err instanceof ApiError ? err.message : "Kode gagal dikirim.");
     } finally {
-      setPwBusy(false);
+      setSending(false);
     }
   }
 
   async function savePassword(e: FormEvent) {
     e.preventDefault();
     setPwErr("");
+    if (!pwValid) return setPwErr("Password baru belum memenuhi semua persyaratan.");
     if (pw !== pw2) return setPwErr("Konfirmasi password tidak sama.");
+    if (!/^\d{6}$/.test(code)) return setPwErr("Masukkan 6 digit kode verifikasi dari WhatsApp.");
     setPwBusy(true);
     try {
       const r = await changePassword(code, pw);
       toast(r.message + " Sesi di perangkat lain otomatis keluar.");
-      setOtpSent(false);
+      setOtpInfo("");
       setCode("");
       setPw("");
       setPw2("");
@@ -116,109 +131,101 @@ export function ProfileView() {
 
   return (
     <div className="profile-page">
-      <div className="page-heading">
-        <div>
-          <div className="overline">TEMU TANI / {ROLE_LABEL[user.role].toUpperCase()}</div>
-          <h1>Profil Saya</h1>
-          <p>Kelola data diri dan keamanan akun Anda.</p>
+      <section className="card pf-card">
+        <div className="pf-identity">
+          <div className="pf-avatar" aria-hidden="true">
+            {initials(user.name)}
+          </div>
+          <div className="pf-identity-text">
+            <strong>{user.name}</strong>
+            <span>{user.phone}</span>
+            <em className="pf-role">{ROLE_LABEL[user.role]}</em>
+          </div>
         </div>
-      </div>
 
-      <div className="profile-grid">
-        <section className="card profile-card">
-          <h3 className="section-title">Data Diri</h3>
-          <form className="profile-form" onSubmit={saveProfile}>
-            <label className="profile-field">
-              <span>{user.role === "tengkulak" ? "Nama / nama usaha" : "Nama lengkap"}</span>
-              <input required minLength={3} maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-            <div className="profile-row">
-              <label className="profile-field">
-                <span>Nomor HP</span>
-                <input value={user.phone} readOnly disabled />
+        <form className="pf-form" onSubmit={saveProfile}>
+          <label className="pf-field">
+            <span>{user.role === "tengkulak" ? "Nama / Nama Usaha" : "Nama Lengkap"}</span>
+            <div className="pf-input-icon">
+              <input className="pf-input" required minLength={3} maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
+              <Icon name="edit" size={16} />
+            </div>
+          </label>
+          {isFarmer ? (
+            <div className="pf-row">
+              <label className="pf-field">
+                <span>Kabupaten</span>
+                <select className="pf-input" required value={region} onChange={(e) => setRegion(e.target.value)}>
+                  {REGIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <label className="profile-field">
-                <span>Peran</span>
-                <input value={ROLE_LABEL[user.role]} readOnly disabled />
+              <label className="pf-field">
+                <span>Kecamatan</span>
+                <input className="pf-input" required minLength={2} maxLength={60} value={district} onChange={(e) => setDistrict(e.target.value)} />
               </label>
             </div>
-            {isFarmer ? (
-              <>
-                <div className="profile-row">
-                  <label className="profile-field">
-                    <span>Kabupaten</span>
-                    <select required value={region} onChange={(e) => setRegion(e.target.value)}>
-                      {REGIONS.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="profile-field">
-                    <span>Kecamatan</span>
-                    <input required minLength={2} maxLength={60} value={district} onChange={(e) => setDistrict(e.target.value)} />
-                  </label>
-                </div>
-                <label className="profile-check">
-                  <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
-                  <span>Izinkan nomor HP saya ditampilkan kepada pembeli setelah harga disepakati.</span>
-                </label>
-              </>
-            ) : null}
-            <p className="profile-note">Nomor HP dipakai untuk masuk dan menerima kode verifikasi, sehingga tidak bisa diubah di sini.</p>
-            {profileErr ? <div className="auth-error" role="alert">{profileErr}</div> : null}
-            <div className="profile-actions">
-              <button className="btn primary" type="submit" disabled={saving}>
-                {saving ? "Menyimpan…" : "Simpan Profil"}
+          ) : null}
+          {profileErr ? <div className="auth-error" role="alert">{profileErr}</div> : null}
+          <div>
+            <button className="pf-btn" type="submit" disabled={saving}>
+              {saving ? "Menyimpan…" : "Perbarui profil"}
+            </button>
+          </div>
+        </form>
+
+        <h2 className="pf-heading">Ubah Password</h2>
+        <form className="pf-form" onSubmit={savePassword}>
+          <div className="pf-field">
+            <span>Password Baru</span>
+            <PasswordField id="newPassword" value={pw} onChange={setPw} autoComplete="new-password" minLength={8} />
+          </div>
+          <div className="pf-rules">
+            <p>* Persyaratan password:</p>
+            <ul>
+              {PW_RULES.map((r) => (
+                <li key={r.label} className={pw && r.test(pw) ? "ok" : ""}>
+                  {r.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="pf-field">
+            <span>Ulangi Password Baru</span>
+            <PasswordField id="newPassword2" value={pw2} onChange={setPw2} autoComplete="new-password" minLength={8} />
+          </div>
+          <div className="pf-field">
+            <span>Kode Verifikasi WhatsApp</span>
+            <div className="pf-code-row">
+              <input
+                className="pf-input auth-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="\d{6}"
+                maxLength={6}
+                placeholder="6 digit"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              />
+              <button type="button" className="pf-btn ghost" disabled={sending || cooldown > 0} onClick={sendCode}>
+                <Icon name="phone" size={14} /> {sending ? "Mengirim…" : cooldown ? `Kirim ulang (${cooldown})` : otpInfo ? "Kirim ulang" : "Kirim kode"}
               </button>
             </div>
-          </form>
-        </section>
-
-        <section className="card profile-card">
-          <h3 className="section-title">Ubah Password</h3>
-          <p className="profile-note">
-            Untuk keamanan, kode verifikasi dikirim ke WhatsApp <b>{user.phone}</b>.
-          </p>
-          {!otpSent ? (
-            <>
-              {pwErr ? <div className="auth-error" role="alert">{pwErr}</div> : null}
-              <div className="profile-actions">
-                <button className="btn primary" type="button" onClick={sendCode} disabled={pwBusy}>
-                  <Icon name="phone" size={15} /> {pwBusy ? "Mengirim…" : "Kirim Kode via WhatsApp"}
-                </button>
-              </div>
-            </>
-          ) : (
-            <form className="profile-form" onSubmit={savePassword}>
-              <div className="auth-info">{otpInfo}</div>
-              {devCode ? <div className="auth-info">Mode pengembangan: kode Anda <b>{devCode}</b></div> : null}
-              <label className="profile-field">
-                <span>Kode verifikasi (6 digit)</span>
-                <input className="auth-code" inputMode="numeric" autoComplete="one-time-code" pattern="\d{6}" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
-              </label>
-              <div className="profile-field">
-                <span>Password baru</span>
-                <PasswordField id="newPassword" value={pw} onChange={setPw} autoComplete="new-password" minLength={8} />
-              </div>
-              <div className="profile-field">
-                <span>Ulangi password baru</span>
-                <PasswordField id="newPassword2" value={pw2} onChange={setPw2} autoComplete="new-password" minLength={8} />
-              </div>
-              {pwErr ? <div className="auth-error" role="alert">{pwErr}</div> : null}
-              <div className="profile-actions">
-                <button type="button" className="btn" disabled={cooldown > 0 || pwBusy} onClick={sendCode}>
-                  {cooldown ? `Kirim ulang (${cooldown} dtk)` : "Kirim ulang kode"}
-                </button>
-                <button className="btn primary" type="submit" disabled={pwBusy}>
-                  {pwBusy ? "Menyimpan…" : "Simpan Password"}
-                </button>
-              </div>
-            </form>
-          )}
-        </section>
-      </div>
+            <small>Kode dikirim ke WhatsApp {user.phone}.</small>
+          </div>
+          {otpInfo ? <div className="auth-info">{otpInfo}</div> : null}
+          {devCode ? <div className="auth-info">Mode pengembangan: kode Anda <b>{devCode}</b></div> : null}
+          {pwErr ? <div className="auth-error" role="alert">{pwErr}</div> : null}
+          <div>
+            <button className="pf-btn" type="submit" disabled={pwBusy}>
+              {pwBusy ? "Menyimpan…" : "Ubah password"}
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }

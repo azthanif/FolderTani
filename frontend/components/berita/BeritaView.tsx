@@ -247,22 +247,23 @@ export function BeritaView() {
         >
           7 Hari Terakhir
         </button>
-        <div className="chips" role="group" aria-label="Filter wilayah">
-          {WILAYAH.map((w) => (
-            <button
-              type="button"
-              key={w}
-              className={`chip${wilayah === w ? " active" : ""}`}
-              aria-pressed={wilayah === w}
-              onClick={() => {
-                setWilayah(w);
-                setSelectedId(null);
-                setPage(1);
-              }}
-            >
-              {w}
-            </button>
-          ))}
+        <div className="field">
+          <label htmlFor="wilayah">WILAYAH</label>
+          <select
+            id="wilayah"
+            value={wilayah}
+            onChange={(e) => {
+              setWilayah(e.target.value as Wilayah);
+              setSelectedId(null);
+              setPage(1);
+            }}
+          >
+            {WILAYAH.map((w) => (
+              <option key={w} value={w}>
+                {w === "Semua" ? "Semua wilayah" : w}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="filter-note">{rangeInfo}</div>
       </section>
