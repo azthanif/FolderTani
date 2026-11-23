@@ -27,7 +27,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
     { href: "/admin/aktivitas", icon: "messages-square", label: "Aktivitas Chatbot" },
     { href: "/admin/berita", icon: "newspaper", label: "Berita & Analisis" },
     { href: "/admin/akun", icon: "users", label: "Kelola Akun", count: pendingAccounts },
-    { href: "/admin/profil", icon: "user", label: "Profil Saya" },
   ];
 
   function globalQuery(q: string) {
@@ -44,6 +43,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       variant="admin"
       brandSmall="Administrator"
       user={{ name: adminName, initials: initials(adminName) }}
+      profileHref="/admin/profil"
       onLogout={logout}
       nav={nav}
       topExtra={
