@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import os
 import secrets
 import string
@@ -27,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from . import auth, pricing
-from .news import load_news
+from .news import load_news, load_news_supabase
 from .seed import SCHEMA_VERSION, admin_data, role_demo_data
 from .store import BlobStore, JsonStore
 
@@ -42,6 +43,8 @@ FRONTEND_DIR = Path(os.getenv("TEMUTANI_FRONTEND_DIR", PROJECT_DIR / "public"))
 _default_data = Path("/tmp/temutani") if ON_VERCEL else BASE_DIR / "data" / "runtime"
 DATA_DIR = Path(os.getenv("TEMUTANI_DATA_DIR", _default_data))
 NEWS_CSV = Path(os.getenv("TEMUTANI_NEWS_CSV", BASE_DIR / "data" / "berita.csv"))
+# "supabase" = baca news_articles hasil news_pipeline (butuh SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY di server)
+NEWS_SOURCE = os.getenv("TEMUTANI_NEWS_SOURCE", "csv").strip().lower()
 CHATBOT_MAX_BYTES = 2_000_000
 
 STOCK_STATUSES = ("Tersedia", "Akan Panen", "Ditutup")
@@ -375,16 +378,34 @@ def get_prices(wilayah: Optional[str] = Query(default=None), actor: Actor = Depe
 def get_news(
     dari: Optional[str] = Query(default=None, alias="from"),
     sampai: Optional[str] = Query(default=None, alias="to"),
+    wilayah: Optional[str] = Query(default=None, description="Garut | Cianjur | Nasional (boleh dipisah koma)"),
 ):
-    if not NEWS_CSV.exists():
-        err(503, "File berita.csv belum tersedia di server.")
-    items = load_news(NEWS_CSV)
+    for v in (dari, sampai):
+        if v and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            err(400, "Format tanggal harus YYYY-MM-DD.")
+    want_list = [w.strip() for w in (wilayah or "").split(",") if w.strip()]
+    if NEWS_SOURCE == "supabase":
+        url, key = os.getenv("SUPABASE_URL", ""), os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        if not url or not key:
+            err(503, "Sumber berita Supabase belum dikonfigurasi di server.")
+        try:
+            items = load_news_supabase(url, key, dari, sampai, [w.title() for w in want_list])
+        except Exception:  # noqa: BLE001 - jangan bocorkan detail koneksi ke klien
+            log.exception("Gagal membaca berita dari Supabase")
+            err(503, "Berita belum dapat dimuat dari database.")
+    else:
+        if not NEWS_CSV.exists():
+            err(503, "File berita belum tersedia di server.")
+        items = load_news(NEWS_CSV)
     if dari:
         items = [n for n in items if n["tanggal"] >= dari]
     if sampai:
         items = [n for n in items if n["tanggal"] <= sampai]
-    if not items and not (dari or sampai):
-        err(503, "berita.csv berhasil dibaca, tetapi tidak ada baris berita yang valid.")
+    if want_list:
+        want = {w.casefold() for w in want_list}
+        items = [n for n in items if want & {w.casefold() for w in n["wilayah"]}]
+    if not items and not (dari or sampai or wilayah):
+        err(503, "Data berita berhasil dibaca, tetapi tidak ada baris berita yang valid.")
     return {"items": items, "total": len(items)}
 
 

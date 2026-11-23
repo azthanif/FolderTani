@@ -1,0 +1,72 @@
+# Salin ke config.yaml lalu sesuaikan. Rahasia (API key) TIDAK ditulis di sini: pakai variabel lingkungan.
+run:
+  data_dir: data            # relatif ke folder news_pipeline/
+  lookback_days: 1          # ambil berita kemarin s/d hari ini
+  log_level: INFO
+
+mediacloud:
+  api_key_env: MEDIACLOUD_API_KEY
+  collection_ids: []        # isi ID koleksi media Indonesia yang Anda pakai di search.mediacloud.org
+  max_per_query: 1000
+  queries:                  # selalu pakai kurung; AND/OR wajib huruf kapital
+    Garut: '(padi OR gabah OR beras OR petani OR pupuk OR panen OR sawah) AND garut'
+    Cianjur: '(padi OR gabah OR beras OR petani OR pupuk OR panen OR sawah) AND cianjur'
+    Nasional: '("harga gabah" OR "harga beras" OR HPP OR bulog OR "pupuk subsidi") AND (petani OR pertanian)'
+
+fetch:
+  min_interval_sec: 2.0     # jeda minimum antar-request ke domain yang sama
+  max_workers: 8
+  timeout_sec: 20
+  respect_robots: true
+  block_threshold: 15       # blokir beruntun per domain sebelum domain dijeda
+  use_wayback: true
+  user_agent: "Mozilla/5.0 (compatible; TemuTaniNewsBot/1.0; +mailto:ganti-email@example.com)"
+
+preprocess:
+  min_words: 80
+
+ner:
+  model: cahya/bert-base-indonesian-NER   # MIT
+  score_min: 0.70                         # sama dengan notebook EDA
+  device: auto                            # auto | -1 (CPU) | 0 (GPU)
+
+classifier:
+  targets: [Garut, Cianjur]
+  min_body_mentions: 2
+  require_topic: true       # hanya berita pertanian/pangan
+  topic_min_hits: 3
+  national_min_hits: 4
+
+summary:
+  method: auto              # auto | idt5 | lead
+  model_path: ""            # mis. /content/drive/MyDrive/hackathon-summarization/idt5-indosum/final atau repo HF
+  min_entity_precision: 0.8 # ringkasan idT5 dengan entitas karangan diganti Lead
+
+digest:
+  kabupaten: [Garut, Cianjur]
+  max_local: 5
+  max_national: 3
+  max_chars: 3500
+  llm:
+    enabled: false          # true = tambah paragraf "Sorotan" via Ollama (lokal)
+    ollama_url: http://localhost:11434
+    model: qwen2.5:7b       # Qwen2.5-7B-Instruct, Apache-2.0
+
+notify:
+  enabled: false            # false = dry-run. Ubah ke true hanya setelah uji ke nomor sendiri
+  waha_url: http://localhost:3000
+  api_key_env: WAHA_API_KEY
+  session: default
+  delay_sec: [4, 9]
+  recipients_source: supabase   # supabase (view v_news_recipients) | csv
+  recipients_csv: ""            # kolom: user_id,phone,name,kabupaten,role
+
+storage:
+  supabase:
+    enabled: false
+    url_env: SUPABASE_URL
+    key_env: SUPABASE_SERVICE_ROLE_KEY
+
+export:
+  web_csv: ../backend/data/berita_pipeline.csv
+  keep_days: 90

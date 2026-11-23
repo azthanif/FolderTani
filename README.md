@@ -56,6 +56,20 @@ Hubungkan repo ke Vercel. Root Directory = folder yang berisi `vercel.json`. Fra
 
 > **Batasan Vercel:** `/tmp` bersifat sementara dan tidak dibagi antar-instance. Data simulasi bisa kembali ke kondisi awal setelah function idle, dan dua pengguna bisa sesekali melihat data berbeda. Untuk demo yang stabil, pindahkan penyimpanan ke database (mis. Supabase/Postgres).
 
+## Berita otomatis (news_pipeline)
+
+Halaman **Berita & Analisis** dan digest WhatsApp harian diisi oleh `news_pipeline/` (Media Cloud → teks → NER BERT →
+wilayah Garut/Cianjur/Nasional → ringkasan → digest → WAHA). Pipeline dijalankan terjadwal di server/PC terpisah, bukan di
+Vercel. Panduan lengkap: [`news_pipeline/README.md`](news_pipeline/README.md).
+
+| Variabel (backend) | Fungsi |
+| --- | --- |
+| `TEMUTANI_NEWS_CSV` | Path CSV berita, mis. `backend/data/berita_pipeline.csv` (default: `berita.csv` contoh) |
+| `TEMUTANI_NEWS_SOURCE=supabase` | Baca tabel `news_articles` (butuh `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`) |
+
+`GET /api/berita?from=&to=&wilayah=Garut` — respons kini juga memuat `ringkasan`, `wilayah`, `url`, dan offset entitas
+(`start`, `end`, `field`) untuk sorotan NER yang akurat. Format `berita.csv` lama tetap didukung.
+
 ## Endpoint utama
 
 | Method | Endpoint | Peran | Fungsi |
@@ -72,7 +86,7 @@ Hubungkan repo ke Vercel. Root Directory = folder yang berisi `vercel.json`. Fra
 | POST | `/api/transactions/{id}/verify` | petani | Konfirmasi dana diterima |
 | POST | `/api/demo/reset` | petani, tengkulak | Reset data simulasi |
 | GET | `/api/prices` | petani, admin | Prediksi harga AI (petani dikunci ke kabupatennya) |
-| GET | `/api/berita?from=&to=` | semua | Berita + hasil NER |
+| GET | `/api/berita?from=&to=&wilayah=` | semua | Berita + hasil NER + ringkasan |
 | GET | `/api/admin/dashboard` | admin | Data dashboard admin |
 | GET/PUT/DELETE | `/api/chatbot/state` | semua | State simulasi chatbot |
 

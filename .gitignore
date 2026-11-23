@@ -3,3 +3,11 @@ __pycache__/
 .venv/
 backend/data/runtime/
 .pytest_cache/
+
+# news_pipeline: data kerja & konfigurasi lokal (berisi path pribadi)
+news_pipeline/data/
+news_pipeline/config.yaml
+frontend/node_modules/
+frontend/.next/
+news_pipeline/.env
+news_pipeline/env.bat

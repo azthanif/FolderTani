@@ -2,11 +2,16 @@
 /* Berita & Isu Pertanian (port initBerita + berita.html). Tidak lagi iframe. */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
+import { getSession } from "@/lib/auth";
 
 interface NerEntity {
   word?: string;
   entity?: string;
   score?: number;
+  /** Offset 0-based (end eksklusif) ke teks pada `field`. Ada pada data hasil news_pipeline. */
+  start?: number;
+  end?: number;
+  field?: "judul" | "isi";
 }
 
 interface NewsItem {
@@ -17,15 +22,24 @@ interface NewsItem {
   kategori: string;
   judul: string;
   isi: string;
+  ringkasan?: string;
+  url?: string;
+  summary_model?: string;
+  wilayah?: string[];
   ner_results: NerEntity[];
 }
+
+const WILAYAH = ["Semua", "Garut", "Cianjur", "Nasional"] as const;
+type Wilayah = (typeof WILAYAH)[number];
 
 const PAGE_SIZE = 5;
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (s: string) =>
   new Date(s + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
-const NER_CLASS: Record<string, string> = { GPE: "loc", LOC: "loc", ORG: "org", NOR: "org", PRD: "com", EVT: "act", QTY: "qty" };
+const NER_CLASS: Record<string, string> = {
+  PER: "per", GPE: "loc", LOC: "loc", FAC: "loc", ORG: "org", NOR: "org", LAW: "org", PRD: "com", EVT: "act", QTY: "qty", MON: "qty",
+};
 
 const STOP = new Set(
   "yang dan di ke dari untuk pada dengan dalam sebagai atau agar ini itu oleh akan dapat lebih juga menjadi terhadap saat setelah sebelum karena jika serta para suatu tidak perlu secara dapat bahwa adalah mulai sejumlah wilayah hasil kondisi informasi artikel berita petani padi kabupaten kecamatan".split(
@@ -34,21 +48,36 @@ const STOP = new Set(
 );
 const CLOUD_COLORS = ["#287b55", "#568cba", "#b47b35", "#8b69b0", "#4c9a8b", "#c16c63"];
 
-/** Sorot entitas NER (algoritma sama dengan versi lama, keluaran berupa elemen React). */
-function highlight(text: string, entities: NerEntity[]): ReactNode[] {
+type Match = { start: number; end: number; type: string; score?: number };
+
+/** Sorot entitas NER. Pakai offset bila tersedia (akurat), selain itu cocokkan kata (data lama). */
+function highlight(text: string, entities: NerEntity[], field: "judul" | "isi"): ReactNode[] {
   const source = String(text ?? "");
-  const matches: { start: number; end: number; type: string; score?: number }[] = [];
-  (entities || []).forEach((entity) => {
-    const word = String(entity.word || "").trim();
-    const type = NER_CLASS[entity.entity || ""] || "other";
-    if (!word) return;
-    const re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(source)) !== null) {
-      matches.push({ start: m.index, end: m.index + m[0].length, type, score: entity.score });
-      if (m[0].length === 0) re.lastIndex++;
-    }
-  });
+  const withOffset = (entities || []).filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end) && e.field);
+  const matches: Match[] = [];
+  if (withOffset.length) {
+    withOffset
+      .filter((e) => e.field === field)
+      .forEach((e) => {
+        const start = e.start as number;
+        const end = e.end as number;
+        // abaikan offset yang tidak cocok dengan teks (mis. teks berubah setelah NER)
+        if (start >= 0 && end <= source.length && end > start && source.slice(start, end) === (e.word ?? source.slice(start, end)))
+          matches.push({ start, end, type: NER_CLASS[e.entity || ""] || "other", score: e.score });
+      });
+  } else {
+    (entities || []).forEach((entity) => {
+      const word = String(entity.word || "").trim();
+      const type = NER_CLASS[entity.entity || ""] || "other";
+      if (!word) return;
+      const re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(source)) !== null) {
+        matches.push({ start: m.index, end: m.index + m[0].length, type, score: entity.score });
+        if (m[0].length === 0) re.lastIndex++;
+      }
+    });
+  }
   matches.sort((a, b) => a.start - b.start || b.end - b.start - (a.end - a.start));
   const out: ReactNode[] = [];
   let pos = 0;
@@ -65,6 +94,12 @@ function highlight(text: string, entities: NerEntity[]): ReactNode[] {
   });
   out.push(source.slice(pos));
   return out;
+}
+
+/** Wilayah default: petani Garut/Cianjur langsung melihat kabupatennya (+ nasional tetap bisa dipilih). */
+function defaultWilayah(): Wilayah {
+  const region = (getSession()?.user.region || "").replace(/^(kabupaten|kab\.?)\s+/i, "").trim().toLowerCase();
+  return (WILAYAH.find((w) => w.toLowerCase() === region) as Wilayah) || "Semua";
 }
 
 function defaultRange(news: NewsItem[]): [string, string] {
@@ -84,13 +119,26 @@ export function BeritaView() {
   const [range, setRange] = useState<[string, string] | null>(null); // rentang yang sudah diterapkan
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [wilayah, setWilayah] = useState<Wilayah>("Semua");
+
+  useEffect(() => {
+    setWilayah(defaultWilayah());
+  }, []);
 
   useEffect(() => {
     let alive = true;
     api<{ items?: Partial<NewsItem>[] }>("/berita")
       .then((res) => {
         const items = (res.items || [])
-          .map((n, i) => ({ ...n, id: n.id || String(i + 1), ner_results: Array.isArray(n.ner_results) ? n.ner_results : [] }) as NewsItem)
+          .map(
+            (n, i) =>
+              ({
+                ...n,
+                id: n.id || String(i + 1),
+                wilayah: Array.isArray(n.wilayah) ? n.wilayah : [],
+                ner_results: Array.isArray(n.ner_results) ? n.ner_results : [],
+              }) as NewsItem,
+          )
           .filter((n) => n.tanggal && n.judul);
         if (!items.length) throw new Error("Server tidak mengirim berita yang valid.");
         if (!alive) return;
@@ -111,10 +159,13 @@ export function BeritaView() {
 
   const filtered = useMemo(() => {
     if (!range) return [];
+    const w = wilayah.toLowerCase();
     return news
       .filter((n) => n.tanggal >= range[0] && n.tanggal <= range[1])
+      // data lama tanpa kolom wilayah: cocokkan ke kolom kabupaten
+      .filter((n) => wilayah === "Semua" || (n.wilayah?.length ? n.wilayah : [n.kabupaten]).some((x) => x.toLowerCase() === w))
       .sort((a, b) => b.tanggal.localeCompare(a.tanggal) || b.id.localeCompare(a.id));
-  }, [news, range]);
+  }, [news, range, wilayah]);
 
   function apply(f: string, t: string) {
     if (!f || !t) {
@@ -196,6 +247,23 @@ export function BeritaView() {
         >
           7 Hari Terakhir
         </button>
+        <div className="chips" role="group" aria-label="Filter wilayah">
+          {WILAYAH.map((w) => (
+            <button
+              type="button"
+              key={w}
+              className={`chip${wilayah === w ? " active" : ""}`}
+              aria-pressed={wilayah === w}
+              onClick={() => {
+                setWilayah(w);
+                setSelectedId(null);
+                setPage(1);
+              }}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
         <div className="filter-note">{rangeInfo}</div>
       </section>
 
@@ -216,15 +284,35 @@ export function BeritaView() {
                 </div>
               ) : featured ? (
                 <>
-                  <h2>{highlight(featured.judul, featured.ner_results)}</h2>
+                  <h2>{highlight(featured.judul, featured.ner_results, "judul")}</h2>
                   <div className="meta">
                     <span>◷ {fmt(featured.tanggal)}</span>
                     <span>⌖ {featured.kabupaten}</span>
                     <span>▤ {featured.kategori}</span>
                     <span>✦ {featured.sumber}</span>
+                    {featured.url ? (
+                      <a href={featured.url} target="_blank" rel="noopener noreferrer">
+                        ↗ Baca berita asli
+                      </a>
+                    ) : null}
                   </div>
-                  <p className="article-text">{highlight(featured.isi, featured.ner_results)}</p>
+                  {featured.ringkasan ? (
+                    <div className="summary-box">
+                      <b>Ringkasan</b>
+                      <p>{featured.ringkasan}</p>
+                      <small>
+                        {featured.summary_model?.startsWith("idt5")
+                          ? "Ringkasan otomatis (model idT5). Periksa berita asli untuk detail."
+                          : "Ringkasan otomatis dari kalimat pembuka berita."}
+                      </small>
+                    </div>
+                  ) : null}
+                  <p className="article-text">{highlight(featured.isi, featured.ner_results, "isi")}</p>
                   <div className="legend">
+                    <span>
+                      <i className="swatch" style={{ background: "#e58a8a" }} />
+                      Orang (PER)
+                    </span>
                     <span>
                       <i className="swatch" style={{ background: "#78a4e8" }} />
                       Lokasi (GPE/LOC)

@@ -5,3 +5,4 @@ __pycache__
 backend/data/runtime
 *.bat
 *.sh
+news_pipeline
