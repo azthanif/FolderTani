@@ -1,12 +1,23 @@
 /* Data harga dari GET /api/prices (seri harian + prakiraan dihitung di server). */
 import { api, type Role } from "./api";
 
+export interface PriceMeta {
+  source: string;
+  runDate: string | null;
+  modelVersion: string | null;
+  mape: number | null;
+  simulated: boolean;
+  priceSource: "asli" | "simulasi" | "ffill";
+  geeFilled: boolean;
+}
+
 export interface RegionPrice {
   current: number;
   previous: number;
   actualDaily: number[];
   predictedDaily: number[];
   forecast: number[];
+  meta?: PriceMeta;
 }
 
 export interface PricesResponse {

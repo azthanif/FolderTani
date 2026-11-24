@@ -8,6 +8,8 @@ import { ApiErrorCard } from "@/components/DashboardShell";
 import { Icon } from "@/components/Icon";
 import { PriceChart } from "@/components/PriceChart";
 
+const fmtSource = (s: string) => (s === "asli" ? "pasar" : s === "simulasi" ? "simulasi" : "terakhir (isi maju)");
+
 export function HargaView({ role }: { role: Role }) {
   const [prices, setPrices] = useState<PricesResponse | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -54,6 +56,9 @@ export function HargaView({ role }: { role: Role }) {
       </div>
     );
 
+  const meta = d.meta;
+  const anySimulated = Object.values(prices.regions).some((v) => v.meta?.simulated ?? true);
+
   return (
     <div className="page-harga">
       <div className="page-heading">
@@ -83,7 +88,7 @@ export function HargaView({ role }: { role: Role }) {
             {formatRupiah(d.current)}
             <span className="kpi-unit">/kg</span>
           </strong>
-          <small>Output AI</small>
+          <small>{meta?.modelVersion ? "Rata-rata prakiraan AI 7 hari ke depan" : "Output AI"}</small>
         </div>
         <div className="card price-card">
           <span className="c-label">HARGA PASAR PEMBANDING</span>
@@ -91,7 +96,7 @@ export function HargaView({ role }: { role: Role }) {
             {formatRupiah(d.previous)}
             <span className="kpi-unit">/kg</span>
           </strong>
-          <small>Harga historis</small>
+          <small>{meta?.modelVersion ? `Harga ${fmtSource(meta.priceSource)} per ${fmtDay(todayWIB(meta.runDate), { day: "numeric", month: "short" })}` : "Harga historis"}</small>
         </div>
         <div className="card price-card">
           <span className="c-label"> HARGA ACUAN GKP </span>
@@ -119,10 +124,10 @@ export function HargaView({ role }: { role: Role }) {
             {[
               ["KABUPATEN", loc],
               ["JENIS GABAH", "GKP"],
-              ["TANGGAL PREDIKSI", fmtDay(todayWIB(prices.asOf), { day: "numeric", month: "short", year: "numeric" })],
-              ["SUMBER", "Model AI Temu Tani"],
-              ["AKURASI (MAPE)", "Belum dievaluasi"],
-              ["VERSI MODEL", "Belum tersedia"],
+              ["TANGGAL PREDIKSI", fmtDay(todayWIB(meta?.runDate ?? prices.asOf), { day: "numeric", month: "short", year: "numeric" })],
+              ["SUMBER", meta?.source ?? "Model AI Temu Tani"],
+              ["AKURASI (MAPE)", meta?.mape != null ? `${meta.mape.toLocaleString("id-ID", { maximumFractionDigits: 2 })}% (uji 12 minggu)` : "Belum dievaluasi"],
+              ["VERSI MODEL", meta?.modelVersion ?? "Belum tersedia"],
             ].map(([k, v]) => (
               <div className="modal-item" key={k}>
                 <label>{k}</label>
@@ -135,6 +140,7 @@ export function HargaView({ role }: { role: Role }) {
             <Icon name="info" size={16} />
             <span>
               Harga wajar adalah <strong>referensi negosiasi</strong>, bukan harga transaksi yang dijamin.
+              {meta?.simulated ? " Sebagian harga input belum berasal dari observasi pasar (simulasi atau isi maju)." : ""}
             </span>
           </div>
         </section>
@@ -144,7 +150,9 @@ export function HargaView({ role }: { role: Role }) {
         <div className="section-header">
           <div>
             <h3 className="section-title">Perbandingan Harga per Wilayah</h3>
-            <div className="section-subtitle"> Output model dan selisih terhadap acuan HPP proposal · Data simulasi</div>
+            <div className="section-subtitle">
+              Output model dan selisih terhadap HPP GKP{anySimulated ? " · Sebagian data simulasi" : ""}
+            </div>
           </div>
         </div>
         <div className="table-wrap">
@@ -154,7 +162,7 @@ export function HargaView({ role }: { role: Role }) {
                 <th>KABUPATEN</th>
                 <th>JENIS GABAH</th>
                 <th>PREDIKSI AI</th>
-                <th>HPP CONTOH</th>
+                <th>HPP GKP</th>
                 <th>SELISIH</th>
               </tr>
             </thead>
@@ -172,7 +180,10 @@ export function HargaView({ role }: { role: Role }) {
                     </td>
                     <td>{formatRupiah(prices.hpp)}/kg</td>
                     <td>
-                      <span style={{ color: "#29825c", fontWeight: 800 }}>+{formatRupiah(v.current - prices.hpp)}</span>
+                      <span style={{ color: v.current >= prices.hpp ? "#29825c" : "#c0392b", fontWeight: 800 }}>
+                        {v.current >= prices.hpp ? "+" : "−"}
+                        {formatRupiah(Math.abs(v.current - prices.hpp))}
+                      </span>
                     </td>
                   </tr>
                 ))}

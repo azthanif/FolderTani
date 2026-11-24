@@ -1,9 +1,9 @@
-"""Simulasi keluaran model harga AI.
+"""Data harga untuk GET /api/prices.
 
-Logika sama dengan app.js versi statis: titik acuan dipadatkan menjadi seri harian
-(interpolasi linier) yang berakhir hari ini (WIB), lalu prakiraan 7 hari mengikuti
-kemiringan 7 hari terakhir. Saat model sungguhan tersedia, cukup ganti fungsi di sini;
-kontrak respons API tidak perlu berubah.
+Sumber utama: tabel price_forecasts + price_observations yang diisi pipeline harian
+forecast_pipeline (LSTM, dijalankan GitHub Actions). Bila sebuah kabupaten belum punya
+prakiraan, dipakai simulasi lama (titik acuan diinterpolasi, prakiraan mengikuti kemiringan
+7 hari terakhir). Kontrak respons API sama untuk keduanya.
 """
 from __future__ import annotations
 
@@ -14,7 +14,8 @@ from datetime import datetime, timedelta, timezone
 WIB = timezone(timedelta(hours=7))
 HISTORY_DAYS = 30
 FORECAST_DAYS = 7
-HPP_GKP = 6500  # Angka contoh dari proposal; wajib diverifikasi terhadap regulasi saat go-live.
+MAX_FORECAST_AGE_DAYS = 3  # prakiraan lebih tua dari ini dianggap basi (pipeline gagal) -> simulasi
+HPP_GKP = 6500  # HPP GKP tingkat petani sejak 15 Jan 2025 (Keputusan Kepala Bapanas, Jan 2025).
 
 PRICE_ANCHORS: dict[str, dict] = {
     "Garut": {
@@ -93,13 +94,102 @@ def region_prices(region: str, current: int | None = None) -> dict:
     }
 
 
-def price_payload(regions: list[str], current: dict[str, int] | None = None) -> dict:
+def load_forecasts(cur, regions: list[str], as_of: str | None = None) -> dict[str, dict]:
+    """Prakiraan terbaru per kabupaten (run_date <= as_of) dalam bentuk region_prices().
+
+    actualDaily  : harga harian 30 hari s.d. run_date (price_observations, diisi maju bila bolong)
+    predictedDaily: prakiraan h+1 yang dibuat sehari sebelumnya untuk tiap hari itu (bila belum ada: harga hari itu)
+    forecast     : prakiraan h+1..h+7 dari run terbaru
+    current      : rata-rata prakiraan 7 hari (estimasi harga wajar); previous: harga hari asal (h0)
+    """
+    as_of = as_of or today_wib()
+    out: dict[str, dict] = {}
+    cur.execute("select to_regclass('public.price_forecasts') is not null as ok")
+    if not cur.fetchone()["ok"]:  # migrasi 004 belum diterapkan: pakai simulasi
+        return out
+    oldest = (datetime.fromisoformat(as_of).date() - timedelta(days=MAX_FORECAST_AGE_DAYS)).isoformat()
+    for kab in regions:
+        cur.execute(
+            "select run_date from price_forecasts where kabupaten = %s and run_date <= %s"
+            " and run_date >= %s order by run_date desc limit 1", (kab, as_of, oldest))
+        row = cur.fetchone()
+        if not row:
+            continue
+        run = row["run_date"]
+        cur.execute(
+            "select horizon, price_per_kg, model_version, is_simulation, price_source, gee_filled, backtest_mape_pct"
+            " from price_forecasts where kabupaten = %s and run_date = %s order by horizon", (kab, run))
+        fc = cur.fetchall()
+        if len(fc) != FORECAST_DAYS + 1:
+            continue
+        start = run - timedelta(days=HISTORY_DAYS - 1)
+        cur.execute(
+            "select date, price_per_kg, source from price_observations where kabupaten = %s"
+            " and date between %s and %s order by date", (kab, start - timedelta(days=FORECAST_DAYS * 10), run))
+        obs = {r["date"]: r for r in cur.fetchall()}
+        cur.execute(
+            "select target_date, price_per_kg from price_forecasts where kabupaten = %s"
+            " and horizon = 1 and target_date between %s and %s", (kab, start, run))
+        pred1 = {r["target_date"]: r["price_per_kg"] for r in cur.fetchall()}
+        h0 = fc[0]["price_per_kg"]
+        prior = [d for d in sorted(obs) if d < start]
+        last = obs[prior[-1]]["price_per_kg"] if prior else None
+        actual, predicted, sources = [], [], set()
+        for i in range(HISTORY_DAYS):
+            d = start + timedelta(days=i)
+            if d in obs:
+                last = obs[d]["price_per_kg"]
+                sources.add(obs[d]["source"])
+            v = last if last is not None else h0
+            actual.append(v)
+            predicted.append(pred1.get(d, v))
+        actual[-1] = h0
+        forecast = [r["price_per_kg"] for r in fc[1:]]
+        mape = fc[0]["backtest_mape_pct"]
+        out[kab] = {
+            "current": js_round(sum(forecast) / len(forecast)),
+            "previous": h0,
+            "actualDaily": actual,
+            "predictedDaily": predicted,
+            "forecast": forecast,
+            "meta": {
+                "source": "Model LSTM Temu Tani",
+                "runDate": run.isoformat(),
+                "modelVersion": fc[0]["model_version"],
+                "mape": float(mape) if mape is not None else None,
+                "simulated": bool(fc[0]["is_simulation"] or "simulasi" in sources),
+                "priceSource": fc[0]["price_source"],
+                "geeFilled": bool(fc[0]["gee_filled"]),
+            },
+        }
+    return out
+
+
+def price_payload(regions: list[str], current: dict[str, int] | None = None,
+                  forecasts: dict[str, dict] | None = None) -> dict:
     current = current or {}
+    forecasts = forecasts or {}
+    data = {}
+    for r in regions:
+        if r in forecasts:
+            data[r] = forecasts[r]
+        else:
+            data[r] = region_prices(r, current.get(r))
+            data[r]["meta"] = {"source": "Simulasi", "runDate": today_wib(), "modelVersion": None, "mape": None,
+                               "simulated": True, "priceSource": "simulasi", "geeFilled": False}
+    metas = [v["meta"] for v in data.values()]
+    model = [m for m in metas if m["modelVersion"]]
+    runs = [m["runDate"] for m in metas]
     return {
-        "asOf": today_wib(),
+        "asOf": max(runs) if runs else today_wib(),  # tiap wilayah punya meta.runDate sendiri
         "historyDays": HISTORY_DAYS,
         "forecastDays": FORECAST_DAYS,
         "hpp": HPP_GKP,
-        "meta": {"source": "Model AI Temu Tani", "mape": None, "modelVersion": None, "simulated": True},
-        "regions": {r: region_prices(r, current.get(r)) for r in regions},
+        "meta": {
+            "source": "Model LSTM Temu Tani" if model else "Model AI Temu Tani",
+            "mape": None,
+            "modelVersion": None,
+            "simulated": any(m["simulated"] for m in metas) if metas else True,
+        },
+        "regions": data,
     }

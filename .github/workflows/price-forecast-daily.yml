@@ -1,0 +1,82 @@
+# Prakiraan harga GKP harian: GEE -> gee_features_daily -> fitur -> LSTM -> price_forecasts (h0..h+7).
+# Jalan otomatis 06.00 WIB (23.00 UTC hari sebelumnya), bisa juga dijalankan manual dari tab Actions.
+# Butuh GitHub Secrets: DATABASE_URL (sama dengan backend, Supabase pooler), GEE_SERVICE_ACCOUNT_KEY (isi JSON key
+# akun layanan yang terdaftar di Earth Engine). Opsional: repository variable GEE_PROJECT (default project_id di key).
+name: Prakiraan harga harian
+
+on:
+  schedule:
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Tanggal asal YYYY-MM-DD (kosong = hari ini WIB)"
+        required: false
+        default: ""
+      backfill:
+        description: "Buat juga prakiraan untuk N tanggal asal sebelumnya (isi 30 saat pertama kali)"
+        required: false
+        default: "0"
+      skip_gee:
+        description: "Lewati tarikan GEE (fitur yang kosong diisi klimatologi)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: price-forecast-daily
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GEE_SERVICE_ACCOUNT_KEY: ${{ secrets.GEE_SERVICE_ACCOUNT_KEY }}
+      GEE_PROJECT: ${{ vars.GEE_PROJECT }}
+      PYTHONUNBUFFERED: "1"
+      TF_CPP_MIN_LOG_LEVEL: "3"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cek secrets
+        env:
+          SKIP_GEE: ${{ inputs.skip_gee }}
+        run: |
+          missing=""
+          [ -n "$DATABASE_URL" ] || missing="$missing DATABASE_URL"
+          if [ "$SKIP_GEE" != "true" ] && [ -z "$GEE_SERVICE_ACCOUNT_KEY" ]; then missing="$missing GEE_SERVICE_ACCOUNT_KEY"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::GitHub Secrets belum diisi:$missing (Settings > Secrets and variables > Actions)"
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: forecast_pipeline/requirements.txt
+
+      - name: Instal dependensi
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r forecast_pipeline/requirements.txt
+
+      - name: Jalankan pipeline
+        env:                       # input lewat env, bukan disisipkan ke skrip (cegah injeksi shell)
+          RUN_DATE: ${{ inputs.date }}
+          BACKFILL: ${{ inputs.backfill || '0' }}
+          SKIP_GEE: ${{ inputs.skip_gee }}
+        run: |
+          args=(--backfill "$BACKFILL")
+          [[ "$BACKFILL" =~ ^[0-9]+$ ]] || { echo "::error::backfill harus bilangan bulat"; exit 1; }
+          if [ -n "$RUN_DATE" ]; then
+            [[ "$RUN_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "::error::Format tanggal harus YYYY-MM-DD"; exit 1; }
+            args+=(--date "$RUN_DATE")
+          fi
+          [ "$SKIP_GEE" = "true" ] && args+=(--skip-gee)
+          python -m forecast_pipeline.run "${args[@]}"
