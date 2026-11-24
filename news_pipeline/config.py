@@ -89,7 +89,7 @@ DEFAULTS: dict[str, Any] = {
         "waha_url": "http://localhost:3000", "api_key_env": "WAHA_API_KEY", "session": "default",
         "delay_sec": [4, 9], "recipients_source": "supabase", "recipients_csv": "",
     },
-    "storage": {"supabase": {"enabled": False, "url_env": "SUPABASE_URL", "key_env": "SUPABASE_SERVICE_ROLE_KEY"}},
+    "storage": {"supabase": {"enabled": True, "url_env": "SUPABASE_URL", "key_env": "SUPABASE_SERVICE_ROLE_KEY"}},
     "export": {"web_csv": "../backend/data/berita_pipeline.csv", "keep_days": 90},
 }
 
