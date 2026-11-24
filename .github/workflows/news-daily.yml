@@ -1,6 +1,6 @@
 # Pipeline berita harian: Media Cloud -> teks -> NER BERT -> wilayah -> ringkasan -> digest -> Supabase.
 # Jalan otomatis 05.00 WIB (22.00 UTC hari sebelumnya), bisa juga dijalankan manual dari tab Actions.
-# Butuh GitHub Secrets: MEDIACLOUD_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
+# Butuh GitHub Secrets: MEDIACLOUD_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (opsional GROQ_API_KEY).
 # Koleksi Media Cloud di news_pipeline/config.ci.yaml (34412392, Indonesia - National); bisa diganti lewat
 # repository variable MEDIACLOUD_COLLECTION_IDS bila collection_ids di config dikosongkan.
 name: Berita harian
@@ -31,12 +31,13 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       MEDIACLOUD_API_KEY: ${{ secrets.MEDIACLOUD_API_KEY }}
       MEDIACLOUD_COLLECTION_IDS: ${{ vars.MEDIACLOUD_COLLECTION_IDS }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}        # opsional: ringkasan AI; kosong = Lead-2
       HF_HOME: ${{ github.workspace }}/.hf-cache
       PYTHONUNBUFFERED: "1"
     steps:

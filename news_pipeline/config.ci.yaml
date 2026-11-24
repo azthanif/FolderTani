@@ -11,8 +11,8 @@ mediacloud:
   collection_ids: [34412392]  # "Indonesia - National". Kosongkan untuk memakai variable MEDIACLOUD_COLLECTION_IDS
   max_per_query: 1000
   queries:
-    Garut: '(padi OR gabah OR beras OR petani OR pupuk OR panen OR sawah) AND garut'
-    Cianjur: '(padi OR gabah OR beras OR petani OR pupuk OR panen OR sawah) AND cianjur'
+    Garut: '(padi OR gabah OR beras OR sawah OR "harga gabah" OR bulog OR "gagal panen" OR penggilingan) AND garut'
+    Cianjur: '(padi OR gabah OR beras OR sawah OR "harga gabah" OR bulog OR "gagal panen" OR penggilingan) AND cianjur'
     Nasional: '("harga gabah" OR "harga beras" OR HPP OR bulog OR "pupuk subsidi") AND (petani OR pertanian)'
 
 ner:
@@ -20,8 +20,10 @@ ner:
   device: -1                # runner GitHub tanpa GPU
 
 summary:
-  method: auto              # idT5 dipakai otomatis bila model_path diisi; selain itu Lead-2
+  method: auto              # idT5 bila model_path diisi; selain itu LLM Groq bila secret GROQ_API_KEY ada; selain itu Lead-2
   model_path: ""
+  llm:
+    model: openai/gpt-oss-20b
 
 digest:
   llm:

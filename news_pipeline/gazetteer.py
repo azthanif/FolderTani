@@ -55,6 +55,20 @@ CORE_TERMS = [
     "kementan", "penggilingan",
 ]
 
+# Kata khas padi/gabah/beras. Kata umum seperti "petani", "panen", "pupuk" juga dipakai berita kopi, sayur,
+# atau ternak, jadi topik baru dianggap relevan bila ada kata di daftar ini.
+RICE_TERMS = [
+    "padi", "gabah", "beras", "sawah", "penggilingan", "bulog", "hpp", "wereng", "gkp", "gkg", "musim tanam",
+    "harga gabah", "harga beras", "serap gabah", "lumbung padi", "irigasi",
+]
+
+# Komoditas selain padi. Bila lebih sering disebut daripada kata padi/gabah, berita dianggap bukan topik padi.
+OTHER_COMMODITY_TERMS = [
+    "kopi", "teh", "kakao", "cokelat", "tembakau", "sayur", "sayuran", "cabai", "cabe", "bawang", "tomat", "kentang",
+    "kubis", "wortel", "jeruk", "stroberi", "alpukat", "pisang", "domba", "kambing", "sapi", "ayam", "ikan", "susu",
+    "sawit", "karet", "tebu", "akar wangi", "jagung", "kedelai", "singkong", "porang", "anggrek", "tanaman hias",
+]
+
 # Penanda cakupan nasional ("indonesia" sengaja tidak dimasukkan: terlalu umum).
 NATIONAL_TERMS = [
     "nasional", "kementan", "kementerian pertanian", "menteri pertanian", "mentan", "bapanas", "badan pangan nasional",
@@ -86,6 +100,8 @@ def _rx(terms: list[str]) -> re.Pattern:
 
 RX_TOPIC = _rx(TOPIC_TERMS)
 RX_CORE = _rx(CORE_TERMS)
+RX_RICE = _rx(RICE_TERMS)
+RX_OTHER_COMMODITY = _rx(OTHER_COMMODITY_TERMS)
 RX_PROVINCE = _rx(PROVINCES)
 RX_ANY_REGION_TITLE = re.compile(r"\b(kabupaten|kab\.|kota|kecamatan|desa|provinsi)\s+[A-Z]", re.I)
 RX_NATIONAL = _rx(NATIONAL_TERMS)
