@@ -388,9 +388,11 @@ export function BeritaView() {
                       <b>Ringkasan</b>
                       <p>{featured.ringkasan}</p>
                       <small>
-                        {featured.summary_model?.startsWith("idt5")
-                          ? "Ringkasan otomatis (model idT5). Periksa berita asli untuk detail."
-                          : "Ringkasan otomatis dari kalimat pembuka berita."}
+                        {featured.summary_model?.startsWith("llm:")
+                          ? "Ringkasan dibuat AI dan dicek otomatis terhadap nama & angka di berita. Periksa berita asli untuk detail."
+                          : featured.summary_model?.startsWith("idt5")
+                            ? "Ringkasan otomatis (model idT5). Periksa berita asli untuk detail."
+                            : "Ringkasan otomatis dari kalimat pembuka berita."}
                       </small>
                     </div>
                   ) : null}

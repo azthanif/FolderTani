@@ -9,8 +9,8 @@ mediacloud:
   collection_ids: []        # isi ID koleksi media Indonesia yang Anda pakai di search.mediacloud.org
   max_per_query: 1000
   queries:                  # selalu pakai kurung; AND/OR wajib huruf kapital
-    Garut: '(padi OR gabah OR beras OR petani OR pupuk OR panen OR sawah) AND garut'
-    Cianjur: '(padi OR gabah OR beras OR petani OR pupuk OR panen OR sawah) AND cianjur'
+    Garut: '(padi OR gabah OR beras OR sawah OR "harga gabah" OR bulog OR "gagal panen" OR penggilingan) AND garut'
+    Cianjur: '(padi OR gabah OR beras OR sawah OR "harga gabah" OR bulog OR "gagal panen" OR penggilingan) AND cianjur'
     Nasional: '("harga gabah" OR "harga beras" OR HPP OR bulog OR "pupuk subsidi") AND (petani OR pertanian)'
 
 fetch:
@@ -38,9 +38,12 @@ classifier:
   national_min_hits: 4
 
 summary:
-  method: auto              # auto | idt5 | lead
+  method: auto              # auto | idt5 | llm | lead  (auto: idt5 bila model_path ada, lalu llm bila GROQ_API_KEY ada)
   model_path: ""            # mis. /content/drive/MyDrive/hackathon-summarization/idt5-indosum/final atau repo HF
-  min_entity_precision: 0.8 # ringkasan idT5 dengan entitas karangan diganti Lead
+  min_entity_precision: 0.8 # ringkasan idT5/LLM dengan entitas karangan diganti Lead
+  llm:                      # API kompatibel OpenAI; kunci dari env GROQ_API_KEY (lihat .env.example)
+    base_url: https://api.groq.com/openai/v1
+    model: openai/gpt-oss-20b
 
 digest:
   kabupaten: [Garut, Cianjur]

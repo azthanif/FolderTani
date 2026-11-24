@@ -68,6 +68,15 @@ Pengaman halusinasi idT5: ringkasan diganti Lead bila entity precision < `min_en
 ringkasan yang tidak ada di artikel (`number_precision` < 1). Artikel yang lebih panjang dari `max_input_len` token
 dicatat di log karena bagian akhirnya tidak ikut diringkas.
 
+## Ringkasan dengan LLM (Groq, free tier)
+
+Isi `GROQ_API_KEY` (lokal: `news_pipeline/.env`; GitHub Actions: repository secret) dan biarkan `summary.method: auto`.
+Pipeline meminta 2-3 kalimat bahasa Indonesia ke `summary.llm.model` (default `openai/gpt-oss-20b`) dengan jeda
+`min_interval_sec` (8 detik) agar tetap di bawah batas token per menit free tier, dan mencoba ulang bila HTTP 429.
+Setiap ringkasan LLM dicek: nama (entity precision) dan **semua angka** harus ada di artikel; bila tidak, atau API gagal,
+ringkasan diganti Lead-2 (`fallback: true` di `06_summary.jsonl`). Ganti penyedia cukup dengan `summary.llm.base_url`
+dan `model` (API kompatibel OpenAI). Batas & daftar model free tier bisa berubah: cek konsol Groq sebelum mengganti model.
+
 ## Batasan yang perlu diketahui
 
 - **Classifier berbasis aturan.** Di uji 532 artikel Garut/Cianjur, berita non-pertanian dan berita daerah lain tersaring,
@@ -80,5 +89,5 @@ dicatat di log karena bagian akhirnya tidak ikut diringkas.
 ## Tes
 
 ```bash
-pytest -q news_pipeline/tests      # 28 tes, tanpa model & jaringan
+pytest -q news_pipeline/tests      # 32 tes, tanpa model & jaringan
 ```

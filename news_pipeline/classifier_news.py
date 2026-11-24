@@ -1,8 +1,9 @@
 """Langkah 5: tentukan wilayah (Garut / Cianjur / Nasional) & kategori topik -> 05_classified.jsonl.
 
 Aturan (transparan, bisa diaudit lewat kolom `reasons`):
-  Topik pertanian terpenuhi bila judul memuat kata inti padi/gabah, ATAU badan memuat >= 2 kata inti
-    dan >= topic_min_hits kata topik.
+  Topik padi terpenuhi bila judul memuat kata khas padi/gabah/beras (RICE_TERMS), ATAU teks memuat >= 2 kata khas
+    padi, >= 2 kata inti berbeda, dan >= topic_min_hits kata topik; DAN komoditas lain (kopi, sayur, ternak, ...)
+    tidak lebih sering disebut daripada kata khas padi. "Petani" saja tidak cukup.
   Target T relevan bila topik pertanian terpenuhi DAN salah satu:
     - T atau kecamatannya disebut di judul;
     - T disebut >= min_body_mentions kali di badan (regex + entitas GPE/LOC hasil NER, ambil maksimum);
@@ -53,15 +54,18 @@ def classify(article: dict, ner: dict, cc: dict) -> dict:
     topic_hits = len(gz.RX_TOPIC.findall(text))
     core_found = [m.casefold() for m in gz.RX_CORE.findall(text)]
     core_hits, core_distinct = len(core_found), len(set(core_found))
-    title_topic = bool(gz.RX_CORE.search(title))
-    topic_ok = (not cc["require_topic"]) or title_topic or (core_distinct >= 2 and topic_hits >= int(cc["topic_min_hits"]))
+    rice_hits, other_hits = len(gz.RX_RICE.findall(text)), len(gz.RX_OTHER_COMMODITY.findall(text))
+    title_topic = bool(gz.RX_RICE.search(title))          # "petani" saja di judul tidak cukup (bisa petani kopi)
+    topic_ok = (not cc["require_topic"]) or (
+        (title_topic or (rice_hits >= 2 and core_distinct >= 2 and topic_hits >= int(cc["topic_min_hits"])))
+        and other_hits <= rice_hits)                       # berita kopi/sayur/ternak yang menyebut beras sekilas
     lead = body[:400]
     title_other = bool(gz.RX_OTHER.search(title)) or any(
         e["label"] in LOC_LABELS and gz.RX_OTHER.search(e["norm"]) for e in tents)
 
     wilayah, score = [], 0.0
     reasons = {"topic_hits": topic_hits, "core_hits": core_hits, "core_distinct": core_distinct, "title_topic": title_topic,
-               "title_other_region": title_other}
+               "rice_hits": rice_hits, "other_commodity_hits": other_hits, "title_other_region": title_other}
     any_title_target = False
     for t in cc["targets"]:
         rx_kab, rx_kec, rx_amb = gz.RX_KAB[t], gz.RX_KEC[t], gz.RX_KEC_AMBIG[t]

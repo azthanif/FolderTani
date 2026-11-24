@@ -323,8 +323,8 @@ def test_single_passing_mention_of_cianjur_not_enough():
 
 
 def test_address_pattern_counts_and_kampung_name_does_not():
-    b1 = ("Petani sayur menikmati harga panen yang baik. \"Hasilnya lumayan,\" ujar Bayu di kebun sayur Cipanas, "
-          "Kabupaten Cianjur, Jawa Barat. Pasokan petani ke dapur MBG naik dan panen tetap lancar.")
+    b1 = ("Petani padi menikmati harga gabah yang baik. \"Hasilnya lumayan,\" ujar Bayu di sawah Cipanas, "
+          "Kabupaten Cianjur, Jawa Barat. Pasokan beras petani ke dapur MBG naik dan panen tetap lancar.")
     assert classifier_news.classify(art("Petani di Cipanas Rasakan Dampak MBG", b1), {}, CC)["wilayah"] == ["Cianjur"]
     b2 = ("Dua petani asal Kampung Babakan Cianjur, Desa Gadobangkong, Kecamatan Ngamprah, Kabupaten Bandung Barat "
           "kehilangan gabah hasil panen karena dicuri. Petani padi itu kini harus berutang.")
@@ -389,3 +389,93 @@ def test_ci_config_and_collection_ids_from_env(tmp_path, monkeypatch):
     ctx = Context(cfg=_merge(cfg, {"run": {"data_dir": str(tmp_path)}}), run_date=date(2026, 11, 24))
     assert geturl_news.run(ctx) == 3
     assert seen == [[111, 222]] * 3
+
+
+# ------------------------------------------------------------------ ringkasan LLM (Groq), tanpa jaringan
+class _Resp:
+    def __init__(self, status, payload=None, headers=None):
+        self.status_code, self._p, self.headers, self.text = status, payload, headers or {}, json.dumps(payload or {})
+
+    def json(self):
+        return self._p
+
+
+class _FakeSession:
+    def __init__(self, responses):
+        self.responses, self.bodies = list(responses), []
+
+    def post(self, url, json=None, headers=None, timeout=None):
+        assert url.endswith("/chat/completions") and headers["Authorization"] == "Bearer k"
+        self.bodies.append(json)
+        return self.responses.pop(0)
+
+
+def _llm(monkeypatch, responses, **over):
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.setattr(summary_news.time, "sleep", lambda s: None)
+    sc = _merge(DEFAULTS["summary"], {"llm": {"min_interval_sec": 0, **over}})
+    sess = _FakeSession(responses)
+    return summary_news.LlmSummarizer(sc, session=sess), sess
+
+
+def _ok(text):
+    return _Resp(200, {"choices": [{"message": {"content": text}}]})
+
+
+def test_llm_summarizer_retries_429_and_drops_unsupported_param(monkeypatch):
+    llm, sess = _llm(monkeypatch, [_Resp(429, {}, {"retry-after": "1"}), _Resp(400, {"error": "reasoning_effort"}),
+                                   _ok("  <think>x</think> Harga gabah  naik. ")])
+    assert llm.one("Judul", "Isi artikel") == "Harga gabah naik."
+    assert "reasoning_effort" in sess.bodies[0] and "reasoning_effort" not in sess.bodies[2]
+    assert sess.bodies[0]["model"] == "openai/gpt-oss-20b" and "Judul: Judul" in sess.bodies[0]["messages"][1]["content"]
+
+
+def test_llm_summarizer_gives_none_on_error(monkeypatch):
+    llm, _ = _llm(monkeypatch, [_Resp(500, {"error": "x"})])
+    assert llm.one("J", "isi") is None
+
+
+def test_llm_requires_key_and_auto_falls_back_to_lead(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    sc = DEFAULTS["summary"]
+    assert summary_news._load_summarizer(dict(sc, method="auto")) is None        # tanpa key: Lead
+    with pytest.raises(RuntimeError):
+        summary_news._load_summarizer(dict(sc, method="llm"))
+    monkeypatch.setenv("GROQ_API_KEY", "k")
+    assert isinstance(summary_news._load_summarizer(dict(sc, method="auto")), summary_news.LlmSummarizer)
+
+
+def test_summary_run_with_llm_guards_numbers(tmp_path, monkeypatch):
+    class FakeNer:
+        def predict(self, texts):
+            return [[] for _ in texts]
+
+    llm, _ = _llm(monkeypatch, [_ok("Harga gabah di Garut naik menjadi Rp9.000 per kilogram menurut dinas pertanian setempat."),
+                                _ok("Harga gabah di Garut naik menjadi Rp6.500 per kilogram menurut dinas pertanian setempat."),
+                                _Resp(500, {})])
+    ctx = ctx_for(tmp_path)
+    body = "Harga gabah di Garut naik menjadi Rp6.500 per kilogram. Dinas pertanian memantau panen di Garut."
+    ids = ("a", "b", "c")
+    write_jsonl(ctx.path("03_clean.jsonl"), [{"id": i, "title": "Harga Gabah", "article_clean": body} for i in ids])
+    write_jsonl(ctx.path("05_classified.jsonl"), [{"id": i, "wilayah": ["Garut"]} for i in ids])
+    monkeypatch.setattr(summary_news, "_load_summarizer", lambda sc: llm)
+    ctx.extras["ner_model"] = FakeNer()
+    assert summary_news.run(ctx) == 3
+    a, b, c = read_jsonl(ctx.path("06_summary.jsonl"))
+    assert a["fallback"] and a["summary_model"] == "lead-2"                      # angka karangan
+    assert not b["fallback"] and b["summary_model"] == "llm:openai/gpt-oss-20b"
+    assert c["fallback"] and c["summary"].startswith("Harga gabah")              # API gagal -> Lead
+
+
+def test_non_rice_farmer_news_excluded():
+    """Kasus nyata: berita kopi lolos karena judul memuat "Petani" + "Garut"."""
+    t = "Cerita TinaKopi Indonesia Angkat Kopi Garut dan Berdayakan Petani bersama Pertamina"
+    b = ("TinaKopi Indonesia bersama Pertamina memberdayakan petani kopi di Garut. Program ini melatih petani kopi "
+         "arabika di Garut agar mutu panen kopi meningkat. Kelompok tani kopi mendapat bantuan alat pengolahan.")
+    assert classifier_news.classify(art(t, b), {}, CC)["wilayah"] == []
+    # sayur: kata umum petani/panen/pupuk banyak, tetapi tanpa kata khas padi
+    b2 = "Petani sayur di Garut panen kentang dan kubis. Harga pupuk naik, petani berharap bantuan dinas pertanian."
+    assert classifier_news.classify(art("Petani Sayur Garut Panen Raya", b2), {}, CC)["wilayah"] == []
+    # padi tetap lolos walau menyebut komoditas lain sekali
+    b3 = "Petani padi di Garut panen gabah 6 ton per hektare. Sebagian sawah juga ditanami jagung saat kemarau."
+    assert classifier_news.classify(art("Panen Padi di Garut Melimpah", b3), {}, CC)["wilayah"] == ["Garut"]

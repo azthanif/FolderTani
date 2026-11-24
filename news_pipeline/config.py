@@ -66,6 +66,15 @@ DEFAULTS: dict[str, Any] = {
         "model_path": "",        # folder hasil fine-tuning (berisi inference_config.json) atau repo HF
         "max_input_len": 512, "max_new_tokens": 128, "num_beams": 4, "no_repeat_ngram": 3,
         "prefix": "ringkas: ", "lead_sentences": 2, "max_words": 45, "min_entity_precision": 0.8,
+        "max_words_llm": 60,
+        "llm": {                 # dipakai method llm (atau auto bila model_path kosong dan API key ada)
+            "base_url": "https://api.groq.com/openai/v1", "api_key_env": "GROQ_API_KEY",
+            "model": "openai/gpt-oss-20b", "temperature": 0.2, "max_tokens": 700,
+            "max_chars": 6000,         # ~1.500 token input per artikel
+            "min_interval_sec": 8.0,   # free tier Groq: 8.000 token/menit -> sekitar 1 artikel per 8 detik
+            "max_retries": 3, "timeout_sec": 60,
+            "extra_body": {"reasoning_effort": "low"},   # model gpt-oss: penalaran singkat agar token hemat
+        },
     },
     "digest": {
         "kabupaten": ["Garut", "Cianjur"], "max_local": 5, "max_national": 3, "max_chars": 3500,

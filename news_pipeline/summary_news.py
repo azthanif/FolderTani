@@ -3,7 +3,8 @@
 method:
   idt5 : model idT5 hasil fine-tuning (notebook idT5_IndoSum_Summarization_FineTuning).
   lead : kalimat pembuka (baseline Lead-3; di test IndoSum notebook Anda ROUGE-L = 62,25).
-  auto : idt5 bila model_path tersedia, selain itu lead.
+  llm  : LLM lewat API kompatibel OpenAI (default Groq, free tier). Kunci dari env summary.llm.api_key_env.
+  auto : idt5 bila model_path tersedia, lalu llm bila API key LLM tersedia, selain itu lead.
 Pengaman halusinasi: entitas di ringkasan idT5 harus ada di artikel (entity precision) dan SEMUA angka di ringkasan
 harus ada di artikel (number precision = 1). Bila tidak, ringkasan diganti Lead dan ditandai `fallback`.
 """
@@ -11,8 +12,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import time
 from pathlib import Path
+
+import requests
 
 from .storage import read_jsonl, write_jsonl
 
@@ -78,6 +83,80 @@ class IdT5:
         return out
 
 
+LLM_SYSTEM = (
+    "Anda editor berita pertanian Indonesia. Ringkas artikel yang diberikan dalam bahasa Indonesia baku, "
+    "2-3 kalimat, maksimal {max_words} kata. Hanya gunakan fakta yang tertulis di artikel: jangan menambah nama, "
+    "angka, tanggal, atau opini. Tulis angka persis seperti di artikel. Fokus pada apa yang terjadi, siapa, di mana, "
+    "dan dampaknya bagi petani atau harga gabah/beras. Jawab hanya dengan teks ringkasan, tanpa judul atau poin."
+)
+
+
+class LlmSummarizer:
+    """Ringkasan abstraktif lewat endpoint chat-completions kompatibel OpenAI (Groq secara default).
+
+    Ramah free tier: jeda antar-permintaan (min_interval_sec), artikel dipotong ke max_chars, dan HTTP 429
+    dicoba ulang sesuai header Retry-After. Kegagalan per artikel menghasilkan None (pemanggil memakai Lead).
+    """
+
+    def __init__(self, sc: dict, session: requests.Session | None = None):
+        self.c = sc["llm"]
+        self.key = os.getenv(self.c["api_key_env"], "").strip()
+        if not self.key:
+            raise RuntimeError(f"Env {self.c['api_key_env']} kosong")
+        self.max_words = int(sc["max_words_llm"])
+        self.s = session or requests.Session()
+        self.name = f"llm:{self.c['model']}"
+        self._last = 0.0
+        self._extra = dict(self.c.get("extra_body") or {})   # mis. reasoning_effort untuk model gpt-oss
+        log.info("Ringkasan memakai %s (%s)", self.c["model"], self.c["base_url"])
+
+    def _wait(self) -> None:
+        gap = float(self.c["min_interval_sec"]) - (time.monotonic() - self._last)
+        if gap > 0:
+            time.sleep(gap)
+        self._last = time.monotonic()
+
+    def _post(self, body: dict) -> requests.Response:
+        return self.s.post(self.c["base_url"].rstrip("/") + "/chat/completions", json=body,
+                           headers={"Authorization": f"Bearer {self.key}"}, timeout=int(self.c["timeout_sec"]))
+
+    def one(self, title: str, article: str) -> str | None:
+        body = {"model": self.c["model"], "temperature": float(self.c["temperature"]),
+                "max_tokens": int(self.c["max_tokens"]),
+                "messages": [{"role": "system", "content": LLM_SYSTEM.format(max_words=self.max_words)},
+                             {"role": "user", "content": f"Judul: {title}\n\nArtikel:\n{article[:int(self.c['max_chars'])]}"}]}
+        for attempt in range(int(self.c["max_retries"]) + 1):
+            self._wait()
+            try:
+                r = self._post(body | self._extra)
+            except requests.RequestException as e:
+                log.warning("LLM gagal dihubungi (%s)", e)
+                continue
+            if r.status_code == 429:
+                wait = min(float(r.headers.get("retry-after") or 10), 60)
+                log.warning("LLM kena batas laju (429), tunggu %.0f detik", wait)
+                time.sleep(wait)
+                continue
+            if r.status_code == 400 and self._extra:          # parameter tambahan tidak didukung model ini
+                log.warning("LLM menolak parameter %s: dicoba tanpa itu", sorted(self._extra))
+                self._extra = {}
+                continue
+            if r.status_code >= 400:
+                log.warning("LLM error %s: %s", r.status_code, r.text[:200])
+                return None
+            try:
+                text = r.json()["choices"][0]["message"]["content"] or ""
+            except (ValueError, KeyError, IndexError, TypeError):
+                log.warning("Respons LLM tidak terbaca")
+                return None
+            text = re.sub(r"\s+", " ", re.sub(r"(?s)<think>.*?</think>", "", text)).strip().strip('"')
+            return text or None
+        return None
+
+    def __call__(self, items: list[tuple[str, str]]) -> list[str | None]:
+        return [self.one(t, a) for t, a in items]
+
+
 def entity_precision(summary_ents: list[dict], article: str) -> float | None:
     """Proporsi entitas bernama di ringkasan yang juga ada di artikel (Nan et al., 2021).
 
@@ -115,11 +194,16 @@ def _load_summarizer(sc: dict):
     method = sc["method"]
     if method == "lead":
         return None
+    if method == "llm" or (method == "auto" and not sc.get("model_path")):
+        try:
+            return LlmSummarizer(sc)
+        except RuntimeError as e:
+            if method == "llm":
+                raise
+            log.warning("%s dan summary.model_path kosong: memakai Lead-%s", e, sc["lead_sentences"])
+            return None
     if not sc.get("model_path"):
-        if method == "idt5":
-            raise RuntimeError("summary.method=idt5 tetapi summary.model_path kosong")
-        log.warning("summary.model_path kosong: memakai Lead-%s", sc["lead_sentences"])
-        return None
+        raise RuntimeError("summary.method=idt5 tetapi summary.model_path kosong")
     try:
         return IdT5(sc)
     except Exception as e:  # noqa: BLE001
@@ -149,7 +233,11 @@ def run(ctx) -> int:
         rows = [{"id": a["id"], "summary": s, "summary_model": lead_name, "entity_precision": None, "fallback": False}
                 for a, s in zip(arts, leads)]
     else:
-        preds = summarizer([a["article_clean"] for a in arts])
+        if isinstance(summarizer, LlmSummarizer):
+            preds = summarizer([(a.get("title", ""), a["article_clean"]) for a in arts])
+        else:
+            preds = summarizer([a["article_clean"] for a in arts])
+        preds = [p or "" for p in preds]                       # gagal (None) -> kosong -> fallback Lead
         ner = ctx.extras.get("ner_model")
         if ner is None:
             from .ner_news import NerModel
@@ -164,5 +252,6 @@ def run(ctx) -> int:
             rows.append({"id": a["id"], "summary": ld if bad else p, "summary_model": lead_name if bad else summarizer.name,
                          "entity_precision": ep, "number_precision": npr, "fallback": bad})
     n = write_jsonl(out, rows)
-    log.info("06_summary.jsonl: %d ringkasan | fallback ke lead: %d", n, sum(r["fallback"] for r in rows))
+    log.info("06_summary.jsonl: %d ringkasan | model: %s | fallback ke lead: %d", n,
+             summarizer.name if summarizer else lead_name, sum(r["fallback"] for r in rows))
     return n
