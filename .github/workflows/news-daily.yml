@@ -7,7 +7,7 @@ name: Berita harian
 
 on:
   schedule:
-    - cron: "0 22 * * *"
+      - cron: "0 20 * * *"   # 03:00 WIB; broadcast jam 07:00 WIB (00:00 UTC), buffer 4 jam
   workflow_dispatch:
     inputs:
       date:

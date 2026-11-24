@@ -25,8 +25,8 @@ if __package__ in (None, ""):  # dijalankan sebagai `python run_daily.py` dari d
     __package__ = "news_pipeline"
     import news_pipeline  # noqa: F401
 
-from . import (classifier_news, digest_news, geturl_news, gettext_news, ner_news, notify_news, preprocess_news,
-               publish_news, summary_news)
+from . import (broadcast_morning, classifier_news, digest_news, geturl_news, gettext_news, ner_news,
+               notify_news, preprocess_news, publish_news, summary_news)
 from .config import Context, load_config, today_wib
 
 log = logging.getLogger("news.run")
@@ -34,6 +34,7 @@ STEPS = [
     ("geturl", geturl_news.run), ("gettext", gettext_news.run), ("preprocess", preprocess_news.run),
     ("ner", ner_news.run), ("classifier", classifier_news.run), ("summary", summary_news.run),
     ("digest", digest_news.run), ("publish", publish_news.run), ("notify", notify_news.run),
+    ("broadcast", broadcast_morning.run),
 ]
 NAMES = [s for s, _ in STEPS]
 
