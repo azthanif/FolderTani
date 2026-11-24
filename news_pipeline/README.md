@@ -46,7 +46,7 @@ Jadwal harian (05.00 WIB):
 
 ## Menyambungkan ke web
 
-- Lokal/demo: set `TEMUTANI_NEWS_CSV=backend/data/berita_pipeline.csv` sebelum menjalankan FastAPI.
+- Lokal/demo: backend otomatis membaca `backend/data/berita_pipeline.csv` bila file itu ada (bisa ditimpa `TEMUTANI_NEWS_CSV`).
 - Produksi (Vercel): set `TEMUTANI_NEWS_SOURCE=supabase`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` di environment server.
 - `/api/berita?wilayah=Garut` menyaring per wilayah. Petani Garut/Cianjur otomatis melihat kabupatennya.
 
@@ -55,6 +55,14 @@ Jadwal harian (05.00 WIB):
 Isi `summary.model_path` dengan folder `final/` dari notebook `idT5_IndoSum_Summarization_FineTuning` (berisi
 `inference_config.json`). Pakai idT5 hanya bila ROUGE-nya di test set **lebih tinggi dari Lead-3** (baseline di notebook
 Anda: ROUGE-L 62,25). Bila tidak, biarkan `method: lead`.
+
+Selama `model_path` kosong, semua ringkasan memakai Lead-2 (`summary_model = lead-2`), bukan idT5. Catatan: angka
+ROUGE-L 62,25 di atas adalah Lead-3 tanpa batas kata; konfigurasi default memakai `lead_sentences: 2` dan `max_words: 45`,
+jadi bandingkan idT5 dengan konfigurasi yang benar-benar dipakai.
+
+Pengaman halusinasi idT5: ringkasan diganti Lead bila entity precision < `min_entity_precision` atau ada **angka** di
+ringkasan yang tidak ada di artikel (`number_precision` < 1). Artikel yang lebih panjang dari `max_input_len` token
+dicatat di log karena bagian akhirnya tidak ikut diringkas.
 
 ## Batasan yang perlu diketahui
 
@@ -68,5 +76,5 @@ Anda: ROUGE-L 62,25). Bila tidak, biarkan `method: lead`.
 ## Tes
 
 ```bash
-pytest -q news_pipeline/tests      # 17 tes, tanpa model & jaringan
+pytest -q news_pipeline/tests      # 27 tes, tanpa model & jaringan
 ```

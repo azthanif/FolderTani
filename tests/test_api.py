@@ -1,6 +1,8 @@
 """Tes API Temu Tani di atas PostgreSQL (skema identik Supabase)."""
 from __future__ import annotations
 
+import re
+
 from conftest import PASSWORD, PHONES
 
 
@@ -590,3 +592,20 @@ def test_farmer_reject_returns_offered_kg(client, login, sql):
     n = int(oid.split("-")[1])
     assert sql("select r.offered_kg from requests r join offers o on o.request_id = r.id where o.id = %s", (n,))[0]["offered_kg"] == 0
     assert sql("select note from offer_events where offer_id = %s and action = 'fail'", (n,))[0]["note"] == "rejected_by_farmer"
+
+
+def test_berita_default_reads_pipeline_csv(client):
+    """Tanpa TEMUTANI_NEWS_CSV, /api/berita membaca hasil news_pipeline (ada ringkasan & offset NER), bukan berita.csv contoh."""
+    from backend import main
+    assert main.NEWS_CSV.name == "berita_pipeline.csv"
+    r = client.get("/api/berita")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert items and all(n["ringkasan"] for n in items)
+    for n in items:
+        for e in n["ner_results"]:
+            src = n["judul"] if e["field"] == "judul" else n["isi"]
+            assert src[e["start"]:e["end"]] == e["word"]
+            if e["entity"] in ("MON", "QTY"):      # angka tidak lagi terpecah ("Rp5" + "000")
+                assert re.search(r"\d", e["word"]) or re.search(r"(?i)ribu|juta|miliar", e["word"])
+                assert not re.search(r"\d[.,]$", src[:e["start"]]) and not re.match(r"[.,]\d", src[e["end"]:])

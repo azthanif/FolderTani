@@ -72,6 +72,36 @@ def test_postprocess_offsets_merge_and_filters():
     assert all(text[e["start"]:e["end"]] == e["text"] for e in out)
 
 
+
+def _span(text, label, word, score=0.95, nth=0):
+    i = -1
+    for _ in range(nth + 1):
+        i = text.index(word, i + 1)
+    return {"label": label, "start": i, "end": i + len(word), "score": score}
+
+
+def test_postprocess_joins_numbers_split_by_tokenizer():
+    """Data nyata (berita_pipeline.csv): BERT memecah 'Rp5.000' jadi 'Rp5' + '000' dan '816.860 ton' jadi '816' + '860 ton'."""
+    text = "Harga gabah Rp5.000 per kg, target 816.860 ton, beras medium Rp 11.550 per kg."
+    spans = [_span(text, "MON", "Rp5"), _span(text, "MON", "000"), _span(text, "QTY", "816"),
+             _span(text, "QTY", "860 ton"), _span(text, "MON", "550")]       # hanya ekor angka yang tertangkap
+    out = postprocess(text, spans, NC)
+    assert [(e["label"], e["text"]) for e in out] == [("MON", "Rp5.000"), ("QTY", "816.860 ton"), ("MON", "Rp 11.550")]
+    assert all(text[e["start"]:e["end"]] == e["text"] for e in out)
+
+
+def test_postprocess_drops_numeric_labels_without_number():
+    text = "Di Jawa Barat target tahun ini 2 juta ton, naik dari 2024. Harga di Semarang turun."
+    spans = [_span(text, "MON", "Barat"), _span(text, "QTY", "tahun"), _span(text, "QTY", "2 juta ton"),
+             _span(text, "QTY", "2024"), _span(text, "MON", "Semarang")]
+    assert [e["text"] for e in postprocess(text, spans, NC)] == ["2 juta ton"]
+
+
+def test_offset_ok_drops_bad_entity_instead_of_crashing():
+    from news_pipeline.ner_news import _offset_ok
+    ents = [{"text": "Garut", "start": 0, "end": 5}, {"text": "Cianjur", "start": 0, "end": 7}]
+    assert _offset_ok(ents, "Garut panen.", "x") == ents[:1]
+
 # ------------------------------------------------------------------ ringkasan
 def test_lead_summary_respects_limits():
     text = "Kalimat pertama tentang padi. Kalimat kedua tentang gabah.\nKalimat ketiga tentang pupuk. Kalimat keempat."
@@ -98,6 +128,16 @@ def test_entity_precision():
     ents = [{"label": "PER", "norm": "Budi"}, {"label": "ORG", "norm": "Bulog"}]
     assert summary_news.entity_precision(ents, "Bulog menyerap gabah.") == 0.5
     assert summary_news.entity_precision([], "x") is None
+    # singkatan di ringkasan & artikel: norm "Kementerian Pertanian" tidak ada di artikel, tetapi teks aslinya ada
+    kementan = [{"label": "ORG", "text": "Kementan", "norm": "Kementerian Pertanian"}]
+    assert summary_news.entity_precision(kementan, "Kementan menyerap gabah di Garut.") == 1.0
+
+
+def test_number_precision_flags_invented_numbers():
+    art_ = "Harga gabah di Garut Rp6.500 per kg, produksi 816.860 ton."
+    assert summary_news.number_precision("Harga gabah Rp 6500 per kg.", art_) == 1.0
+    assert summary_news.number_precision("Harga gabah Rp7.000 per kg, produksi 816.860 ton.", art_) == 0.5
+    assert summary_news.number_precision("Harga gabah naik.", art_) is None
 
 
 # ------------------------------------------------------------------ digest
@@ -289,3 +329,27 @@ def test_address_pattern_counts_and_kampung_name_does_not():
     b2 = ("Dua petani asal Kampung Babakan Cianjur, Desa Gadobangkong, Kecamatan Ngamprah, Kabupaten Bandung Barat "
           "kehilangan gabah hasil panen karena dicuri. Petani padi itu kini harus berutang.")
     assert classifier_news.classify(art("Gabah Petani Digasak Maling", b2), {}, CC)["wilayah"] == []
+
+
+def test_summary_run_falls_back_to_lead_on_invented_number(tmp_path, monkeypatch):
+    class FakeT5:
+        name = "idt5:fake"
+
+        def __call__(self, texts):
+            return ["Harga gabah di Garut naik menjadi Rp9.000 per kilogram menurut dinas pertanian setempat.",
+                    "Harga gabah di Garut naik menjadi Rp6.500 per kilogram menurut dinas pertanian setempat."]
+
+    class FakeNer:
+        def predict(self, texts):
+            return [[] for _ in texts]
+
+    ctx = ctx_for(tmp_path)
+    body = "Harga gabah di Garut naik menjadi Rp6.500 per kilogram. Dinas pertanian memantau panen."
+    write_jsonl(ctx.path("03_clean.jsonl"), [{"id": i, "title": "Harga Gabah", "article_clean": body} for i in ("a", "b")])
+    write_jsonl(ctx.path("05_classified.jsonl"), [{"id": i, "wilayah": ["Garut"]} for i in ("a", "b")])
+    monkeypatch.setattr(summary_news, "_load_summarizer", lambda sc: FakeT5())
+    ctx.extras["ner_model"] = FakeNer()
+    assert summary_news.run(ctx) == 2
+    a, b = read_jsonl(ctx.path("06_summary.jsonl"))
+    assert a["fallback"] and a["summary_model"].startswith("lead") and a["number_precision"] == 0.0
+    assert not b["fallback"] and b["summary_model"] == "idt5:fake" and b["number_precision"] == 1.0

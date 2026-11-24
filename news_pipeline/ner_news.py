@@ -36,6 +36,13 @@ MEDIA = sorted({"antara", "antaranews", "times indonesia", "warta ekonomi", "med
                 "tribunnews", "jpnn", "poskota", "liputan6", "kompas", "detikcom", "detik", "okezone", "viva",
                 "koran jakarta", "katadata", "merdeka", "suara", "republika", "mediaindonesia", "timesindonesia"},
                key=len, reverse=True)
+# Angka gaya Indonesia: titik = ribuan, koma = desimal, opsional diawali "Rp". Dipakai untuk menyatukan span
+# MON/QTY yang terpecah oleh tokenizer BERT (mis. "Rp5" + "000" dari "Rp5.000").
+TIPE_ANGKA = {"MON", "QTY"}
+RX_NUMBER = re.compile(r"(?:Rp\.?\s?)?\d+(?:[.,]\d+)*")
+RX_NUMWORD = re.compile(r"(?i)\b(?:satu|dua|tiga|empat|lima|enam|tujuh|delapan|sembilan|sepuluh|sebelas|seratus|"
+                        r"seribu|puluh|ratus|ribu|juta|miliar|triliun|setengah|separuh)\b")
+RX_TAHUN = re.compile(r"(?:19|20)\d{2}")
 RX_MEDIA = re.compile(r"(?i)(" + "|".join(map(re.escape, MEDIA)) + r")(\.co\.id|\.com|\.id)?( jabar| jawa barat| indonesia)?")
 
 
@@ -112,15 +119,35 @@ def normalize(s: str, label: str) -> str:
     return ALIAS.get(s, s)
 
 
+def _expand_number(text: str, sp: dict) -> dict:
+    """Lebarkan span MON/QTY agar mencakup angka utuh yang disentuhnya ("000" -> "Rp5.000")."""
+    sp = dict(sp)
+    if sp["label"] in TIPE_ANGKA:
+        lo, hi = max(0, sp["start"] - 24), min(len(text), sp["end"] + 24)
+        for m in RX_NUMBER.finditer(text, lo, hi):
+            if m.start() < sp["end"] and m.end() > sp["start"]:
+                sp["start"], sp["end"] = min(sp["start"], m.start()), max(sp["end"], m.end())
+    return sp
+
+
+def _valid_number(label: str, norm: str) -> bool:
+    """MON/QTY wajib memuat angka atau kata bilangan; tahun polos ("2024") bukan kuantitas."""
+    if label not in TIPE_ANGKA:
+        return True
+    if label == "QTY" and RX_TAHUN.fullmatch(norm):
+        return False
+    return bool(re.search(r"\d", norm) or RX_NUMWORD.search(norm))
+
+
 def postprocess(text: str, spans: list[dict], nc: dict) -> list[dict]:
-    """Gabung span berdampingan, normalisasi, dan filter kualitas."""
+    """Gabung span berdampingan/tumpang tindih, normalisasi, dan filter kualitas."""
     keep = set(nc["keep_types"])
     merged: list[dict] = []
-    for sp in sorted(spans, key=lambda x: x["start"]):
+    for sp in sorted((_expand_number(text, s) for s in spans), key=lambda x: (x["start"], -x["end"])):
         cur = merged[-1] if merged else None
-        if cur and sp["label"] == cur["label"] and 0 <= sp["start"] - cur["end"] <= 1 \
+        if cur and sp["label"] == cur["label"] and sp["start"] - cur["end"] <= 1 \
                 and text[cur["end"]:sp["start"]].strip() == "":
-            cur["end"], cur["score"] = sp["end"], min(cur["score"], sp["score"])
+            cur["end"], cur["score"] = max(cur["end"], sp["end"]), min(cur["score"], sp["score"])
         else:
             merged.append(dict(sp))
     out = []
@@ -133,7 +160,8 @@ def postprocess(text: str, spans: list[dict], nc: dict) -> list[dict]:
         surface = text[sp["start"]:sp["end"]]
         label = sp["label"]
         norm = normalize(surface, label)
-        if label not in keep or sp["score"] < float(nc["score_min"]) or len(norm) < 3:
+        if label not in keep or sp["score"] < float(nc["score_min"]) or len(norm) < 3 \
+                or not _valid_number(label, norm):
             continue
         if label in TIPE_NAMED and (not re.search(r"[A-Z]", norm) or norm.casefold() in STOP_ENT
                                     or RX_MEDIA.fullmatch(norm)):
@@ -141,6 +169,14 @@ def postprocess(text: str, spans: list[dict], nc: dict) -> list[dict]:
         out.append({"label": label, "text": surface, "norm": norm, "start": sp["start"], "end": sp["end"],
                     "score": round(sp["score"], 4)})
     return out
+
+
+def _offset_ok(ents: list[dict], text: str, art_id: str) -> list[dict]:
+    """Buang entitas yang offsetnya tidak menunjuk teksnya (bukan assert: satu artikel tidak boleh menggagalkan run)."""
+    ok = [e for e in ents if text[e["start"]:e["end"]] == e["text"]]
+    if len(ok) != len(ents):
+        log.warning("Artikel %s: %d entitas dibuang karena offset tidak cocok", art_id, len(ents) - len(ok))
+    return ok
 
 
 def run(ctx, model: NerModel | None = None) -> int:
@@ -158,10 +194,8 @@ def run(ctx, model: NerModel | None = None) -> int:
     titles = model.predict([a["title"] for a in arts])
     rows = []
     for a, b, t in zip(arts, bodies, titles):
-        ents = postprocess(a["article_clean"], b, nc)
-        tents = postprocess(a["title"], t, nc)
-        for e in ents:                                      # jaga konsistensi offset
-            assert a["article_clean"][e["start"]:e["end"]] == e["text"]
+        ents = _offset_ok(postprocess(a["article_clean"], b, nc), a["article_clean"], a["id"])
+        tents = _offset_ok(postprocess(a["title"], t, nc), a["title"], a["id"])
         rows.append({"id": a["id"], "entities": ents, "title_entities": tents})
     n = write_jsonl(out, rows)
     log.info("04_ner.jsonl: %d artikel, %d entitas", n, sum(len(r["entities"]) for r in rows))

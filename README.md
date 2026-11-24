@@ -93,7 +93,7 @@ Vercel. Panduan lengkap: [`news_pipeline/README.md`](news_pipeline/README.md).
 
 | Variabel (backend) | Fungsi |
 | --- | --- |
-| `TEMUTANI_NEWS_CSV` | Path CSV berita, mis. `backend/data/berita_pipeline.csv` (default: `berita.csv` contoh) |
+| `TEMUTANI_NEWS_CSV` | Path CSV berita, mis. `backend/data/berita_pipeline.csv` (default: `backend/data/berita_pipeline.csv` bila ada, selain itu `berita.csv` contoh) |
 | `TEMUTANI_NEWS_SOURCE=supabase` | Baca tabel `news_articles` (butuh `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`) |
 
 `GET /api/berita?from=&to=&wilayah=Garut` — respons kini juga memuat `ringkasan`, `wilayah`, `url`, dan offset entitas
