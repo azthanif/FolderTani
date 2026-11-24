@@ -171,33 +171,42 @@ export function AdminAccounts() {
     openModal(
       a.name,
       `${ROLE_LABEL[a.role]} · ${STATUS_LABEL[a.status]}`,
-      <dl className="account-detail">
-        <dt>Nomor HP</dt>
-        <dd>{a.phone}</dd>
-        <dt>Alamat</dt>
-        <dd>{address(a)}</dd>
-        <dt>Terdaftar</dt>
-        <dd>
-          {fmtDate(a.createdAt)} · {a.registeredVia === "web" ? "daftar mandiri via web" : a.registeredVia === "admin" ? "dibuat admin" : "data awal / chatbot"}
-        </dd>
-        <dt>Login web</dt>
-        <dd>{a.hasPassword ? "Sudah punya password" : "Belum (terdaftar via WhatsApp)"}</dd>
-        {a.verifiedAt ? (
-          <>
-            <dt>{a.status === "rejected" ? "Ditolak" : "Diverifikasi"}</dt>
-            <dd>
-              {fmtDate(a.verifiedAt)}
-              {a.verifiedBy ? ` oleh ${a.verifiedBy}` : ""}
-            </dd>
-          </>
+      <>
+        <dl className="account-detail">
+          <dt>Nomor HP</dt>
+          <dd>{a.phone}</dd>
+          <dt>Alamat</dt>
+          <dd>{address(a)}</dd>
+          <dt>Terdaftar</dt>
+          <dd>
+            {fmtDate(a.createdAt)} · {a.registeredVia === "web" ? "daftar mandiri via web" : a.registeredVia === "admin" ? "dibuat admin" : "data awal / chatbot"}
+          </dd>
+          <dt>Login web</dt>
+          <dd>{a.hasPassword ? "Sudah punya password" : "Belum (terdaftar via WhatsApp)"}</dd>
+          {a.verifiedAt ? (
+            <>
+              <dt>{a.status === "rejected" ? "Ditolak" : "Diverifikasi"}</dt>
+              <dd>
+                {fmtDate(a.verifiedAt)}
+                {a.verifiedBy ? ` oleh ${a.verifiedBy}` : ""}
+              </dd>
+            </>
+          ) : null}
+          {a.rejectionReason ? (
+            <>
+              <dt>Alasan penolakan</dt>
+              <dd>{a.rejectionReason}</dd>
+            </>
+          ) : null}
+        </dl>
+        {canDelete(a) ? (
+          <div className="detail-danger">
+            <button type="button" className="btn danger" disabled={busyId === a.id} onClick={() => askDelete(a)}>
+              <Icon name="trash" size={14} /> Hapus akun
+            </button>
+          </div>
         ) : null}
-        {a.rejectionReason ? (
-          <>
-            <dt>Alasan penolakan</dt>
-            <dd>{a.rejectionReason}</dd>
-          </>
-        ) : null}
-      </dl>,
+      </>,
     );
   }
 
@@ -296,18 +305,6 @@ export function AdminAccounts() {
                         <button type="button" className="link-btn" onClick={() => showDetail(a)}>
                           Detail
                         </button>
-                        {canDelete(a) ? (
-                          <button
-                            type="button"
-                            className="icon-btn danger sm"
-                            title={`Hapus akun ${a.name}`}
-                            aria-label={`Hapus akun ${a.name}`}
-                            disabled={busyId === a.id}
-                            onClick={() => askDelete(a)}
-                          >
-                            <Icon name="trash" size={15} />
-                          </button>
-                        ) : null}
                       </div>
                     </td>
                   </tr>

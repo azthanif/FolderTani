@@ -232,7 +232,7 @@ export function OverviewPage() {
       <div className="kpi-grid">
         <Kpi icon="handshake" title="Penawaran Saya" val={bOffers.length} foot="Seluruh penawaran yang Anda ajukan" />
         <Kpi icon="package" title="Stok Lintas Wilayah" val={<>{number(all)} <span className="kpi-unit">kg</span></>} foot="Gabah tersedia di semua kota/kabupaten" theme="lime" />
-        <Kpi icon="clock" title="Penawaran Aktif" val={active.length} foot="Menunggu petani / harga balik" theme="gold" />
+        <Kpi icon="clock" title="Dalam Proses Penawaran" val={active.length} foot="Menunggu petani / harga balik" theme="gold" />
         <Kpi icon="check" title="Kesepakatan" val={t.length} foot="Harga yang sudah disepakati" theme="blue" />
       </div>
       <div className="page-banner card has-mascot">
@@ -440,7 +440,7 @@ function BuyerStockPage() {
               <td>{s.type}</td>
               <td>{prettyDate(s.harvest)}</td>
               <td><strong>{number(availability(s))} kg</strong></td>
-              <td><Btn cl="primary" onClick={() => A.newOffer(s.id)}>Ajukan Harga</Btn></td>
+              <td><Btn cl="primary" onClick={() => A.newOffer(s.id)}>Ajukan Penawaran</Btn></td>
             </tr>
           ),
         )}
@@ -469,11 +469,12 @@ export function OffersPage() {
           ? "Harga wajar AI bersifat referensi untuk petani. Anda bebas menerima, menolak, atau mengajukan harga balik."
           : "Anda selalu mengajukan harga pertama. Harga referensi AI tidak ditampilkan pada halaman pembeli."}
       </div>
-      <div className="kpi-grid">
+      <div className="kpi-grid cols-5">
         <Kpi icon="handshake" title="Total Penawaran" val={mine.length} foot="Seluruh penawaran milik Anda" />
-        <Kpi icon="clock" title={isFarmer ? "Menunggu Respons Saya" : "Menunggu Petani"} val={mine.filter((o) => o.status === "Menunggu Petani").length} foot="Belum direspons" theme="gold" />
+        <Kpi icon="clock" title={isFarmer ? "Menunggu Respons Saya" : "Dalam Proses Penawaran"} val={mine.filter((o) => o.status === "Menunggu Petani").length} foot="Belum direspons" theme="gold" />
         <Kpi icon="activity" title="Penawaran Balik" val={mine.filter((o) => o.status === "Penawaran Balik").length} foot="Proses tawar-menawar" theme="blue" />
         <Kpi icon="check" title="Disepakati" val={mine.filter((o) => o.status === "Disepakati").length} foot="Berhasil mencapai harga akhir" theme="lime" />
+        <Kpi icon="close" title="Dibatalkan" val={mine.filter((o) => o.status === "Dibatalkan").length} foot="Penawaran yang dibatalkan" theme="red" />
       </div>
       <Filters page="penawaran" />
       <div className="card table-card">

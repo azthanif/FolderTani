@@ -58,7 +58,7 @@ export function AdminOverview() {
           foot="Volume stok saat ini"
           theme="lime"
         />
-        <Kpi icon="handshake" title="Penawaran Aktif" value={fmtNum(countOffers(offers, area))} foot="Dalam proses negosiasi" theme="gold" />
+        <Kpi icon="handshake" title="Dalam Proses Penawaran" value={fmtNum(countOffers(offers, area))} foot="Dalam proses negosiasi" theme="gold" />
         <Kpi icon="receipt-text" title="Kesepakatan Tercatat" value={fmtNum(countTrx(transactions, area))} foot="Total transaksi disepakati" theme="blue" />
       </div>
       <div className="section-grid">
