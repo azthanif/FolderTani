@@ -32,8 +32,10 @@ interface NewsItem {
 
 const WILAYAH = ["Semua", "Garut", "Cianjur", "Nasional"] as const;
 type Wilayah = (typeof WILAYAH)[number];
+/** Isi berita di atas panjang ini dilipat dulu (tombol "Lihat selengkapnya"). */
+const COLLAPSE_CHARS = 700;
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 6; // kelipatan 2 & 3: kartu tetap rapi di grid 2 atau 3 kolom
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (s: string) =>
   new Date(s + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
@@ -97,10 +99,56 @@ function highlight(text: string, entities: NerEntity[], field: "judul" | "isi"):
   return out;
 }
 
-/** Wilayah default: petani Garut/Cianjur langsung melihat kabupatennya (+ nasional tetap bisa dipilih). */
-function defaultWilayah(): Wilayah {
-  const region = (getSession()?.user.region || "").replace(/^(kabupaten|kab\.?)\s+/i, "").trim().toLowerCase();
-  return (WILAYAH.find((w) => w.toLowerCase() === region) as Wilayah) || "Semua";
+/** Kabupaten petani yang login (Garut/Cianjur), atau null untuk admin/tengkulak/tamu. */
+function farmerRegion(): Wilayah | null {
+  const user = getSession()?.user;
+  if (user?.role !== "petani") return null;
+  const region = (user.region || "").replace(/^(kabupaten|kab\.?)\s+/i, "").trim().toLowerCase();
+  const w = WILAYAH.find((x) => x !== "Semua" && x !== "Nasional" && x.toLowerCase() === region);
+  return w ?? null;
+}
+
+/** Pilihan wilayah: petani hanya kabupatennya + Nasional (kabupaten lain tidak ditampilkan). */
+function wilayahOptions(region: Wilayah | null): Wilayah[] {
+  return region ? [region, "Nasional"] : [...WILAYAH];
+}
+
+/** Wilayah berita: kolom `wilayah` (pipeline) atau `kabupaten` (data lama). */
+const wilayahOf = (n: NewsItem) => (n.wilayah?.length ? n.wilayah : [n.kabupaten]).map((x) => x.toLowerCase());
+
+/** Default: kabupaten petani bila ada beritanya dalam 7 hari terakhir, selain itu Nasional. */
+function defaultWilayah(news: NewsItem[], region: Wilayah | null, [f, t]: [string, string]): Wilayah {
+  if (!region) return "Semua";
+  const w = region.toLowerCase();
+  return news.some((n) => n.tanggal >= f && n.tanggal <= t && wilayahOf(n).includes(w)) ? region : "Nasional";
+}
+
+/** Nomor halaman dengan elipsis: 1 … 4 5 6 … 20. `siblings` = jumlah halaman di kiri/kanan halaman aktif. */
+export function pageList(current: number, total: number, siblings: number): (number | "…")[] {
+  const keep = new Set([1, total]);
+  for (let i = current - siblings; i <= current + siblings; i++) if (i >= 1 && i <= total) keep.add(i);
+  const pages = [...keep].sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  pages.forEach((p, i) => {
+    const prev = pages[i - 1];
+    if (prev !== undefined && p - prev === 2) out.push(prev + 1); // celah satu halaman: tampilkan angkanya
+    else if (prev !== undefined && p - prev > 2) out.push("…");
+    out.push(p);
+  });
+  return out;
+}
+
+/** true bila layar sempit (ponsel): pagination dipadatkan. */
+function useNarrow(query = "(max-width: 480px)") {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return narrow;
 }
 
 /** Tanggal hari ini di WIB (YYYY-MM-DD), bukan UTC, agar pagi hari tidak mundur sehari. */
@@ -117,12 +165,10 @@ function last7Days(): [string, string] {
   return [shift(t, -6), t];
 }
 
-/** Rentang awal: 7 hari terakhir bila ada beritanya; bila belum ada (pipeline tertinggal), 7 hari s.d. berita terbaru. */
-function initialRange(news: NewsItem[]): [string, string] {
-  const [f, t] = last7Days();
-  if (news.some((n) => n.tanggal >= f && n.tanggal <= t)) return [f, t];
-  const max = news.map((n) => n.tanggal).filter(Boolean).sort().pop() || t;
-  return [shift(max, -6), max];
+/** 7 hari s.d. berita terbaru di data (dipakai tombol bila 7 hari terakhir kosong). */
+function latestRange(news: NewsItem[]): [string, string] | null {
+  const max = news.map((n) => n.tanggal).filter(Boolean).sort().pop();
+  return max ? [shift(max, -6), max] : null;
 }
 
 export function BeritaView() {
@@ -134,11 +180,11 @@ export function BeritaView() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [wilayah, setWilayah] = useState<Wilayah>("Semua");
+  const [region, setRegion] = useState<Wilayah | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [autoNational, setAutoNational] = useState(false); // petani dialihkan ke Nasional karena kabupatennya kosong
   const latestRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    setWilayah(defaultWilayah());
-  }, []);
+  const narrow = useNarrow();
 
   useEffect(() => {
     let alive = true;
@@ -157,8 +203,13 @@ export function BeritaView() {
           .filter((n) => n.tanggal && n.judul);
         if (!items.length) throw new Error("Server tidak mengirim berita yang valid.");
         if (!alive) return;
-        const [f, t] = initialRange(items);
+        const r = farmerRegion();
+        const [f, t] = last7Days(); // default selalu 7 hari terakhir
         setNews(items);
+        setRegion(r);
+        const w = defaultWilayah(items, r, [f, t]);
+        setWilayah(w);
+        setAutoNational(!!r && w === "Nasional");
         setFrom(f);
         setTo(t);
         setRange([f, t]);
@@ -177,8 +228,7 @@ export function BeritaView() {
     const w = wilayah.toLowerCase();
     return news
       .filter((n) => n.tanggal >= range[0] && n.tanggal <= range[1])
-      // data lama tanpa kolom wilayah: cocokkan ke kolom kabupaten
-      .filter((n) => wilayah === "Semua" || (n.wilayah?.length ? n.wilayah : [n.kabupaten]).some((x) => x.toLowerCase() === w))
+      .filter((n) => wilayah === "Semua" || wilayahOf(n).includes(w))
       .sort((a, b) => b.tanggal.localeCompare(a.tanggal) || b.id.localeCompare(a.id));
   }, [news, range, wilayah]);
 
@@ -201,12 +251,17 @@ export function BeritaView() {
     if (selectedId && range && !picked) setSelectedId(null);
   }, [selectedId, range, picked]);
   const featured = picked || filtered[0];
+  useEffect(() => setExpanded(false), [featured?.id]); // berita baru selalu mulai terlipat
+  const longText = (featured?.isi.length ?? 0) > COLLAPSE_CHARS;
   const isLatest = !picked || picked.id === filtered[0]?.id;
   const others = filtered.filter((n) => n.id !== featured?.id);
   const totalPages = Math.max(1, Math.ceil(others.length / PAGE_SIZE));
   const current = Math.min(page, totalPages);
   const start = (current - 1) * PAGE_SIZE;
   const pageItems = others.slice(start, start + PAGE_SIZE);
+  const pages = pageList(current, totalPages, narrow ? 0 : 1);
+  const goPage = (p: number) => setPage(Math.min(Math.max(1, p), totalPages));
+  const latest = latestRange(news);
 
   const cloud = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -274,18 +329,22 @@ export function BeritaView() {
             value={wilayah}
             onChange={(e) => {
               setWilayah(e.target.value as Wilayah);
+              setAutoNational(false);
               setSelectedId(null);
               setPage(1);
             }}
           >
-            {WILAYAH.map((w) => (
+            {wilayahOptions(region).map((w) => (
               <option key={w} value={w}>
                 {w === "Semua" ? "Semua wilayah" : w}
               </option>
             ))}
           </select>
         </div>
-        <div className="filter-note">{rangeInfo}</div>
+        <div className="filter-note">
+          {rangeInfo}
+          {autoNational && region ? <span className="fallback-note">Belum ada berita {region} dalam 7 hari terakhir, menampilkan berita Nasional.</span> : null}
+        </div>
       </section>
 
       <div className="layout">
@@ -335,7 +394,22 @@ export function BeritaView() {
                       </small>
                     </div>
                   ) : null}
-                  <p className="article-text">{highlight(featured.isi, featured.ner_results, "isi")}</p>
+                  <div className={`article-wrap${longText && !expanded ? " collapsed" : ""}`}>
+                    <p className="article-text" id="article-text">
+                      {highlight(featured.isi, featured.ner_results, "isi")}
+                    </p>
+                  </div>
+                  {longText ? (
+                    <button
+                      type="button"
+                      className="read-more"
+                      aria-expanded={expanded}
+                      aria-controls="article-text"
+                      onClick={() => setExpanded((v) => !v)}
+                    >
+                      {expanded ? "Sembunyikan ▴" : "Lihat selengkapnya ▾"}
+                    </button>
+                  ) : null}
                   <div className="legend">
                     <span>
                       <i className="swatch" style={{ background: "#e58a8a" }} />
@@ -359,85 +433,31 @@ export function BeritaView() {
                     </span>
                     <span>
                       <i className="swatch" style={{ background: "#79bdb6" }} />
-                      Kuantitas (QTY)
+                      Jumlah &amp; Harga (QTY/MON)
                     </span>
                   </div>
                 </>
               ) : range ? (
-                <div className="empty">Tidak ada berita pada rentang tanggal ini.</div>
+                <div className="empty">
+                  Tidak ada berita {wilayah === "Semua" ? "" : `${wilayah} `}pada rentang tanggal ini.
+                  {latest && latest[1] < range[0] ? (
+                    <>
+                      <br />
+                      <button
+                        type="button"
+                        className="read-more"
+                        onClick={() => {
+                          setFrom(latest[0]);
+                          setTo(latest[1]);
+                          apply(latest[0], latest[1]);
+                        }}
+                      >
+                        Lihat berita terbaru ({fmt(latest[1])})
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               ) : null}
-            </div>
-          </section>
-
-          <section className="panel list-card">
-            <div className="list-inner">
-              <div className="section-head">
-                <div>
-                  <h2 className="section-title">Berita Lainnya</h2>
-                  <p className="section-sub">
-                    {range ? `${others.length} berita lain dalam rentang tanggal terpilih` : "Daftar berita berdasarkan rentang tanggal"}
-                  </p>
-                </div>
-                <span className="tag">{others.length} BERITA</span>
-              </div>
-              <div className="news-list">
-                {error ? null : pageItems.length ? (
-                  pageItems.map((n) => {
-                    const d = new Date(n.tanggal + "T00:00:00");
-                    return (
-                      <article className="news-item" key={n.id}>
-                        <div className="news-date">
-                          <b>{pad(d.getDate())}</b>
-                          <small>{d.toLocaleDateString("id-ID", { month: "short" })}</small>
-                        </div>
-                        <div className="news-info">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedId(n.id);
-                              setPage(1);
-                              latestRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                            }}
-                          >
-                            {n.judul}
-                          </button>
-                          <small>
-                            {n.kabupaten} · {n.kategori} · {fmt(n.tanggal)}
-                          </small>
-                        </div>
-                      </article>
-                    );
-                  })
-                ) : range ? (
-                  <div className="empty">Belum ada berita lainnya pada periode ini.</div>
-                ) : null}
-              </div>
-            </div>
-            <div className="pagination">
-              <span>
-                {others.length
-                  ? `Menampilkan ${start + 1}–${Math.min(start + PAGE_SIZE, others.length)} dari ${others.length} berita`
-                  : range
-                    ? "Tidak ada berita lainnya"
-                    : ""}
-              </span>
-              {range ? (
-                <div className="pages">
-                  <button type="button" className="page-btn" disabled={current === 1} onClick={() => setPage(current - 1)}>
-                    ‹
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => (
-                    <button type="button" key={i} className={`page-btn${current === i + 1 ? " active" : ""}`} onClick={() => setPage(i + 1)}>
-                      {i + 1}
-                    </button>
-                  ))}
-                  <button type="button" className="page-btn" disabled={current === totalPages} onClick={() => setPage(current + 1)}>
-                    ›
-                  </button>
-                </div>
-              ) : (
-                <div className="pages" />
-              )}
             </div>
           </section>
         </div>
@@ -484,6 +504,101 @@ export function BeritaView() {
             </div>
           </section>
         </aside>
+        <section className="panel list-card full">
+          <div className="list-inner">
+            <div className="section-head">
+              <div>
+                <h2 className="section-title">Berita Lainnya</h2>
+                <p className="section-sub">
+                  {range ? `${others.length} berita lain dalam rentang tanggal terpilih` : "Daftar berita berdasarkan rentang tanggal"}
+                </p>
+              </div>
+              <span className="tag">{others.length} BERITA</span>
+            </div>
+            <div className="news-list">
+              {error ? null : pageItems.length ? (
+                pageItems.map((n) => {
+                  const d = new Date(n.tanggal + "T00:00:00");
+                  return (
+                    <article className="news-item" key={n.id}>
+                      <div className="news-date">
+                        <b>{pad(d.getDate())}</b>
+                        <small>{d.toLocaleDateString("id-ID", { month: "short" })}</small>
+                      </div>
+                      <div className="news-info">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedId(n.id);
+                            setPage(1);
+                            latestRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }}
+                        >
+                          {n.judul}
+                        </button>
+                        {n.ringkasan ? <p className="news-snippet">{n.ringkasan}</p> : null}
+                        <small>
+                          {n.kabupaten} · {n.kategori} · {n.sumber}
+                        </small>
+                      </div>
+                    </article>
+                  );
+                })
+              ) : range ? (
+                <div className="empty">Belum ada berita lainnya pada periode ini.</div>
+              ) : null}
+            </div>
+          </div>
+          <div className="pagination">
+            <span>
+              {others.length
+                ? `Menampilkan ${start + 1}–${Math.min(start + PAGE_SIZE, others.length)} dari ${others.length} berita`
+                : range
+                  ? "Tidak ada berita lainnya"
+                  : ""}
+            </span>
+            {range && totalPages > 1 ? (
+              <nav className="pages" aria-label="Halaman berita lainnya">
+                <button
+                  type="button"
+                  className="page-btn"
+                  aria-label="Halaman sebelumnya"
+                  disabled={current === 1}
+                  onClick={() => goPage(current - 1)}
+                >
+                  ‹
+                </button>
+                {pages.map((p, i) =>
+                  p === "…" ? (
+                    <span key={`gap${i}`} className="page-gap" aria-hidden="true">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      key={p}
+                      className={`page-btn${current === p ? " active" : ""}`}
+                      aria-label={`Halaman ${p}`}
+                      aria-current={current === p ? "page" : undefined}
+                      onClick={() => goPage(p)}
+                    >
+                      {p}
+                    </button>
+                  ),
+                )}
+                <button
+                  type="button"
+                  className="page-btn"
+                  aria-label="Halaman berikutnya"
+                  disabled={current === totalPages}
+                  onClick={() => goPage(current + 1)}
+                >
+                  ›
+                </button>
+              </nav>
+            ) : null}
+          </div>
+        </section>
       </div>
     </div>
   );
