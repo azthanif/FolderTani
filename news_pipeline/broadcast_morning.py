@@ -140,7 +140,9 @@ def run(ctx) -> int:
     # Siapa yang sudah terkirim hari ini
     digest_ids = ",".join(str(d["id"]) for d in digests)
     sent_rows = sb.select("news_deliveries",
-                          {"select": "digest_id,user_id", "digest_id": f"in.({digest_ids})"})
+                          {"select": "digest_id,user_id",
+                           "digest_id": f"in.({digest_ids})",
+                           "status": "eq.SENT"})
     already_sent: set[tuple] = {(r["digest_id"], r["user_id"]) for r in sent_rows}
 
     sent_count = 0
