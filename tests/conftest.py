@@ -90,7 +90,7 @@ def client(database_url, monkeypatch, tmp_path):
     pw = auth.hash_password(PASSWORD)
     e = auth.to_e164
     with psycopg.connect(database_url, autocommit=True) as conn:
-        conn.execute("truncate otp_codes, stock_logs, stock_batches, offer_events, offers, requests, stocks, price_predictions, users restart identity cascade")
+        conn.execute("truncate otp_codes, stock_logs, stock_batches, offer_events, offers, requests, stocks, price_predictions, price_forecasts, price_observations, gee_features_daily, users restart identity cascade")
         conn.execute(
             """insert into users (phone, role, name, display_name, kabupaten, kecamatan, password_hash, contact_sharing_consent, status) values
                (%s,'admin','Admin Temu Tani','Admin Temu Tani',null,null,%s,false,'approved'),

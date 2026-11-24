@@ -87,7 +87,8 @@ export function PriceChart({ prices, area = "Garut" }: { prices: PricesResponse;
   const d = prices.regions[area] || prices.regions.Garut || Object.values(prices.regions)[0];
   if (!d) return <div className="empty-state">Data harga belum tersedia.</div>;
   const days = period === "7H" ? 7 : prices.historyDays;
-  const start = addDays(todayWIB(prices.asOf), 1 - days);
+  const start = addDays(todayWIB(d.meta?.runDate ?? prices.asOf), 1 - days);
+  const change = ((d.current - d.previous) / d.previous) * 100;
   const dates = Array.from({ length: days + prices.forecastDays }, (_, i) => addDays(start, i));
 
   return (
@@ -95,7 +96,7 @@ export function PriceChart({ prices, area = "Garut" }: { prices: PricesResponse;
       <div className="section-header">
         <div>
           <h3 className="section-title">Pergerakan Harga Gabah</h3>
-          <div className="section-subtitle">Harga pasar dan estimasi AI · Data simulasi</div>
+          <div className="section-subtitle">Harga pasar dan estimasi AI{d.meta?.simulated === false ? "" : " · Data simulasi"}</div>
         </div>
         <div className="area-selector">
           <button type="button" className={`seg${period === "7H" ? " active" : ""}`} onClick={() => setPeriod("7H")}>
@@ -109,7 +110,8 @@ export function PriceChart({ prices, area = "Garut" }: { prices: PricesResponse;
       <div className="price-summary">
         <span className="big-price">{formatRupiah(d.current)}</span>
         <span className="delta">
-          <Icon name="trending" size={12} /> +{fmtNum(((d.current - d.previous) / d.previous) * 100)}%
+          <Icon name="trending" size={12} /> {change >= 0 ? "+" : ""}
+          {fmtNum(change)}%
         </span>
         <span className="hint">/kg · {area}</span>
       </div>

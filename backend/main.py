@@ -851,16 +851,17 @@ def change_password(body: ChangePasswordIn, actor: Actor = Depends(get_actor)):
 def get_prices(wilayah: Optional[str] = Query(default=None), actor: Actor = Depends(get_actor)):
     """Prediksi harga AI. Petani dikunci ke kabupatennya; tengkulak tidak berhak."""
     require(actor, "petani", "admin")
+    if actor.role == "petani":
+        regions = [actor.kabupaten] if actor.kabupaten in REGIONS else []
+    else:
+        if wilayah and wilayah not in REGIONS:
+            err(404, "Wilayah tidak tersedia.")
+        regions = [wilayah] if wilayah else list(REGIONS)
     with tx() as cur:
         current = {r: ai_reference(cur, r).get(GRAIN) for r in REGIONS}
-    if actor.role == "petani":
-        payload = pricing.price_payload([actor.kabupaten] if actor.kabupaten in REGIONS else [], current)
-        payload["lockedArea"] = actor.kabupaten
-        return payload
-    if wilayah and wilayah not in REGIONS:
-        err(404, "Wilayah tidak tersedia.")
-    payload = pricing.price_payload([wilayah] if wilayah else list(REGIONS), current)
-    payload["lockedArea"] = None
+        forecasts = pricing.load_forecasts(cur, regions)
+    payload = pricing.price_payload(regions, current, forecasts)
+    payload["lockedArea"] = actor.kabupaten if actor.role == "petani" else None
     return payload
 
 

@@ -1,0 +1,34 @@
+{
+  "deskripsi": "Parameter simulasi deterministik harga GKP (dipelajari dari data asli 2024-2025)",
+  "round_step": 10,
+  "seed": 42,
+  "noise_scale": 0.3,
+  "ewm_alpha": 0.15,
+  "random_index": "noise hari ke-t = Normal(0,1) dari SeedSequence([seed, t]); t = hari sejak min_date",
+  "params": {
+    "Garut": {
+      "min_date": "2024-01-04",
+      "last_real_date": "2025-12-31",
+      "n_obs": 728,
+      "slope_per_day": 0.6235902116035126,
+      "intercept": 6028.878895216415,
+      "monthly_season": {
+        "1": -224.7260617201631,
+        "2": -224.7323084038642,
+        "3": -17.088089537275554,
+        "4": 363.7773552453765,
+        "5": -202.0948343805737,
+        "6": -738.8783143291045,
+        "7": -239.60157922387185,
+        "8": 216.0187371196451,
+        "9": 268.7347195367057,
+        "10": 228.97973421183082,
+        "11": 296.8957166288915,
+        "12": 272.71492485240367
+      },
+      "noise_std_raw": 587.9988271737823,
+      "noise_std_smoothed": 567.4643969472376,
+      "satuan": "rupiah"
+    }
+  }
+}

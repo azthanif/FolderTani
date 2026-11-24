@@ -54,6 +54,7 @@ Backend memakai database Supabase project **TemuTani** yang juga dipakai chatbot
 
 - `001_baseline_chatbot.sql`: replika tabel chatbot yang **sudah ada** di Supabase. Hanya untuk database lokal/tes, jangan dijalankan ke Supabase.
 - `002_web_integration.sql`: tambahan untuk web (sudah diterapkan ke Supabase): role `tengkulak` + kolom `password_hash` di `users`, tabel `stock_batches` (sisa per tanggal panen), `stock_logs` (riwayat stok), `otp_codes` (kode verifikasi WA), trigger sinkronisasi stok, label riwayat di `accept_offer`, dan akun admin `081241831052`.
+- `004_price_forecast.sql`: tabel prakiraan harga harian `gee_features_daily`, `price_observations`, `price_forecasts` (diisi `forecast_pipeline/`). Jalankan sekali di Supabase; tidak mengubah tabel chatbot.
 
 Perubahan stok dari chatbot (langsung ke `stocks.quantity_kg`) otomatis tercatat di riwayat dan mengurangi batch panen terlama dulu (FIFO).
 
@@ -98,6 +99,13 @@ Vercel. Panduan lengkap: [`news_pipeline/README.md`](news_pipeline/README.md).
 
 `GET /api/berita?from=&to=&wilayah=Garut` — respons kini juga memuat `ringkasan`, `wilayah`, `url`, dan offset entitas
 (`start`, `end`, `field`) untuk sorotan NER yang akurat. Format `berita.csv` lama tetap didukung.
+
+## Prakiraan harga harian (forecast_pipeline)
+
+Halaman **Prediksi Harga** membaca tabel `price_forecasts` yang diisi setiap hari pukul 06.00 WIB oleh workflow GitHub Actions
+`Prakiraan harga harian`: tarik fitur GEE, bentuk fitur, jalankan LSTM final per kabupaten, lalu simpan harga hari ini (h0) dan
+prakiraan h+1 sampai h+7. Kalau tabel masih kosong, `/api/prices` memakai simulasi lama. Panduan pemasangan (migrasi, data awal,
+GitHub Secrets `DATABASE_URL` + `GEE_SERVICE_ACCOUNT_KEY`): [`forecast_pipeline/README.md`](forecast_pipeline/README.md).
 
 ## Endpoint utama
 
