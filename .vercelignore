@@ -6,3 +6,6 @@ backend/data/runtime
 *.bat
 *.sh
 news_pipeline
+
+.env
+**/.env

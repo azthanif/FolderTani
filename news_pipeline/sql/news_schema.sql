@@ -57,3 +57,12 @@ drop policy if exists auth_read on public.news_articles;
 drop policy if exists auth_read on public.news_digests;
 create policy auth_read on public.news_articles for select to authenticated using (true);
 create policy auth_read on public.news_digests  for select to authenticated using (true);
+
+-- Hak akses API (proyek baru Supabase tidak memberi grant otomatis ke tabel baru).
+-- service_role: dipakai pipeline/backend. authenticated: hanya baca (dibatasi RLS). anon: tanpa akses.
+grant select, insert, update, delete on public.news_articles, public.news_digests, public.news_deliveries to service_role;
+grant usage, select on all sequences in schema public to service_role;
+grant select (id, phone, name, kabupaten, role) on public.users to service_role;   -- dibutuhkan view penerima
+grant select on public.v_news_recipients to service_role;
+grant select on public.news_articles, public.news_digests to authenticated;
+notify pgrst, 'reload schema';

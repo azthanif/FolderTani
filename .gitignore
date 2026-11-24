@@ -12,3 +12,9 @@ frontend/.next/
 news_pipeline/.env
 backend/.env
 news_pipeline/env.bat
+
+# rahasia lokal
+.env
+**/.env
+!**/.env.example
+env.bat
