@@ -1295,13 +1295,14 @@ def _own_offer(cur, actor: Actor, code: str) -> dict:
 # Pesan dikirim dari nomor chatbot (WAHA). Sesi chat penerima ikut diatur agar ia bisa
 # langsung membalas dengan angka di WhatsApp (langkah yang sama dengan alur n8n).
 WA_HINT = "Balas dengan angka pilihan di atas, atau ketik *0* untuk ke menu."
+POLL_HINT = "Ketuk pilihan di bawah, atau balas dengan angka."  # sama dengan HINT di workflow n8n
 WEB_URL = os.getenv("TEMUTANI_WEB_URL", "https://temutani-web.vercel.app").rstrip("/")
 
 
 def _offer_info(cur, offer_id: int) -> Optional[dict]:
     cur.execute(
         """select o.id, o.code, o.qty_kg, o.initial_price, o.current_price, o.status,
-                  f.phone as farmer_phone, f.name as farmer_name, f.kabupaten,
+                  f.phone as farmer_phone, f.name as farmer_name, f.display_name as farmer_display, f.kabupaten,
                   r.buyer_phone, coalesce(b.name, 'Tengkulak') as buyer_name
            from offers o
            join users f on f.id = o.farmer_id
@@ -1326,14 +1327,48 @@ def _wa_contact(phone: str) -> str:
     return "https://wa.me/" + phone.lstrip("+")
 
 
-def _notify_farmer_offer(i: dict, title: str, ai: Optional[int]) -> tuple[str, dict]:
+def _set_chat_poll(phone: str, pid: str) -> None:
+    """Sama dengan node n8n "Simpan poll_id": Router hanya menerima vote dari poll terbaru (context.poll_id)."""
+    with tx() as cur:
+        cur.execute(
+            "insert into chat_sessions (phone, step, context, updated_at) values (%s, null, jsonb_build_object('poll_id', %s::text), now())"
+            " on conflict (phone) do update set context = chat_sessions.context || jsonb_build_object('poll_id', %s::text), updated_at = now()",
+            (phone, pid, pid),
+        )
+
+
+def _notify_poll(phone: str, text: str, poll: dict) -> None:
+    """Teks + poll WhatsApp seperti balasan chatbot n8n. Bila poll gagal, pilihan dikirim sebagai daftar angka
+    (Router tetap menerima balasan angka karena step & context sudah disimpan)."""
+    if not wa.configured():
+        return
+    masked = auth.mask_phone(auth.from_e164(phone))
+    try:
+        wa.send_text(phone, text)
+    except Exception:  # noqa: BLE001
+        log.warning("Notifikasi WhatsApp gagal dikirim ke %s", masked)
+        return
+    try:
+        pid = wa.send_poll(phone, poll["name"], poll["options"])
+        if pid:
+            _set_chat_poll(phone, pid)
+        else:
+            log.warning("WAHA tidak mengembalikan id poll untuk %s", masked)
+        return
+    except Exception:  # noqa: BLE001
+        log.warning("Poll WhatsApp gagal dikirim ke %s; kirim pilihan sebagai teks", masked)
+    _notify(phone, "\n".join(poll["options"]) + f"\n\n{WA_HINT}")
+
+
+def _notify_farmer_offer(i: dict, title: str, ai: Optional[int]) -> tuple[str, dict, dict]:
     text = (f"📩 *{title}*\n\n*{i['code']}* • {i['kabupaten']} • {GRAIN} • {fmt_number(i['qty_kg'])} kg\n"
             f"Dari: *{i['buyer_name']}*\nHarga dari tengkulak: *{rupiah(i['current_price'])}/kg*")
     if ai:
         text += f"\n📊 Referensi harga wajar AI saat ini: *{rupiah(ai)}/kg*\n_Harga AI hanya referensi, bukan harga wajib._"
-    text += (f"\n\n1. Setuju {rupiah(i['current_price'])}/kg\n2. Tawar balik\n3. Tolak penawaran\n4. Lihat semua penawaran\n\n"
-             f"{WA_HINT}\nBisa juga ditanggapi di web: {WEB_URL}/petani/penawaran")
-    return text, {"offer_id": int(i["id"]), "actions": ["accept", "counter", "reject", "list"]}
+    text += f"\n\n{POLL_HINT}\nBisa juga ditanggapi di web: {WEB_URL}/petani/penawaran"
+    poll = {"name": "Tanggapi penawaran:",
+            "options": [f"1. Setuju {rupiah(i['current_price'])}/kg", "2. Tawar balik", "3. Tolak penawaran", "4. Lihat semua penawaran"]}
+    return text, {"offer_id": int(i["id"]), "actions": ["accept", "counter", "reject", "list"]}, poll
 
 
 def _push_offer_notifications(offer_id: int, event: str, prev_price: Optional[int] = None) -> None:
@@ -1341,7 +1376,7 @@ def _push_offer_notifications(offer_id: int, event: str, prev_price: Optional[in
     if not wa.configured():
         return
     try:
-        msgs: list[tuple[str, str]] = []
+        msgs: list[tuple[str, str, Optional[dict]]] = []  # (nomor, teks, poll)
         with tx() as cur:
             i = _offer_info(cur, offer_id)
             if not i:
@@ -1349,18 +1384,21 @@ def _push_offer_notifications(offer_id: int, event: str, prev_price: Optional[in
             detail = f"*{i['code']}* • {fmt_number(i['qty_kg'])} kg • {GRAIN}"
             if event in ("created", "buyer_counter"):
                 title = "Penawaran baru dari tengkulak" if event == "created" else "Tengkulak mengajukan harga baru"
-                text, ctx = _notify_farmer_offer(i, title, ai_reference(cur, i["kabupaten"]).get(GRAIN))
+                text, ctx, poll = _notify_farmer_offer(i, title, ai_reference(cur, i["kabupaten"]).get(GRAIN))
                 _set_chat_step(cur, i["farmer_phone"], "farmer_offer_action", ctx)
-                msgs.append((i["farmer_phone"], text))
+                msgs.append((i["farmer_phone"], text, poll))
             elif event == "farmer_counter":
                 text = (f"🔁 *{i['farmer_name']}* mengajukan *harga balik*\n\n{detail}\n"
                         + (f"Harga Anda sebelumnya: {rupiah(prev_price)}/kg\n" if prev_price else "")
                         + f"Harga balik petani: *{rupiah(i['current_price'])}/kg*\n\n"
-                        f"1. Setuju {rupiah(i['current_price'])}/kg\n2. Tawar lagi\n3. Batalkan penawaran\n\n"
-                        f"{WA_HINT}\nBisa juga ditanggapi di web: {WEB_URL}/tengkulak/penawaran")
+                        f"{POLL_HINT}\nBisa juga ditanggapi di web: {WEB_URL}/tengkulak/penawaran")
+                # Poll & aksi identik dengan node n8n "Balas harga balik" (harga balik dari chatbot).
+                poll = {"name": f"Tanggapi {i['farmer_display']}:",
+                        "options": [f"1. Setuju {rupiah(i['current_price'])}/kg", "2. Tawar lagi", "3. Batalkan penawaran",
+                                    "4. Lihat status penawaran"]}
                 _set_chat_step(cur, i["buyer_phone"], "buyer_offer_action",
-                               {"offer_id": int(i["id"]), "actions": ["accept", "counter", "cancel"]})
-                msgs.append((i["buyer_phone"], text))
+                               {"offer_id": int(i["id"]), "actions": ["accept", "counter", "cancel", "list"]})
+                msgs.append((i["buyer_phone"], text, poll))
             elif event == "agreed":
                 # Sama dengan alur chatbot n8n: tengkulak menerima kontak petani, petani menunggu dihubungi.
                 harga = (f"Harga akhir: *{rupiah(i['current_price'])}/kg*\n"
@@ -1369,18 +1407,21 @@ def _push_offer_notifications(offer_id: int, event: str, prev_price: Optional[in
                 msgs.append((i["buyer_phone"], f"✅ *Harga disepakati dengan {i['farmer_name']}!*\n\n{info}\n\n"
                              f"📱 *Kontak WhatsApp petani:* {_wa_contact(i['farmer_phone'])}\n"
                              "Silakan hubungi petani langsung untuk mengatur waktu, lokasi pengambilan, dan pembayaran.\n\n"
-                             "Status: *Harga Disepakati* (belum berarti pembayaran atau serah terima selesai)."))
+                             "Status: *Harga Disepakati* (belum berarti pembayaran atau serah terima selesai).", None))
                 msgs.append((i["farmer_phone"], f"✅ *Harga sudah disepakati!*\n\n{info}\n\n"
                              "📩 *Tengkulak akan menghubungi Anda langsung melalui WhatsApp* untuk janji temu, "
-                             "pengambilan gabah, dan pembayaran."))
+                             "pengambilan gabah, dan pembayaran.", None))
                 for ph in (i["farmer_phone"], i["buyer_phone"]):
                     _set_chat_step(cur, ph, None, {})
             elif event == "farmer_rejected":
                 msgs.append((i["buyer_phone"], f"❌ *{i['farmer_name']}* menolak penawaran Anda ({detail} • {rupiah(i['current_price'])}/kg).\n\n"
-                                               f"Anda bisa mengajukan kebutuhan ini ke petani lain. Ketik *menu* untuk mulai."))
+                                               f"Anda bisa mengajukan kebutuhan ini ke petani lain. Ketik *menu* untuk mulai.", None))
                 _set_chat_step(cur, i["buyer_phone"], None, {})
-        for phone, text in msgs:
-            _notify(phone, text)
+        for phone, text, poll in msgs:
+            if poll:
+                _notify_poll(phone, text, poll)
+            else:
+                _notify(phone, text)
     except Exception:  # noqa: BLE001
         log.exception("Notifikasi penawaran %s (%s) gagal disiapkan", offer_id, event)
 

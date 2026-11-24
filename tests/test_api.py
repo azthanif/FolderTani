@@ -503,3 +503,51 @@ def test_new_offer_appears_first_in_farmer_activity(client, login):
     acts = client.get("/api/state", headers=P).json()["activities"]
     assert acts[0]["title"] == f"Penawaran baru {oid}"
     assert [a["at"] for a in acts] == sorted((a["at"] for a in acts), reverse=True)
+
+
+def test_farmer_counter_from_web_sends_poll_to_buyer(client, login, sql, monkeypatch):
+    """Harga balik petani di web -> tengkulak dapat teks + poll WA, dan poll_id disimpan ke chat_sessions
+    agar Router n8n menerima vote-nya (vote dari poll yang id-nya tidak cocok dianggap kedaluwarsa)."""
+    sql("create table if not exists chat_sessions (phone text primary key, step text, context jsonb not null default '{}'::jsonb,"
+        " updated_at timestamptz not null default now())")
+    from backend import wa
+    texts, polls = [], []
+    monkeypatch.setenv("WAHA_URL", "https://waha.example")
+    monkeypatch.setattr(wa, "send_text", lambda phone, text: texts.append((phone, text)))
+    monkeypatch.setattr(wa, "send_poll", lambda phone, name, options: polls.append((phone, name, options)) or "3EB0POLL%d" % len(polls))
+    P, sid = setup_stock(client, login)
+    T = login("tengkulak")
+    oid = client.post("/api/offers", headers=T, json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    assert polls[-1][0] == e164(PHONES["petani"]) and polls[-1][1] == "Tanggapi penawaran:"  # petani juga dapat poll
+    assert client.post(f"/api/offers/{oid}/counter", headers=P, json={"price": 7100}).status_code == 200
+    phone, name, options = polls[-1]
+    assert phone == e164(PHONES["tengkulak"]) and name.startswith("Tanggapi ") and len(options) == 4
+    assert options[0] == "1. Setuju Rp7.100/kg" and options[2] == "3. Batalkan penawaran"
+    assert texts[-1][0] == phone and "harga balik" in texts[-1][1] and "1. Setuju" not in texts[-1][1]
+    row = sql("select step, context from chat_sessions where phone = %s", (phone,))[0]
+    assert row["step"] == "buyer_offer_action" and row["context"]["poll_id"] == "3EB0POLL2"
+    assert row["context"]["actions"] == ["accept", "counter", "cancel", "list"] and row["context"]["offer_id"] == int(oid.split("-")[1])
+
+
+def test_poll_failure_falls_back_to_numbered_text(client, login, sql, monkeypatch):
+    sql("create table if not exists chat_sessions (phone text primary key, step text, context jsonb not null default '{}'::jsonb,"
+        " updated_at timestamptz not null default now())")
+    from backend import wa
+    texts = []
+    monkeypatch.setenv("WAHA_URL", "https://waha.example")
+    monkeypatch.setattr(wa, "send_text", lambda phone, text: texts.append((phone, text)))
+
+    def boom(*a, **k):
+        raise wa.WhatsAppError("x")
+    monkeypatch.setattr(wa, "send_poll", boom)
+    P, sid = setup_stock(client, login)
+    oid = client.post("/api/offers", headers=login("tengkulak"), json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    assert client.post(f"/api/offers/{oid}/counter", headers=P, json={"price": 7100}).status_code == 200
+    assert texts[-1][0] == e164(PHONES["tengkulak"]) and texts[-1][1].startswith("1. Setuju Rp7.100/kg\n2. Tawar lagi")
+
+
+def test_waha_poll_id_parsing():
+    from backend import wa
+    assert wa.poll_id({"id": {"id": "ABC", "_serialized": "true_62@c.us_ABC"}}) == "ABC"
+    assert wa.poll_id({"id": {"_serialized": "true_6281@c.us_3EB0XYZ"}}) == "3EB0XYZ"
+    assert wa.poll_id({"id": "true_6281@c.us_3EB0XYZ"}) == "3EB0XYZ" and wa.poll_id({}) == ""
