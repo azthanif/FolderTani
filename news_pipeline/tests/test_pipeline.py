@@ -11,6 +11,7 @@ from news_pipeline.storage import read_jsonl, write_jsonl
 
 CC = DEFAULTS["classifier"]
 NC = DEFAULTS["ner"]
+NC_MODEL = {**NC, "rules": False, "propagate": False}     # hanya keluaran model: untuk menguji filter postprocess
 
 
 def ctx_for(tmp_path, **over):
@@ -67,7 +68,7 @@ def test_postprocess_offsets_merge_and_filters():
         {"label": "ORG", "start": 55, "end": 63, "score": 0.5},           # di bawah ambang
         {"label": "ORG", "start": 68, "end": 77, "score": 0.9},           # nama media -> dibuang
     ]
-    out = postprocess(text, spans, NC)
+    out = postprocess(text, spans, NC_MODEL)
     assert [(e["label"], e["text"]) for e in out] == [("GPE", "Garut"), ("PER", "Abdusy Syakur Amin")]
     assert all(text[e["start"]:e["end"]] == e["text"] for e in out)
 
@@ -94,7 +95,7 @@ def test_postprocess_drops_numeric_labels_without_number():
     text = "Di Jawa Barat target tahun ini 2 juta ton, naik dari 2024. Harga di Semarang turun."
     spans = [_span(text, "MON", "Barat"), _span(text, "QTY", "tahun"), _span(text, "QTY", "2 juta ton"),
              _span(text, "QTY", "2024"), _span(text, "MON", "Semarang")]
-    assert [e["text"] for e in postprocess(text, spans, NC)] == ["2 juta ton"]
+    assert [e["text"] for e in postprocess(text, spans, NC_MODEL)] == ["2 juta ton"]
 
 
 def test_offset_ok_drops_bad_entity_instead_of_crashing():
@@ -234,6 +235,17 @@ def test_same_story_by_org_and_specific_number():
              summary="Polri mendorong swasembada bawang putih.")
     c = dict(b, id="c", title="Polri Gelar Operasi Lilin 2026", summary="Polri menyiagakan personel akhir tahun 2026.")
     assert digest_news.is_same_story(a, b) and not digest_news.is_same_story(a, c)   # tahun tidak dihitung
+
+
+def test_common_rice_institution_alone_does_not_merge_stories():
+    """Bulog kini dikenali di hampir setiap berita (kamus NER); dua berita Bulog berbeda dengan angka HPP yang
+    sama (Rp6.500) tidak boleh dianggap peristiwa yang sama."""
+    org = [{"label": "ORG", "norm": "Perum Bulog"}]
+    a = dict(ITEM, id="a", publish_date="2026-11-20", entities=org, title="Bulog Serap Gabah Petani Demak",
+             summary="Bulog menyerap gabah sesuai HPP Rp6.500 per kg.")
+    b = dict(ITEM, id="b", publish_date="2026-11-20", entities=org, title="Operasi Pasar Beras di Manado",
+             summary="Petani Minahasa menjual gabah Rp6.500 per kg.")
+    assert not digest_news.is_same_story(a, b)
 
 
 # ------------------------------------------------------------------ jalur Supabase (klien tiruan)
@@ -479,3 +491,74 @@ def test_non_rice_farmer_news_excluded():
     # padi tetap lolos walau menyebut komoditas lain sekali
     b3 = "Petani padi di Garut panen gabah 6 ton per hektare. Sebagian sawah juga ditanami jagung saat kemarau."
     assert classifier_news.classify(art("Panen Padi di Garut Melimpah", b3), {}, CC)["wilayah"] == ["Garut"]
+
+
+# ------------------------------------------------------------------ NER: kamus domain, propagasi, konsistensi label
+def _ents(out):
+    return [(e["label"], e["text"]) for e in out]
+
+
+def test_rules_catch_domain_acronyms_model_missed():
+    """Data nyata (news_articles, 24 Nov 2026): model tidak memberi label HPP, SPHP, Bulog di banyak sebutan."""
+    text = ("Perum Bulog wajib membeli gabah sesuai HPP. Bapanas menyalurkan beras SPHP, "
+            "sementara BPS mencatat NTP naik. Dampak El Nino terasa di Kecamatan Bojongpicung.")
+    out = postprocess(text, [], NC)
+    assert _ents(out) == [("ORG", "Perum Bulog"), ("PRG", "HPP"), ("ORG", "Bapanas"), ("PRG", "SPHP"),
+                          ("ORG", "BPS"), ("PRG", "NTP"), ("EVT", "El Nino"), ("GPE", "Kecamatan Bojongpicung")]
+    assert {e["norm"] for e in out} >= {"Perum Bulog", "Badan Pangan Nasional", "Badan Pusat Statistik"}
+    assert all(text[e["start"]:e["end"]] == e["text"] for e in out)
+
+
+def test_rules_are_case_sensitive_and_word_bounded():
+    text = "Situs bulog.co.id dan kata HPPK atau Bulogan bukan entitas."
+    assert postprocess(text, [], NC) == []
+
+
+def test_propagation_labels_repeated_mentions_and_short_names():
+    text = "Menteri Pertanian Andi Amran Sulaiman meninjau Merauke. Amran menyebut Merauke siap. Kata Amran lagi."
+    spans = [_span(text, "PER", "Andi Amran Sulaiman"), _span(text, "GPE", "Merauke", 0.9)]
+    out = postprocess(text, spans, NC)
+    assert _ents(out) == [("PER", "Andi Amran Sulaiman"), ("GPE", "Merauke"), ("PER", "Amran"),
+                          ("GPE", "Merauke"), ("PER", "Amran")]
+    assert [e["src"] for e in out] == ["model", "model", "prop", "prop", "prop"]
+    assert {e["norm"] for e in out if e["label"] == "PER"} == {"Andi Amran Sulaiman"}
+
+
+def test_propagation_skips_titles_and_degrees():
+    text = "Kata Menteri Pertanian kemarin. Menteri Pertanian hadir bersama Ito Hediarto, S.Sos. lalu S.Sos. lagi."
+    spans = [_span(text, "NOR", "Menteri Pertanian"), _span(text, "PER", "S.Sos.")]
+    out = postprocess(text, spans, NC)
+    assert [e for e in out if e["src"] == "prop"] == []
+
+
+def test_rule_overrides_model_label_and_trims_overlapping_person():
+    text = "HPP gabah naik. Direktur Utama Perum BULOG Ahmad Rizal Ramdhani menyebut HPP berlaku."
+    spans = [_span(text, "PRD", "HPP"), _span(text, "LAW", "HPP", nth=1),
+             _span(text, "PER", "BULOG Ahmad Rizal Ramdhani")]
+    out = postprocess(text, spans, NC)
+    assert _ents(out) == [("PRG", "HPP"), ("ORG", "Perum BULOG"), ("PER", "Ahmad Rizal Ramdhani"), ("PRG", "HPP")]
+
+
+def test_weak_place_rule_yields_to_model_span():
+    text = "Peneliti Universitas Indonesia menyebut Indonesia surplus beras."
+    spans = [_span(text, "ORG", "Universitas Indonesia")]
+    assert _ents(postprocess(text, spans, NC)) == [("ORG", "Universitas Indonesia"), ("GPE", "Indonesia")]
+
+
+def test_region_and_regulation_patterns():
+    text = ("Bantuan dibagikan di Kelurahan Paniki Dua, Kota Manado, Provinsi Sulawesi Utara. Kabupaten Sidoarjo "
+            "Mohamad Edi hadir. Aturannya Keputusan Kepala Bapanas Nomor 381 Tahun 2025.")
+    spans = [_span(text, "PER", "Mohamad Edi")]
+    out = _ents(postprocess(text, spans, NC))
+    assert out == [("GPE", "Kelurahan Paniki Dua"), ("GPE", "Kota Manado"), ("GPE", "Provinsi Sulawesi Utara"),
+                   ("GPE", "Kabupaten Sidoarjo"), ("PER", "Mohamad Edi"),
+                   ("LAW", "Keputusan Kepala Bapanas Nomor 381 Tahun 2025")]
+
+
+def test_label_harmonized_per_article():
+    text = "Gerindra menang. Kader Gerindra bergerak. Gerindra solid."
+    spans = [_span(text, "NOR", "Gerindra")]
+    assert {e["label"] for e in postprocess(text, spans, NC)} == {"ORG"}
+    text2 = "Prima bicara. Prima pulang."
+    spans2 = [_span(text2, "PER", "Prima", 0.9), _span(text2, "ORG", "Prima", 0.75, nth=1)]
+    assert {e["label"] for e in postprocess(text2, spans2, NC)} == {"PER"}

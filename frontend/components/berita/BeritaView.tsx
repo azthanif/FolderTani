@@ -41,7 +41,7 @@ const fmt = (s: string) =>
   new Date(s + "T00:00:00").toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
 const NER_CLASS: Record<string, string> = {
-  PER: "per", GPE: "loc", LOC: "loc", FAC: "loc", ORG: "org", NOR: "org", LAW: "org", PRD: "com", EVT: "act", QTY: "qty", MON: "qty",
+  PER: "per", GPE: "loc", LOC: "loc", FAC: "loc", ORG: "org", NOR: "org", LAW: "org", PRG: "org", PRD: "com", EVT: "act", QTY: "qty", MON: "qty",
 };
 
 const STOP = new Set(
@@ -423,7 +423,7 @@ export function BeritaView() {
                     </span>
                     <span>
                       <i className="swatch" style={{ background: "#b294df" }} />
-                      Organisasi/Tokoh (ORG/NOR)
+                      Lembaga/Program (ORG/NOR/PRG)
                     </span>
                     <span>
                       <i className="swatch" style={{ background: "#e5b65e" }} />
