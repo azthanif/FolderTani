@@ -353,3 +353,39 @@ def test_summary_run_falls_back_to_lead_on_invented_number(tmp_path, monkeypatch
     a, b = read_jsonl(ctx.path("06_summary.jsonl"))
     assert a["fallback"] and a["summary_model"].startswith("lead") and a["number_precision"] == 0.0
     assert not b["fallback"] and b["summary_model"] == "idt5:fake" and b["number_precision"] == 1.0
+
+
+def test_ci_config_and_collection_ids_from_env(tmp_path, monkeypatch):
+    """config.ci.yaml (GitHub Actions) valid, dan collection_ids kosong diambil dari env MEDIACLOUD_COLLECTION_IDS."""
+    import sys
+    import types
+    from pathlib import Path
+
+    from news_pipeline import geturl_news
+    from news_pipeline.config import load_config
+
+    cfg = load_config(str(Path(geturl_news.__file__).parent / "config.ci.yaml"))
+    assert cfg["storage"]["supabase"]["enabled"] and not cfg["notify"]["enabled"]
+    assert set(cfg["mediacloud"]["queries"]) == {"Garut", "Cianjur", "Nasional"}
+
+    seen = []
+
+    class FakeApi:
+        def __init__(self, key):
+            pass
+
+        def story_list(self, query, start, end, collection_ids, pagination_token):
+            seen.append(collection_ids)
+            return [{"id": f"s{len(seen)}", "url": f"https://x.id/{len(seen)}", "title": "Harga gabah"}], None
+
+    mc = types.ModuleType("mediacloud")
+    mc.api = types.SimpleNamespace(SearchApi=FakeApi)
+    monkeypatch.setitem(sys.modules, "mediacloud", mc)
+    monkeypatch.setitem(sys.modules, "mediacloud.api", mc.api)
+    monkeypatch.setenv("MEDIACLOUD_API_KEY", "x")
+    monkeypatch.setenv("MEDIACLOUD_COLLECTION_IDS", "111, 222")
+    assert cfg["mediacloud"]["collection_ids"] == [34412392]
+    cfg["mediacloud"]["collection_ids"] = []              # kosong -> ambil dari env
+    ctx = Context(cfg=_merge(cfg, {"run": {"data_dir": str(tmp_path)}}), run_date=date(2026, 11, 24))
+    assert geturl_news.run(ctx) == 3
+    assert seen == [[111, 222]] * 3
