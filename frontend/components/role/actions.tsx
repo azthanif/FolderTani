@@ -313,6 +313,25 @@ export function useRoleActions() {
       if (ok) void mutate(`/offers/${enc(id)}/accept-counter`);
     });
   }
+  /** Tengkulak membatalkan penawaran yang masih berjalan (setara pilihan "Batalkan penawaran" di chatbot WA). */
+  function cancelOffer(id: string) {
+    if (isFarmer) return;
+    const o = (getDb() as RoleState).offers.find(
+      (x) => x.id === id && x.buyerId === me() && (x.status === "Menunggu Petani" || x.status === "Penawaran Balik"),
+    );
+    if (!o) return toast("Penawaran sudah tidak berjalan.");
+    const price = o.status === "Penawaran Balik" ? o.counter ?? o.currentBid : o.currentBid;
+    showConfirm({
+      title: "Batalkan penawaran ini?",
+      message: `Penawaran ${o.id} (${number(o.volume)} kg, ${rupiah(price)}/kg) akan dibatalkan dan negosiasi berakhir. Petani akan diberi tahu lewat WhatsApp. Pembatalan tidak bisa diurungkan.`,
+      confirmLabel: "Ya, batalkan",
+      cancelLabel: "Kembali",
+      tone: "danger",
+    }).then((ok) => {
+      if (ok) void mutate(`/offers/${enc(id)}/cancel`);
+    });
+  }
+
   /* ---------- Detail penawaran ---------- */
   function offerDetail(id: string) {
     const S = sel();
@@ -353,11 +372,22 @@ export function useRoleActions() {
         <>
           <div className="divider" />
           <div className="notice-card">
-            Petani mengajukan harga balik <b>{rupiah(o.counter)}/kg</b>. Anda dapat menerima atau mengajukan harga baru.
+            Petani mengajukan harga balik <b>{rupiah(o.counter)}/kg</b>. Anda dapat menerima, mengajukan harga baru, atau membatalkan penawaran.
           </div>
           <div className="form-actions">
+            <Btn cl="danger" onClick={() => cancelOffer(o.id)}>Batalkan Penawaran</Btn>
             <Btn cl="secondary" onClick={() => counterOffer(o.id)}>Tawar Lagi</Btn>
             <Btn cl="primary" onClick={() => acceptCounter(o.id)}>{"Setujui " + rupiah(o.counter)}</Btn>
+          </div>
+        </>
+      );
+    if (!isFarmer && o.status === "Menunggu Petani")
+      actions = (
+        <>
+          <div className="divider" />
+          <div className="notice-card">Menunggu respons petani. Anda masih bisa membatalkan penawaran ini selama belum disepakati.</div>
+          <div className="form-actions">
+            <Btn cl="danger" onClick={() => cancelOffer(o.id)}>Batalkan Penawaran</Btn>
           </div>
         </>
       );
@@ -463,5 +493,5 @@ export function useRoleActions() {
     );
   }
 
-  return { newStock, updateStockRemaining, newOffer, offerDetail, trxDetail, counterOffer, notifications, navigate, base };
+  return { newStock, updateStockRemaining, newOffer, offerDetail, trxDetail, counterOffer, cancelOffer, notifications, navigate, base };
 }

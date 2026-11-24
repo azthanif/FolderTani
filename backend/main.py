@@ -1279,6 +1279,15 @@ def create_offer(body: OfferIn, actor: Actor = Depends(get_actor)):
     return result(actor, "Penawaran dikirim kepada petani.", id=o["code"])
 
 
+def _close_offer(cur, o: dict, actor: str) -> None:
+    """Tutup penawaran persis seperti node n8n "Tutup penawaran": FAILED, offered_kg permintaan dikembalikan,
+    dan offer_events.note = rejected_by_farmer (petani menolak) / cancelled_by_buyer (tengkulak membatalkan)."""
+    cur.execute("update offers set status = 'FAILED' where id = %s", (o["id"],))
+    cur.execute("update requests set offered_kg = greatest(offered_kg - %s, 0) where id = %s", (o["qty_kg"], o["request_id"]))
+    cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, %s, 'fail', %s, %s)",
+                (o["id"], actor, o["current_price"], "rejected_by_farmer" if actor == "farmer" else "cancelled_by_buyer"))
+
+
 def _own_offer(cur, actor: Actor, code: str) -> dict:
     cur.execute(
         "select o.*, r.buyer_phone from offers o join requests r on r.id = o.request_id where o.id = %s for update of o",
@@ -1301,7 +1310,7 @@ WEB_URL = os.getenv("TEMUTANI_WEB_URL", "https://temutani-web.vercel.app").rstri
 
 def _offer_info(cur, offer_id: int) -> Optional[dict]:
     cur.execute(
-        """select o.id, o.code, o.qty_kg, o.initial_price, o.current_price, o.status,
+        """select o.id, o.code, o.qty_kg, o.initial_price, o.current_price, o.status, o.request_id,
                   f.phone as farmer_phone, f.name as farmer_name, f.display_name as farmer_display, f.kabupaten,
                   r.buyer_phone, coalesce(b.name, 'Tengkulak') as buyer_name
            from offers o
@@ -1414,9 +1423,17 @@ def _push_offer_notifications(offer_id: int, event: str, prev_price: Optional[in
                 for ph in (i["farmer_phone"], i["buyer_phone"]):
                     _set_chat_step(cur, ph, None, {})
             elif event == "farmer_rejected":
-                msgs.append((i["buyer_phone"], f"❌ *{i['farmer_name']}* menolak penawaran Anda ({detail} • {rupiah(i['current_price'])}/kg).\n\n"
-                                               f"Anda bisa mengajukan kebutuhan ini ke petani lain. Ketik *menu* untuk mulai.", None))
-                _set_chat_step(cur, i["buyer_phone"], None, {})
+                # Sama dengan node n8n "Balas tutup penawaran" (petani menolak).
+                msgs.append((i["buyer_phone"], f"❌ *{i['farmer_display']}* menolak penawaran Anda ({detail} • {rupiah(i['current_price'])}/kg).\n\n"
+                                               f"Anda bisa mengajukan kebutuhan ini ke petani lain.\n\n{POLL_HINT}",
+                             {"name": "Langkah berikutnya:", "options": ["1. Pilih petani lain", "2. Lihat status penawaran", "0. Kembali ke menu"]}))
+                _set_chat_step(cur, i["buyer_phone"], "buyer_after_offer", {"request_id": int(i["request_id"]), "kabupaten": i["kabupaten"]})
+            elif event == "buyer_cancelled":
+                # Sama dengan node n8n "Balas tutup penawaran" (tengkulak membatalkan): petani diberi tahu + menu utama.
+                msgs.append((i["farmer_phone"], f"ℹ️ Tengkulak *membatalkan* penawaran *{i['code']} • {fmt_number(i['qty_kg'])} kg • {rupiah(i['current_price'])}/kg*.\n\n{POLL_HINT}",
+                             {"name": "Pilih layanan Temu Tani:",
+                              "options": ["1. Update stok gabah", "2. Lihat harga wajar gabah", "3. Penawaran masuk"]}))
+                _set_chat_step(cur, i["farmer_phone"], None, {})
         for phone, text, poll in msgs:
             if poll:
                 _notify_poll(phone, text, poll)
@@ -1459,11 +1476,22 @@ def reject_offer(offer_id: str, actor: Actor = Depends(get_actor)):
         o = _own_offer(cur, actor, offer_id)
         if o["status"] != "FARMER_TURN":
             err(409, "Status penawaran sudah berubah.")
-        cur.execute("update offers set status = 'FAILED' where id = %s", (o["id"],))
-        cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, 'farmer', 'fail', %s, 'rejected_by_farmer')",
-                    (o["id"], o["current_price"]))
+        _close_offer(cur, o, "farmer")
     _push_offer_notifications(o["id"], "farmer_rejected")
     return result(actor, "Penawaran ditolak.")
+
+
+@app.post("/api/offers/{offer_id}/cancel", tags=["tengkulak"])
+def cancel_offer(offer_id: str, actor: Actor = Depends(get_actor)):
+    """Tengkulak membatalkan penawaran yang masih berjalan (sama dengan pilihan "Batalkan penawaran" di chatbot)."""
+    require(actor, "tengkulak")
+    with tx() as cur:
+        o = _own_offer(cur, actor, offer_id)
+        if o["status"] not in ("FARMER_TURN", "BUYER_TURN"):
+            err(409, "Penawaran sudah tidak berjalan (sudah disepakati, ditolak, atau dibatalkan).")
+        _close_offer(cur, o, "buyer")
+    _push_offer_notifications(o["id"], "buyer_cancelled")
+    return result(actor, "Penawaran dibatalkan. Petani sudah diberi tahu.")
 
 
 @app.post("/api/offers/{offer_id}/counter", tags=["petani", "tengkulak"])

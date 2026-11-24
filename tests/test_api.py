@@ -551,3 +551,42 @@ def test_waha_poll_id_parsing():
     assert wa.poll_id({"id": {"id": "ABC", "_serialized": "true_62@c.us_ABC"}}) == "ABC"
     assert wa.poll_id({"id": {"_serialized": "true_6281@c.us_3EB0XYZ"}}) == "3EB0XYZ"
     assert wa.poll_id({"id": "true_6281@c.us_3EB0XYZ"}) == "3EB0XYZ" and wa.poll_id({}) == ""
+
+
+def test_buyer_cancels_offer_from_web(client, login, sql, monkeypatch):
+    sql("create table if not exists chat_sessions (phone text primary key, step text, context jsonb not null default '{}'::jsonb,"
+        " updated_at timestamptz not null default now())")
+    from backend import wa
+    texts, polls = [], []
+    monkeypatch.setenv("WAHA_URL", "https://waha.example")
+    monkeypatch.setattr(wa, "send_text", lambda phone, text: texts.append((phone, text)))
+    monkeypatch.setattr(wa, "send_poll", lambda phone, name, options: polls.append((phone, name, options)) or "PID%d" % len(polls))
+    P, sid = setup_stock(client, login)
+    T = login("tengkulak")
+    oid = client.post("/api/offers", headers=T, json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    n = int(oid.split("-")[1])
+    assert client.post(f"/api/offers/{oid}/cancel", headers=P).status_code == 403            # petani tidak bisa membatalkan
+    assert client.post(f"/api/offers/{oid}/cancel", headers=login("tengkulak2")).status_code == 404  # bukan miliknya
+    client.post(f"/api/offers/{oid}/counter", headers=P, json={"price": 7100})               # bisa dibatalkan saat harga balik
+    r = client.post(f"/api/offers/{oid}/cancel", headers=T)
+    assert r.status_code == 200 and r.json()["state"]["offers"][0]["status"] == "Dibatalkan"
+    assert client.post(f"/api/offers/{oid}/cancel", headers=T).status_code == 409
+    assert client.post(f"/api/offers/{oid}/accept-counter", headers=T).status_code == 409
+    ev = sql("select actor, action, note from offer_events where offer_id = %s order by id desc limit 1", (n,))[0]
+    assert ev == {"actor": "buyer", "action": "fail", "note": "cancelled_by_buyer"}
+    assert sql("select r.offered_kg from requests r join offers o on o.request_id = r.id where o.id = %s", (n,))[0]["offered_kg"] == 0
+    st = client.get("/api/state", headers=P).json()
+    assert st["offers"][0]["status"] == "Dibatalkan" and st["activities"][0]["title"] == f"Penawaran dibatalkan {oid}"
+    farmer = e164(PHONES["petani"])
+    assert texts[-1][0] == farmer and "membatalkan" in texts[-1][1] and polls[-1][1] == "Pilih layanan Temu Tani:"
+    row = sql("select step, context from chat_sessions where phone = %s", (farmer,))[0]
+    assert row["step"] is None and row["context"] == {"poll_id": "PID%d" % len(polls)}
+
+
+def test_farmer_reject_returns_offered_kg(client, login, sql):
+    P, sid = setup_stock(client, login)
+    oid = client.post("/api/offers", headers=login("tengkulak"), json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    client.post(f"/api/offers/{oid}/reject", headers=P)
+    n = int(oid.split("-")[1])
+    assert sql("select r.offered_kg from requests r join offers o on o.request_id = r.id where o.id = %s", (n,))[0]["offered_kg"] == 0
+    assert sql("select note from offer_events where offer_id = %s and action = 'fail'", (n,))[0]["note"] == "rejected_by_farmer"
