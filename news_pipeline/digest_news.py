@@ -12,6 +12,7 @@ import re
 
 import requests
 
+from .ner_rules import DOMAIN_ORG_NORMS
 from .storage import read_jsonl, write_jsonl
 
 log = logging.getLogger("news.digest")
@@ -40,7 +41,8 @@ def is_same_story(a: dict, b: dict) -> bool:
     except (ValueError, KeyError, TypeError):
         pass
     per = lambda it: {e["norm"].casefold() for e in it.get("entities", []) if e["label"] == "PER" and " " in e["norm"]}
-    org = lambda it: {e["norm"].casefold() for e in it.get("entities", []) if e["label"] in ("ORG", "NOR", "EVT")}
+    org = lambda it: {e["norm"].casefold() for e in it.get("entities", []) if e["label"] in ("ORG", "NOR", "EVT")
+                      and e["norm"].casefold() not in DOMAIN_ORG_NORMS}
     nums = lambda it: {n for n in RX_NUM.findall(f"{it['title']} {it['summary']}")
                        if len(n.replace(".", "").replace(",", "")) >= 2 and not re.fullmatch(r"(19|20)\d\d", n)}
     title_j = _jac(_words(a["title"]), _words(b["title"]))

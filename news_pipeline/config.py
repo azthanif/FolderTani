@@ -55,7 +55,9 @@ DEFAULTS: dict[str, Any] = {
     "ner": {
         "model": "cahya/bert-base-indonesian-NER", "score_min": 0.70, "max_tokens": 256,
         "batch_size": 16, "device": "auto",
-        "keep_types": ["PER", "ORG", "NOR", "GPE", "LOC", "FAC", "EVT", "PRD", "LAW", "QTY", "MON"],
+        "keep_types": ["PER", "ORG", "NOR", "GPE", "LOC", "FAC", "EVT", "PRD", "LAW", "PRG", "QTY", "MON"],
+        "rules": True,           # kamus entitas domain + pola wilayah/regulasi (ner_rules.py)
+        "propagate": True,       # label sebutan ulang nama yang sudah dikenali di artikel yang sama
     },
     "classifier": {
         "targets": ["Garut", "Cianjur"], "min_body_mentions": 2,

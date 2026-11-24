@@ -7,7 +7,7 @@ Alur harian: Media Cloud → teks penuh → pembersihan → NER → wilayah (Gar
 | 1 | `geturl_news.py` | `01_urls.csv` | Query Media Cloud per label (atau `--input-csv`) |
 | 2 | `gettext_news.py` | `02_raw.jsonl` | Unduh HTML sekali/URL, trafilatura + cadangan newspaper3k, jeda per domain, robots.txt, circuit breaker, Wayback, bisa di-resume |
 | 3 | `preprocess_news.py` | `03_clean.jsonl` | `news_cleaner.py` + boilerplate & dedup lintas hari (`data/state/`) |
-| 4 | `ner_news.py` | `04_ner.jsonl` | `cahya/bert-base-indonesian-NER` (MIT), logika dari notebook EDA, offset ke teks bersih |
+| 4 | `ner_news.py` + `ner_rules.py` | `04_ner.jsonl` | `cahya/bert-base-indonesian-NER` (MIT), lalu kamus entitas pangan (Bulog, Bapanas, HPP, SPHP, ...), pola wilayah/regulasi, propagasi sebutan ulang, satu label per nama per artikel. Field `src`: model / rule / prop |
 | 5 | `classifier_news.py` | `05_classified.jsonl` | Wilayah + kategori dari entitas NER, gazetteer kecamatan (UU 110/2024 & UU 97/2024), kata inti padi/gabah |
 | 6 | `summary_news.py` | `06_summary.jsonl` | idT5 hasil fine-tuning bila ada, selain itu Lead-2; ringkasan dengan entitas karangan diganti Lead |
 | 7 | `digest_news.py` | `07_items.jsonl`, `07_digest_<Kab>.txt` | Digest per kabupaten = berita kabupaten + nasional, berita kembar lintas media dibuang |
@@ -82,6 +82,7 @@ dan `model` (API kompatibel OpenAI). Batas & daftar model free tier bisa berubah
 - **Classifier berbasis aturan.** Di uji 532 artikel Garut/Cianjur, berita non-pertanian dan berita daerah lain tersaring,
   tetapi masih ada kasus batas (mis. berita program CSR yang banyak menyebut petani). Validasi dengan ±100 artikel berlabel
   sebelum dipakai luas; ambang ada di `classifier:` pada config.
+- **Lapisan aturan NER** (`ner.rules`, `ner.propagate`, default aktif) menaikkan cakupan sebutan, tetapi kamus harus dirawat bila muncul lembaga/program baru. Label `PRG` = program/instrumen kebijakan bernama (HPP, HET, SPHP, MBG, NTP), karena skema model tidak punya kelas itu.
 - **NER tanpa metrik resmi** (model card tidak memuat evaluasi). Presisi per tipe perlu diukur dari `sampel_validasi.csv`.
 - **Scraping:** situs berproteksi bot tidak dibobol; patuhi ToS media, terutama untuk penggunaan komersial.
 - **WhatsApp:** kirim hanya ke petani yang mendaftar; uji dulu ke nomor sendiri (`recipients_source: csv`).

@@ -11,11 +11,12 @@ import logging
 import os
 import re
 
+from .ner_rules import RX_JABATAN, harmonize, propagate, rule_spans, trim_against
 from .storage import read_jsonl, write_jsonl
 
 log = logging.getLogger("news.ner")
 
-TIPE_NAMED = {"PER", "ORG", "GPE", "LOC", "FAC", "EVT", "PRD", "LAW", "NOR"}
+TIPE_NAMED = {"PER", "ORG", "GPE", "LOC", "FAC", "EVT", "PRD", "LAW", "NOR", "PRG"}
 RX_SENT = re.compile(r'(?<=[.!?"])\s+(?=[A-Z"(])|\n+')
 HONORIFIK = re.compile(r"^(?:(?:H|Hj|Dr|dr|Ir|Drs|Dra|Prof|KH|K\.H|R|Rd|AKBP|AKP|Kombes|Kompol|Iptu|Ipda|Aiptu|Bripka|"
                        r"Brigjen|Irjen|Komjen|Jenderal|Letjen|Mayjen|Kolonel|Letkol|Mayor|Kapten|Pol|TNI)\.?\s+)+")
@@ -33,7 +34,7 @@ STOP_ENT = {w.casefold() for w in (
     "Senin Selasa Rabu Kamis Jumat Sabtu Minggu Januari Februari Maret April Mei Juni Juli Agustus "
     "September Oktober November Desember Barat Timur Utara Selatan Tengah Jalan Baru Kabupaten Kecamatan Desa").split()}
 MEDIA = sorted({"antara", "antaranews", "times indonesia", "warta ekonomi", "media indonesia", "metro tv", "tribun",
-                "tribunnews", "jpnn", "poskota", "liputan6", "kompas", "detikcom", "detik", "okezone", "viva",
+                "tribunnews", "jpnn", "antara news", "metrotvnews", "metrotvnews.com", "poskota", "liputan6", "kompas", "detikcom", "detik", "okezone", "viva",
                 "koran jakarta", "katadata", "merdeka", "suara", "republika", "mediaindonesia", "timesindonesia"},
                key=len, reverse=True)
 # Angka gaya Indonesia: titik = ribuan, koma = desimal, opsional diawali "Rp". Dipakai untuk menyatukan span
@@ -167,8 +168,41 @@ def postprocess(text: str, spans: list[dict], nc: dict) -> list[dict]:
                                     or RX_MEDIA.fullmatch(norm)):
             continue
         out.append({"label": label, "text": surface, "norm": norm, "start": sp["start"], "end": sp["end"],
-                    "score": round(sp["score"], 4)})
-    return out
+                    "score": round(sp["score"], 4), "src": "model"})
+    return augment(text, out, nc)
+
+
+def augment(text: str, ents: list[dict], nc: dict) -> list[dict]:
+    """Tambahkan entitas kamus/pola (menggantikan span model yang bertumpuk), propagasi sebutan ulang,
+    lalu seragamkan label per bentuk normal. Bisa dimatikan lewat ner.rules / ner.propagate."""
+    keep = set(nc["keep_types"])
+    if nc.get("rules", True):
+        rules = [r for r in rule_spans(text, STOP_ENT) if r["label"] in keep]
+        for r in rules:                       # "Kabupaten Sidoarjo Mohamad Edi": ekor wilayah berhenti di awal PER
+            if r["label"] == "GPE":
+                cut = [e["start"] for e in ents if e["label"] == "PER" and r["start"] < e["start"] < r["end"]]
+                if cut:
+                    r["end"] = len(text[:min(cut)].rstrip())
+                    r["norm"] = None
+        rules = [r for r in rules if r["end"] > r["start"]
+                 and not (r.pop("weak") and any(e["start"] < r["end"] and e["end"] > r["start"] for e in ents))]
+        for r in rules:
+            r["text"] = text[r["start"]:r["end"]]
+            r["norm"] = r["norm"] or normalize(r["text"], r["label"])
+        kept = []
+        for e in ents:
+            t = trim_against(text, e, rules) if e["label"] in TIPE_NAMED else e
+            if t is not None and t["norm"] is None:         # sisa potongan: wajib tetap nama, bukan jabatan/kata umum
+                t["norm"] = normalize(t["text"], t["label"])
+                if t["norm"].casefold() in STOP_ENT or len(t["norm"]) < 3 or RX_JABATAN.match(t["norm"]) \
+                        or (t["label"] != "PER" and len(t["norm"].split()) < 2):
+                    t = None
+            if t is not None and (t is e or not any(t["start"] < r["end"] and t["end"] > r["start"] for r in rules)):
+                kept.append(t)
+        ents = kept + rules
+    if nc.get("propagate", True):
+        ents = propagate(text, ents, TIPE_NAMED & keep, STOP_ENT)
+    return sorted(harmonize(ents), key=lambda x: x["start"])
 
 
 def _offset_ok(ents: list[dict], text: str, art_id: str) -> list[dict]:
