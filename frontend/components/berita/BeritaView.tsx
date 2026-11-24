@@ -1,6 +1,6 @@
 "use client";
 /* Berita & Isu Pertanian (port initBerita + berita.html). Tidak lagi iframe. */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { getSession } from "@/lib/auth";
 import { showAlert } from "@/lib/dialog";
@@ -103,13 +103,26 @@ function defaultWilayah(): Wilayah {
   return (WILAYAH.find((w) => w.toLowerCase() === region) as Wilayah) || "Semua";
 }
 
-function defaultRange(news: NewsItem[]): [string, string] {
-  const dates = news.map((n) => n.tanggal).filter(Boolean).sort();
-  const max = dates[dates.length - 1] || new Date().toISOString().slice(0, 10);
-  const end = new Date(max + "T00:00:00");
-  const start = new Date(end);
-  start.setDate(start.getDate() - 6);
-  return [`${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`, max];
+/** Tanggal hari ini di WIB (YYYY-MM-DD), bukan UTC, agar pagi hari tidak mundur sehari. */
+const todayWIB = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+const shift = (ymd: string, days: number) => {
+  const d = new Date(ymd + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+/** "7 Hari Terakhir" = 6 hari lalu s.d. hari ini (WIB), bukan relatif ke berita terakhir di data. */
+function last7Days(): [string, string] {
+  const t = todayWIB();
+  return [shift(t, -6), t];
+}
+
+/** Rentang awal: 7 hari terakhir bila ada beritanya; bila belum ada (pipeline tertinggal), 7 hari s.d. berita terbaru. */
+function initialRange(news: NewsItem[]): [string, string] {
+  const [f, t] = last7Days();
+  if (news.some((n) => n.tanggal >= f && n.tanggal <= t)) return [f, t];
+  const max = news.map((n) => n.tanggal).filter(Boolean).sort().pop() || t;
+  return [shift(max, -6), max];
 }
 
 export function BeritaView() {
@@ -121,6 +134,7 @@ export function BeritaView() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [wilayah, setWilayah] = useState<Wilayah>("Semua");
+  const latestRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setWilayah(defaultWilayah());
@@ -143,7 +157,7 @@ export function BeritaView() {
           .filter((n) => n.tanggal && n.judul);
         if (!items.length) throw new Error("Server tidak mengirim berita yang valid.");
         if (!alive) return;
-        const [f, t] = defaultRange(items);
+        const [f, t] = initialRange(items);
         setNews(items);
         setFrom(f);
         setTo(t);
@@ -182,7 +196,12 @@ export function BeritaView() {
     setPage(1);
   }
 
-  const featured = filtered.find((n) => n.id === selectedId) || filtered[0];
+  const picked = filtered.find((n) => n.id === selectedId); // pilihan yang keluar dari filter otomatis diabaikan
+  useEffect(() => {
+    if (selectedId && range && !picked) setSelectedId(null);
+  }, [selectedId, range, picked]);
+  const featured = picked || filtered[0];
+  const isLatest = !picked || picked.id === filtered[0]?.id;
   const others = filtered.filter((n) => n.id !== featured?.id);
   const totalPages = Math.max(1, Math.ceil(others.length / PAGE_SIZE));
   const current = Math.min(page, totalPages);
@@ -240,7 +259,7 @@ export function BeritaView() {
           type="button"
           className="btn"
           onClick={() => {
-            const [f, t] = defaultRange(news);
+            const [f, t] = last7Days();
             setFrom(f);
             setTo(t);
             apply(f, t);
@@ -271,10 +290,17 @@ export function BeritaView() {
 
       <div className="layout">
         <div className="maincol">
-          <section className="panel latest">
+          <section className="panel latest" ref={latestRef}>
             <div className="latest-top">
-              <span className="tag">BERITA TERKINI</span>
-              <span className="section-sub">{featured?.id ?? ""}</span>
+              <span className={`tag${isLatest ? "" : " tag-picked"}`}>{isLatest ? "BERITA TERKINI" : "BERITA TERPILIH"}</span>
+              <span className="latest-right">
+                {featured ? <span className="latest-date">◷ {fmt(featured.tanggal)}</span> : null}
+                {!isLatest ? (
+                  <button type="button" className="back-latest" onClick={() => setSelectedId(null)}>
+                    ← Kembali ke berita terkini
+                  </button>
+                ) : null}
+              </span>
             </div>
             <div className="latest-body">
               {error ? (
@@ -370,6 +396,7 @@ export function BeritaView() {
                             onClick={() => {
                               setSelectedId(n.id);
                               setPage(1);
+                              latestRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                             }}
                           >
                             {n.judul}

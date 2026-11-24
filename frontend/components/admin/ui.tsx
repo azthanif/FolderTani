@@ -13,6 +13,7 @@ const BADGE: Record<string, string> = {
   "Penawaran Balik": "blue",
   Disetujui: "green",
   Ditolak: "red",
+  Dibatalkan: "gray",
   Selesai: "green",
   Berhasil: "green",
   "Perlu Tinjauan": "red",

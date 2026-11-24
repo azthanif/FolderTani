@@ -1342,6 +1342,11 @@
 .dash .page-berita .latest-top{padding:19px 22px 0;display:flex;justify-content:space-between;align-items:center;gap:10px}
 .dash .page-berita .tag{display:inline-flex;align-items:center;padding:6px 9px;border-radius:30px;background:#e9f7ed;color:#2e8259;font-size:9px;font-weight:800}
 .dash .page-berita .latest-body{padding:14px 22px 22px}
+.dash .page-berita .tag.tag-picked{background:#eef3fb;color:#3d6fa6}
+.dash .page-berita .latest-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.dash .page-berita .latest-date{font-size:11px;font-weight:700;color:#5d6f63}
+.dash .page-berita .back-latest{border:0;background:none;padding:0;font-size:11px;font-weight:800;color:#2e8259;cursor:pointer}
+.dash .page-berita .back-latest:hover{text-decoration:underline}
 .dash .page-berita .latest h2{font:800 21px/1.4 var(--font-jakarta);letter-spacing:-.55px;margin:0 0 11px;color:#203b2d}
 .dash .page-berita .meta{display:flex;gap:9px;flex-wrap:wrap;font-size:10px;color:#95a198;margin-bottom:15px}
 .dash .page-berita .article-text{font-size:12px;line-height:1.9;color:#526258;margin:0}
@@ -1422,6 +1427,19 @@
 .dash .stock-log td { padding: 11px 8px; border-bottom: 1px solid var(--line); color: var(--ink); }
 .dash .stock-log .delta-up { color: var(--green); font-weight: 700; }
 .dash .stock-log .delta-down { color: var(--red); font-weight: 700; }
+/* Sub-label "Panen 7 Nov" di bawah aktivitas (sebelumnya tidak bergaya, menempel ke teks). */
+.dash .stock-log-sub { display: block; margin-top: 3px; font-size: 11px; font-weight: 600; color: var(--muted); }
+/* Tabel riwayat hanya 4 kolom: jangan ikut min-width 770px tabel umum agar tidak terpotong di layar sempit. */
+.dash .role-app .table-wrap table.stock-log { min-width: 0; }
+.dash .stock-log td:first-child, .dash .stock-log td:nth-child(3), .dash .stock-log td:nth-child(4),
+.dash .stock-log th { white-space: nowrap; }
+.dash .stock-log td:nth-child(3), .dash .stock-log td:nth-child(4), .dash .stock-log th:nth-child(3), .dash .stock-log th:nth-child(4) { text-align: right; }
+/* Rincian sisa per tanggal panen. */
+.dash .stock-lots { margin-top: 14px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.dash .stock-lots-head { display: flex; justify-content: space-between; padding: 10px 14px; background: #f7faf6; font-size: 11px; font-weight: 700; color: var(--muted); }
+.dash .stock-lot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink); }
+.dash .stock-lot strong { font-weight: 700; white-space: nowrap; }
+@media (max-width: 760px) { .dash .stock-head-icon { display: none; } .dash .stock-panel { padding: 18px; } .dash .stock-log { font-size: 12px; } .dash .stock-log th, .dash .stock-log td { padding-left: 6px; padding-right: 6px; } }
 .dash .stock-log-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; color: var(--muted); }
 @media (max-width: 640px) {
   .dash .stock-split, .dash .stock-actions { grid-template-columns: 1fr; }

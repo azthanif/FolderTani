@@ -476,3 +476,30 @@ def test_version_changes_on_mutation(client, login):
     v1 = client.get("/api/state/version").json()["version"]
     add(client, login("petani"), 100, "2026-11-20")
     assert client.get("/api/state/version").json()["version"] > v1
+
+
+def test_buyer_cancel_via_chatbot_shows_dibatalkan(client, login, sql):
+    """Chatbot WA membatalkan penawaran: offers.status=FAILED + offer_events(actor=buyer, action=fail, note=cancelled_by_buyer)."""
+    P, sid = setup_stock(client, login)
+    T = login("tengkulak")
+    oid = client.post("/api/offers", headers=T, json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    n = int(oid.split("-")[1])
+    sql(f"update offers set status = 'FAILED' where id = {n}")
+    sql(f"insert into offer_events (offer_id, actor, action, price, note) values ({n}, 'buyer', 'fail', 6800, 'cancelled_by_buyer')")
+    for H in (P, T):
+        st = client.get("/api/state", headers=H).json()
+        o = st["offers"][0]
+        assert o["status"] == "Dibatalkan" and o["history"][-1]["label"] == "Penawaran dibatalkan pembeli"
+        assert st["activities"][0]["title"] == f"Penawaran dibatalkan {oid}"
+    d = client.get("/api/admin/dashboard", headers=login("admin")).json()
+    assert d["offers"][0]["status"] == "Dibatalkan"
+
+
+def test_new_offer_appears_first_in_farmer_activity(client, login):
+    P, sid = setup_stock(client, login)
+    for i in range(14):  # banyak riwayat stok lama
+        add(client, P, 10, "2026-11-0%d" % (1 + i % 9))
+    oid = client.post("/api/offers", headers=login("tengkulak"), json={"stockId": sid, "volume": 100, "price": 6800}).json()["id"]
+    acts = client.get("/api/state", headers=P).json()["activities"]
+    assert acts[0]["title"] == f"Penawaran baru {oid}"
+    assert [a["at"] for a in acts] == sorted((a["at"] for a in acts), reverse=True)

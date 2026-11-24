@@ -50,6 +50,7 @@ GRAIN = "GKP"
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des")
 STATUS_WEB = {"FARMER_TURN": "Menunggu Petani", "BUYER_TURN": "Penawaran Balik", "AGREED": "Disepakati", "FAILED": "Ditolak"}
 STATUS_ADMIN = {"FARMER_TURN": "Menunggu", "BUYER_TURN": "Penawaran Balik", "AGREED": "Disetujui", "FAILED": "Ditolak"}
+CANCELLED = "Dibatalkan"  # FAILED karena pembeli membatalkan (chatbot: offer_events.note = 'cancelled_by_buyer')
 
 chatbot_store = BlobStore(DATA_DIR / "chatbot_state.json")  # simulasi chatbot di halaman /chatbot (bukan WA asli)
 
@@ -249,6 +250,25 @@ def stock_view(s: dict) -> dict:
     }
 
 
+def is_cancel(e: dict) -> bool:
+    """Pembatalan oleh pembeli (chatbot WA menulis offer_events.note = 'cancelled_by_buyer')."""
+    return e["action"] == "fail" and e["note"] == "cancelled_by_buyer"
+
+
+def fail_label(e: dict, short: bool = False) -> str:
+    if is_cancel(e):
+        return "Dibatalkan pembeli" if short else "Penawaran dibatalkan pembeli"
+    if e["note"] == "insufficient_stock":
+        return "Stok tidak mencukupi" if short else "Stok tidak mencukupi, penawaran gagal"
+    return "Penawaran ditolak"
+
+
+def offer_status(o: dict, events: list[dict], table: dict[str, str]) -> str:
+    if o["status"] == "FAILED" and any(is_cancel(e) for e in events):
+        return CANCELLED
+    return table[o["status"]]
+
+
 def offer_rows(cur, where: str, params: tuple) -> tuple[list[dict], dict[int, list[dict]]]:
     cur.execute(
         f"""select o.*, r.buyer_phone, u.kabupaten as farmer_kab, u.name as farmer_name, u.display_name as farmer_display,
@@ -280,13 +300,13 @@ def offer_view(o: dict, events: list[dict], buyer_id: str, ai_ref: Optional[int]
         elif e["action"] == "accept":
             label = "Harga disepakati"
         else:
-            label = "Stok tidak mencukupi, penawaran gagal" if e["note"] == "insufficient_stock" else "Penawaran ditolak"
+            label = fail_label(e)
         history.append({"at": iso(e["created_at"]), "actor": who, "label": label, "price": e["price"] if e["action"] != "fail" else None})
     view = {
         "id": o["code"], "buyerId": buyer_id, "farmerId": str(o["farmer_id"]), "stockId": f"STK-{o['stock_id']}",
         "volume": o["qty_kg"], "initialBid": o["initial_price"], "currentBid": last_buyer,
         "counter": o["current_price"] if o["current_by"] == "farmer" else None,
-        "status": STATUS_WEB[o["status"]], "created": iso(o["created_at"]), "history": history,
+        "status": offer_status(o, events, STATUS_WEB), "created": iso(o["created_at"]), "history": history,
     }
     if o["status"] == "AGREED":
         view["agreedPrice"] = o["agreed_price"]
@@ -315,13 +335,20 @@ def activity_feed(offers: list[dict], events: dict[int, list[dict]], logs: list[
             elif e["action"] == "accept":
                 title, note = f"Kesepakatan baru {o['code']}", f"TRX-{o['id']} • {fmt_number(o['qty_kg'])} kg"
             else:
-                title, note = f"Penawaran tidak berlanjut {o['code']}", "Stok tidak mencukupi" if e["note"] == "insufficient_stock" else "Penawaran ditolak"
-            feed.append({"id": f"EVT-{e['id']}", "at": iso(e["created_at"]), "title": title, "note": note})
+                if is_cancel(e):
+                    title, note = f"Penawaran dibatalkan {o['code']}", f"Dibatalkan pembeli • {fmt_number(o['qty_kg'])} kg GKP • {rupiah(e['price'] or o['current_price'])}/kg"
+                else:
+                    title, note = f"Penawaran tidak berlanjut {o['code']}", fail_label(e, short=True)
+            feed.append({"id": f"EVT-{e['id']}", "at": iso(e["created_at"]), "title": title, "note": note, "_k": (e["created_at"], 1, e["id"])})
     for x in logs:
         sign = "+" if x["delta_kg"] >= 0 else "−"
         feed.append({"id": f"LOG-{x['id']}", "at": iso(x["created_at"]), "title": x["activity"],
-                     "note": f"{sign}{fmt_number(abs(x['delta_kg']))} kg • total {fmt_number(x['total_kg'])} kg"})
-    feed.sort(key=lambda a: a["at"], reverse=True)
+                     "note": f"{sign}{fmt_number(abs(x['delta_kg']))} kg • total {fmt_number(x['total_kg'])} kg",
+                     "_k": (x["created_at"], 0, x["id"])})
+    # Urut terbaru dulu berdasarkan timestamp penuh (bukan string per detik) + id sebagai pemecah seri.
+    feed.sort(key=lambda a: a["_k"], reverse=True)
+    for a in feed:
+        del a["_k"]
     return feed[:12]
 
 
@@ -1102,13 +1129,13 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
 
     def a_offer(o):
         hist = [[{"initial": "Penawaran dikirim", "counter": "Petani ajukan penawaran balik" if e["actor"] == "farmer" else "Pembeli ajukan harga baru",
-                  "accept": "Kesepakatan tercapai", "fail": "Stok tidak mencukupi" if e["note"] == "insufficient_stock" else "Penawaran ditolak"}[e["action"]],
+                  "accept": "Kesepakatan tercapai", "fail": fail_label(e, short=True)}[e["action"]],
                   f"{id_date(e['created_at'])} · {id_time(e['created_at'])}",
                   f"{rupiah(e['price'])}/kg" if e["price"] and e["action"] != "fail" else "-"] for e in events[o["id"]]]
         buyer_price = next((e["price"] for e in reversed(events[o["id"]]) if e["actor"] == "buyer" and e["price"]), o["initial_price"])
         item = {"id": o["code"], "buyer": buyer_label(o["buyer_phone"], tk), "location": o["farmer_kab"], "farmer": o["farmer_name"],
                 "stock": f"STK-{o['stock_id']}", "volume": o["qty_kg"], "price": buyer_price, "ai": refs.get(o["farmer_kab"]),
-                "status": STATUS_ADMIN[o["status"]], "date": id_date(o["created_at"]), "time": id_time(o["created_at"]), "history": hist}
+                "status": offer_status(o, events[o["id"]], STATUS_ADMIN), "date": id_date(o["created_at"]), "time": id_time(o["created_at"]), "history": hist}
         if o["current_by"] == "farmer" and o["status"] != "AGREED":
             item["counter"] = o["current_price"]
         return item
@@ -1123,7 +1150,8 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
                 "initial": ("Penawaran", "handshake", f"{buyer_label(o['buyer_phone'], tk)} mengajukan penawaran"),
                 "counter": ("Negosiasi", "arrow-left-right", f"{o['farmer_name'] if e['actor'] == 'farmer' else buyer_label(o['buyer_phone'], tk)} mengajukan harga balik"),
                 "accept": ("Negosiasi", "handshake", f"Kesepakatan {o['code']} tercapai"),
-                "fail": ("Negosiasi", "message-circle-warning", f"Penawaran {o['code']} tidak berlanjut"),
+                "fail": ("Negosiasi", "message-circle-warning",
+                         f"Penawaran {o['code']} dibatalkan pembeli" if is_cancel(e) else f"Penawaran {o['code']} tidak berlanjut"),
             }[e["action"]]
             ev.append((e["created_at"], {"icon": icon, "title": title, "note": f"{o['code']} · {o['farmer_kab']} · {rupiah(e['price'] or o['current_price'])}/kg",
                                          "time": id_time(e["created_at"]), "kind": kind, "status": "Berhasil", "location": o["farmer_kab"]}))
@@ -1391,7 +1419,7 @@ def reject_offer(offer_id: str, actor: Actor = Depends(get_actor)):
         if o["status"] != "FARMER_TURN":
             err(409, "Status penawaran sudah berubah.")
         cur.execute("update offers set status = 'FAILED' where id = %s", (o["id"],))
-        cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, 'farmer', 'fail', %s, 'rejected')",
+        cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, 'farmer', 'fail', %s, 'rejected_by_farmer')",
                     (o["id"], o["current_price"]))
     _push_offer_notifications(o["id"], "farmer_rejected")
     return result(actor, "Penawaran ditolak.")

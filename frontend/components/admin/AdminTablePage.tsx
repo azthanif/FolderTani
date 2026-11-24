@@ -13,7 +13,7 @@ type Row = AdminStock | AdminOffer | AdminTransaction | AdminEvent;
 
 const STATUSES: Record<TableKind, string[]> = {
   stok: ["Semua Status", "Tersedia", "Dalam Negosiasi", "Terjual"],
-  penawaran: ["Semua Status", "Menunggu", "Penawaran Balik", "Disetujui", "Ditolak"],
+  penawaran: ["Semua Status", "Menunggu", "Penawaran Balik", "Disetujui", "Ditolak", "Dibatalkan"],
   transaksi: ["Semua Status", "Disepakati", "Selesai"],
   aktivitas: ["Semua Status", "Berhasil", "Perlu Tinjauan"],
 };

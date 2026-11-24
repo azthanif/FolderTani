@@ -21,7 +21,7 @@ function Filters({ page }: { page: "stok" | "penawaran" | "transaksi" }) {
   const { isFarmer, ui, setUi, db } = useRole();
   const showRegion = !isFarmer && page === "stok";
   const regionOptions = db ? selectors(db, isFarmer).regions() : [];
-  const statuses = ["Menunggu Petani", "Penawaran Balik", "Disepakati", "Ditolak"];
+  const statuses = ["Menunggu Petani", "Penawaran Balik", "Disepakati", "Ditolak", "Dibatalkan"];
   return (
     <div className="toolbar">
       <label className="search-box">
@@ -109,6 +109,8 @@ export function OverviewPage() {
   if (isFarmer) {
     const me = S.myFarmer();
     const stocks = S.ownStock();
+    // Sisa stok per tanggal panen (stock_batches), terbaru dulu. Satu baris "stocks" = total, jadi tidak dipakai untuk ringkasan.
+    const lots = (db.batches || []).filter((b) => b.volume > 0).slice().sort((a, b) => b.harvest.localeCompare(a.harvest));
     const o = S.myOffers(), t = S.myTransactions();
     const total = stocks.filter((s) => s.status === "Tersedia").reduce((n, s) => n + availability(s), 0);
     const waiting = o.filter((a) => a.status === "Menunggu Petani");
@@ -119,7 +121,7 @@ export function OverviewPage() {
           <Icon name="info" size={17} /> Stok, penawaran, dan kesepakatan yang tampil hanya milik akun Anda. Harga AI di sini untuk referensi keputusan petani.
         </div>
         <div className="kpi-grid">
-          <Kpi icon="wheat" title="Stok Siap Dijual" val={<>{number(total)} <span className="kpi-unit">kg</span></>} foot={stocks.length + " listing gabah milik Anda"} />
+          <Kpi icon="wheat" title="Stok Siap Dijual" val={<>{number(total)} <span className="kpi-unit">kg</span></>} foot={lots.length + " tanggal panen tercatat"} />
           <Kpi icon="handshake" title="Penawaran Masuk" val={waiting.length} foot="Menunggu keputusan Anda" theme="gold" />
           <Kpi icon="activity" title="Sedang Dinegosiasikan" val={o.filter((a) => a.status === "Penawaran Balik").length} foot="Harga balik yang diajukan" theme="blue" />
           <Kpi icon="check" title="Kesepakatan" val={t.length} foot="Pembayaran langsung dengan pembeli" theme="lime" />
@@ -169,19 +171,26 @@ export function OverviewPage() {
             <div className="section-header">
               <div>
                 <h3 className="section-title">Ringkasan Stok Saya</h3>
-                <div className="section-subtitle">Stok di {me?.region || "wilayah Anda"}</div>
+                <div className="section-subtitle">
+                  Total {number(total)} kg · {lots.length} tanggal panen di {me?.region || "wilayah Anda"}
+                </div>
               </div>
               <Btn onClick={() => A.navigate("stok")}>Kelola Stok</Btn>
             </div>
-            {stocks.slice(0, 4).map((s) => (
-              <div className="stock-row" key={s.id}>
-                <div>
-                  <strong>{s.id} • {s.type}</strong>
-                  <p>Panen {prettyDate(s.harvest)} · {s.status}</p>
+            {lots.length ? (
+              lots.slice(0, 5).map((b) => (
+                <div className="stock-row" key={b.id}>
+                  <div>
+                    <strong>Panen {prettyDate(b.harvest)}</strong>
+                    <p>GKP · Tersedia</p>
+                  </div>
+                  <span className="stock-meta">{number(b.volume)} kg</span>
                 </div>
-                <span className="stock-meta">{number(availability(s))} kg</span>
-              </div>
-            ))}
+              ))
+            ) : (
+              <div className="empty-state">Belum ada stok. Tambahkan hasil panen Anda.</div>
+            )}
+            {lots.length > 5 ? <div className="table-foot-note">+{lots.length - 5} tanggal panen lainnya di menu Stok Gabah.</div> : null}
           </section>
           <section className="card section-card">
             <div className="section-header">
@@ -288,6 +297,7 @@ function FarmerStockPage() {
   const own = S.ownStock();
   const total = own.reduce((n, x) => n + x.volume, 0);
   const log = db.stockLog || [];
+  const lots = (db.batches || []).filter((b) => b.volume > 0).slice().sort((x, y) => y.harvest.localeCompare(x.harvest));
   const rows = showAll ? log : log.slice(0, 8);
   const shortDate = (iso: string) => new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
   const harvestShort = (d: string) => new Date(d + "T00:00:00+07:00").toLocaleDateString("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
@@ -313,6 +323,20 @@ function FarmerStockPage() {
           <strong>{kg(total)}</strong>
           <p>Jumlah gabah yang saat ini Anda miliki. Volume yang disepakati via Temu Tani otomatis dikurangi.</p>
         </div>
+        {lots.length ? (
+          <div className="stock-lots">
+            <div className="stock-lots-head">
+              <span>Sisa per tanggal panen</span>
+              <span>{lots.length} tanggal</span>
+            </div>
+            {lots.map((b) => (
+              <div className="stock-lot" key={b.id}>
+                <span>Panen {harvestShort(b.harvest)}</span>
+                <strong>{kg(b.volume)}</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="stock-actions">
           <button type="button" className="btn primary" onClick={A.updateStockRemaining}>
             <Icon name="refresh" size={16} /> Perbarui Stok

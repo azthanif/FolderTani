@@ -31,7 +31,78 @@ function sessionToken(): string | null {
   }
 }
 
-export async function api<T = unknown>(path: string, { method = "GET", body, auth = true }: ApiOptions = {}): Promise<T> {
+/* ---------------------------------------------------------------------------
+   Indikator proses untuk SEMUA aksi yang menulis ke database (POST/PUT/DELETE).
+   Tombol yang terakhir diklik diberi spinner + dinonaktifkan sampai respons datang, dan bilah
+   progres tipis tampil di atas layar. Terpusat di sini agar setiap tombol (petani, tengkulak,
+   admin, profil, auth) otomatis ikut tanpa perlu state loading di masing-masing komponen.
+   --------------------------------------------------------------------------- */
+const recentClicks: { el: HTMLButtonElement; at: number }[] = [];
+let pending = 0;
+
+if (typeof window !== "undefined") {
+  const remember = (ev: Event) => {
+    const t = ev.target as Element | null;
+    const btn = t?.closest?.("button, input[type=submit]") as HTMLButtonElement | null;
+    if (!btn) return;
+    recentClicks.unshift({ el: btn, at: Date.now() });
+    recentClicks.length = Math.min(recentClicks.length, 4);
+  };
+  // capture: tercatat sebelum handler React (yang bisa langsung menutup dialog/modal).
+  window.addEventListener("click", remember, true);
+  window.addEventListener("submit", (ev) => {
+    const sub = (ev as SubmitEvent).submitter as HTMLButtonElement | null;
+    const form = ev.target as HTMLFormElement;
+    const btn = sub || (form.querySelector("button[type=submit], button:not([type])") as HTMLButtonElement | null);
+    if (btn) recentClicks.unshift({ el: btn, at: Date.now() });
+    recentClicks.length = Math.min(recentClicks.length, 4);
+  }, true);
+}
+
+/** Tombol pemicu: klik terbaru (≤60 dtk) yang masih ada di halaman. Tombol "Ya" di dialog konfirmasi sudah hilang,
+ *  jadi otomatis jatuh ke tombol yang membuka konfirmasi (mis. "Terima Harga" di modal detail). */
+function triggerButton(): HTMLButtonElement | null {
+  const now = Date.now();
+  for (const c of recentClicks) {
+    if (now - c.at > 60_000) break;
+    if (c.el.isConnected && !c.el.disabled) return c.el;
+  }
+  return null;
+}
+
+function beginBusy(): () => void {
+  if (typeof document === "undefined") return () => undefined;
+  pending++;
+  document.documentElement.classList.add("api-busy");
+  const btn = triggerButton();
+  if (btn) {
+    btn.classList.add("is-loading");
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+  }
+  return () => {
+    pending = Math.max(0, pending - 1);
+    if (!pending) document.documentElement.classList.remove("api-busy");
+    if (btn) {
+      btn.classList.remove("is-loading");
+      btn.removeAttribute("aria-busy");
+      // Hanya buka kembali bila masih tombol yang kita nonaktifkan (React tidak mengubahnya selama request).
+      if (btn.isConnected && btn.disabled) btn.disabled = false;
+    }
+  };
+}
+
+export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
+  if ((opts.method || "GET") === "GET") return request<T>(path, opts);
+  const done = beginBusy();
+  try {
+    return await request<T>(path, opts);
+  } finally {
+    done();
+  }
+}
+
+async function request<T>(path: string, { method = "GET", body, auth = true }: ApiOptions): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const token = auth ? sessionToken() : null;
