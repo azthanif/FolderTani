@@ -30,7 +30,10 @@ digest:
     enabled: false          # tidak ada Ollama di runner
 
 notify:
-  enabled: false            # WhatsApp (WAHA) tidak dijangkau dari GitHub; tetap dry-run
+  enabled: true            # WhatsApp (WAHA) tidak dijangkau dari GitHub; tetap dry-run
+  waha_url: https://waha.temutani.web.id
+  api_key_env: WAHA_API_KEY
+  session: default
 
 storage:
   supabase:

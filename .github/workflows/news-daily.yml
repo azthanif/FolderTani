@@ -38,6 +38,7 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}        # opsional: ringkasan AI; kosong = Lead-2
+      WAHA_API_KEY: ${{ secrets.WAHA_API_KEY }} 
       HF_HOME: ${{ github.workspace }}/.hf-cache
       PYTHONUNBUFFERED: "1"
     steps:
