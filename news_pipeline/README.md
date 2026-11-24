@@ -40,7 +40,11 @@ python -m news_pipeline.run_daily --config news_pipeline/config.yaml --date 2026
 python -m news_pipeline.run_daily --config news_pipeline/config.yaml --input-csv MC_cianjur.csv --input-extracted MC_cianjur.csv
 ```
 
-Jadwal harian (05.00 WIB):
+Jadwal harian (05.00 WIB), pilih salah satu:
+- **GitHub Actions (disarankan, tanpa PC menyala):** `.github/workflows/news-daily.yml` memakai `config.ci.yaml` dan menulis
+  hasil ke Supabase. Isi GitHub Secrets `MEDIACLOUD_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+  (Settings → Secrets and variables → Actions), opsional variable `MEDIACLOUD_COLLECTION_IDS`. Uji sekali lewat
+  tab Actions → *Berita harian* → *Run workflow*. Catatan: GitHub menonaktifkan jadwal di repo publik yang 60 hari tanpa commit.
 - Linux: `crontab -e` → `0 5 * * * /path/FolderTani/news_pipeline/run_daily.sh`
 - Windows: Task Scheduler → aksi `news_pipeline\run_daily.bat`
 
@@ -76,5 +80,5 @@ dicatat di log karena bagian akhirnya tidak ikut diringkas.
 ## Tes
 
 ```bash
-pytest -q news_pipeline/tests      # 27 tes, tanpa model & jaringan
+pytest -q news_pipeline/tests      # 28 tes, tanpa model & jaringan
 ```

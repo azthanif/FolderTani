@@ -1,0 +1,37 @@
+# Konfigurasi pipeline untuk GitHub Actions (.github/workflows/news-daily.yml).
+# Tidak berisi rahasia: API key & kredensial Supabase dibaca dari GitHub Secrets lewat variabel lingkungan.
+run:
+  data_dir: data
+  lookback_days: 7          # indeks Media Cloud tertinggal beberapa hari (cerita terakhir koleksi 20 Nov saat diekspor 24 Nov);
+                            # berita yang sudah diproses dibuang dedup lintas hari & upsert per URL di Supabase
+  log_level: INFO
+
+mediacloud:
+  api_key_env: MEDIACLOUD_API_KEY
+  collection_ids: [34412392]  # "Indonesia - National". Kosongkan untuk memakai variable MEDIACLOUD_COLLECTION_IDS
+  max_per_query: 1000
+  queries:
+    Garut: '(padi OR gabah OR beras OR petani OR pupuk OR panen OR sawah) AND garut'
+    Cianjur: '(padi OR gabah OR beras OR petani OR pupuk OR panen OR sawah) AND cianjur'
+    Nasional: '("harga gabah" OR "harga beras" OR HPP OR bulog OR "pupuk subsidi") AND (petani OR pertanian)'
+
+ner:
+  model: cahya/bert-base-indonesian-NER
+  device: -1                # runner GitHub tanpa GPU
+
+summary:
+  method: auto              # idT5 dipakai otomatis bila model_path diisi; selain itu Lead-2
+  model_path: ""
+
+digest:
+  llm:
+    enabled: false          # tidak ada Ollama di runner
+
+notify:
+  enabled: false            # WhatsApp (WAHA) tidak dijangkau dari GitHub; tetap dry-run
+
+storage:
+  supabase:
+    enabled: true           # hasil ditulis ke tabel news_articles & news_digests; web membaca lewat TEMUTANI_NEWS_SOURCE=supabase
+    url_env: SUPABASE_URL
+    key_env: SUPABASE_SERVICE_ROLE_KEY

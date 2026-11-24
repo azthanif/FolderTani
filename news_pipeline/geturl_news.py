@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import os
 from datetime import timedelta
 
 import pandas as pd
@@ -36,6 +37,11 @@ def from_mediacloud(ctx) -> int:
         raise RuntimeError(f"Env {mc['api_key_env']} kosong: isi API key Media Cloud atau pakai --input-csv")
     if not mc["queries"]:
         raise RuntimeError("mediacloud.queries kosong di config")
+    # collection_ids dari config, atau dari env MEDIACLOUD_COLLECTION_IDS ("123,456") bila config kosong (dipakai CI)
+    collections = mc["collection_ids"] or [int(x) for x in os.getenv("MEDIACLOUD_COLLECTION_IDS", "").split(",")
+                                           if x.strip().isdigit()]
+    if not collections:
+        log.warning("collection_ids kosong: Media Cloud mencari di seluruh koleksinya (lebih lambat & banyak derau)")
     api = mediacloud.api.SearchApi(key)
     end = ctx.run_date
     start = end - timedelta(days=int(ctx.cfg["run"]["lookback_days"]))
@@ -43,7 +49,7 @@ def from_mediacloud(ctx) -> int:
     for label, query in mc["queries"].items():
         token, n = None, 0
         while True:
-            stories, token = api.story_list(query, start, end, collection_ids=mc["collection_ids"],
+            stories, token = api.story_list(query, start, end, collection_ids=collections,
                                             pagination_token=token)
             for s in stories:
                 rows.append({"id": s.get("id"), "url": s.get("url"), "title": s.get("title"),
