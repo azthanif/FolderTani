@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { DialogHost } from "@/components/DialogHost";
 import { WaButton } from "@/components/WaButton";
 
 // Font di-host sendiri (paket @fontsource-variable) agar build tidak bergantung pada Google Fonts.
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         {children}
         <WaButton />
+        <DialogHost />
       </body>
     </html>
   );

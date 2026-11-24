@@ -23,36 +23,163 @@ def test_endpoints_require_login(client):
     assert client.get("/api/state", headers={"Authorization": "Bearer palsu.token"}).status_code == 401
 
 
-def test_register_petani_and_tengkulak(client, sql):
-    body = {"role": "petani", "name": "Pak Engkos", "phone": "+62 813-1112-2233", "password": "rahasia123", "region": "kab. cianjur", "district": "Cugenang"}
-    r = client.post("/api/auth/register", json=body)
+TK_BODY = {"name": "CV Padi Jaya", "phone": "+62 813-7778-8899", "password": "Rahasia123",
+           "region": "kab. garut", "district": "tarogong kidul", "village": "Sukagalih"}
+
+
+def test_register_tengkulak_waits_for_admin_approval(client, login, sql):
+    r = client.post("/api/auth/register", json=TK_BODY)
     assert r.status_code == 201, r.text
-    u = r.json()["user"]
-    assert (u["role"], u["phone"], u["region"], u["district"]) == ("petani", "081311122233", "Cianjur", "Cugenang")
-    row = sql("select phone, display_name, password_hash is not null as has_pw from users where phone = %s", ("+6281311122233",))[0]
-    assert row["has_pw"] and row["display_name"] == "Pak Engkos"
-    assert sql("select quantity_kg from stocks s join users u on u.id = s.farmer_id where u.phone = '+6281311122233'")[0]["quantity_kg"] == 0
-    assert client.post("/api/auth/register", json={**body, "phone": "081311122233"}).status_code == 409
-    t = client.post("/api/auth/register", json={"role": "tengkulak", "name": "CV Padi Jaya", "phone": "081377788899", "password": "rahasia123"})
-    assert t.status_code == 201 and t.json()["user"]["role"] == "tengkulak"
+    assert r.json()["status"] == "pending" and "token" not in r.json()
+    status_token = r.json()["statusToken"]
+    assert client.get("/api/auth/register/status", params={"token": status_token}).json()["status"] == "pending"
+    # token halaman tunggu tidak bisa dipakai sebagai sesi login
+    assert client.get("/api/state", headers={"Authorization": "Bearer " + status_token}).status_code == 401
+    assert client.get("/api/auth/register/status", params={"token": status_token[:-3] + "abc"}).status_code == 401
+    row = sql("select role, kabupaten, kecamatan, kelurahan, status, registered_via from users where phone = '+6281377788899'")[0]
+    assert row == {"role": "tengkulak", "kabupaten": "Garut", "kecamatan": "Tarogong Kidul", "kelurahan": "Sukagalih",
+                   "status": "pending", "registered_via": "web"}
+    # belum bisa masuk / daftar ulang
+    r = client.post("/api/auth/login", json={"phone": "081377788899", "password": "Rahasia123"})
+    assert r.status_code == 403 and "menunggu verifikasi" in r.json()["detail"]
+    assert client.post("/api/auth/register", json=TK_BODY).status_code == 409
+    # admin melihat & menyetujui
+    HA = login("admin")
+    lst = client.get("/api/admin/users?status=pending", headers=HA).json()
+    assert [a["phone"] for a in lst["items"]] == ["081377788899"] and lst["counts"]["pending"] == 1
+    assert client.get("/api/admin/dashboard", headers=HA).json()["pendingAccounts"] == 1
+    uid = lst["items"][0]["id"]
+    assert client.post(f"/api/admin/users/{uid}/verify", headers=login("tengkulak"), json={"action": "approve"}).status_code == 403
+    r = client.post(f"/api/admin/users/{uid}/verify", headers=HA, json={"action": "approve"})
+    assert r.status_code == 200 and r.json()["account"]["status"] == "approved" and r.json()["account"]["verifiedBy"] == "Admin Temu Tani"
+    assert client.get("/api/auth/register/status", params={"token": status_token}).json()["status"] == "approved"
+    r = client.post("/api/auth/login", json={"phone": "081377788899", "password": "Rahasia123"})
+    assert r.status_code == 200 and r.json()["user"]["village"] == "Sukagalih"
+
+
+def test_admin_rejects_registration_and_applicant_can_reapply(client, login, sql):
+    status_token = client.post("/api/auth/register", json=TK_BODY).json()["statusToken"]
+    HA = login("admin")
+    uid = client.get("/api/admin/users?status=pending", headers=HA).json()["items"][0]["id"]
+    assert client.post(f"/api/admin/users/{uid}/verify", headers=HA, json={"action": "reject"}).status_code == 400  # alasan wajib
+    r = client.post(f"/api/admin/users/{uid}/verify", headers=HA, json={"action": "reject", "reason": "Nama usaha tidak jelas"})
+    assert r.status_code == 200 and r.json()["account"]["status"] == "rejected"
+    r = client.post("/api/auth/login", json={"phone": "081377788899", "password": "Rahasia123"})
+    assert r.status_code == 403 and "Nama usaha tidak jelas" in r.json()["detail"]
+    st = client.get("/api/auth/register/status", params={"token": status_token}).json()
+    assert st == {"status": "rejected", "name": "CV Padi Jaya", "reason": "Nama usaha tidak jelas"}
+    # ajukan ulang -> kembali pending
+    assert client.post("/api/auth/register", json={**TK_BODY, "name": "CV Padi Jaya Garut", "password": "RahasiaBaru9"}).status_code == 201
+    # token lama batal setelah daftar ulang dengan password baru
+    assert client.get("/api/auth/register/status", params={"token": status_token}).status_code == 401
+    assert sql("select status, review_note from users where phone = '+6281377788899'")[0] == {"status": "pending", "review_note": None}
+    # petani tidak diverifikasi lewat endpoint ini
+    petani = client.get("/api/admin/users?role=petani", headers=HA).json()["items"]
+    assert len(petani) == 3 and all(p["status"] == "approved" for p in petani)  # termasuk petani WA (trigger auto-approve)
+    assert client.post(f"/api/admin/users/{petani[0]['id']}/verify", headers=HA, json={"action": "approve"}).status_code == 400
+
+
+def test_admin_deletes_account(client, login, sql):
+    HA = login("admin")
+    client.post("/api/auth/register", json=TK_BODY)
+    items = {a["phone"]: a for a in client.get("/api/admin/users", headers=HA).json()["items"]}
+    # bukan admin: dilarang
+    assert client.delete(f"/api/admin/users/{items['081377788899']['id']}", headers=login("tengkulak")).status_code == 403
+    # tengkulak tanpa riwayat penawaran: bisa dihapus, OTP ikut bersih
+    sql("insert into otp_codes (phone, purpose, code_hash, expires_at) values ('+6281377788899', 'reset_password', 'x', now())")
+    r = client.delete(f"/api/admin/users/{items['081377788899']['id']}", headers=HA)
+    assert r.status_code == 200, r.text
+    assert sql("select count(*) as n from users where phone = '+6281377788899'")[0]["n"] == 0
+    assert sql("select count(*) as n from otp_codes where phone = '+6281377788899'")[0]["n"] == 0
+    # petani tanpa penawaran: stok & riwayat stok ikut terhapus
+    r = client.delete(f"/api/admin/users/{items['081200000009']['id']}", headers=HA)
+    assert r.status_code == 200, r.text
+    # admin tidak bisa menghapus dirinya / admin lain
+    assert client.delete(f"/api/admin/users/{items['081241831052']['id']}", headers=HA).status_code == 400
+    assert client.delete("/api/admin/users/00000000-0000-0000-0000-000000000000", headers=HA).status_code == 404
+
+
+def test_cannot_delete_account_with_offer_history(client, login):
+    _, sid = setup_stock(client, login)
+    r = client.post("/api/offers", headers=login("tengkulak"), json={"stockId": sid, "volume": 3000, "price": 6800})
+    assert r.status_code == 200, r.text
+    HA = login("admin")
+    items = {a["phone"]: a for a in client.get("/api/admin/users", headers=HA).json()["items"]}
+    for phone in (PHONES["petani"], PHONES["tengkulak"]):
+        r = client.delete(f"/api/admin/users/{items[phone]['id']}", headers=HA)
+        assert r.status_code == 409 and "riwayat penawaran" in r.json()["detail"]
+
+
+FARMER = {"name": "Pak Dadang", "phone": "081355566677", "region": "Garut", "district": "Leles", "village": "Cangkuang"}
+
+
+def test_admin_adds_farmer(client, login, sql):
+    HA = login("admin")
+    assert client.post("/api/admin/users", headers=login("tengkulak"), json=FARMER).status_code == 403
+    # tanpa password: aktif, belum bisa login web (buat lewat Lupa Password)
+    r = client.post("/api/admin/users", headers=HA, json=FARMER)
+    assert r.status_code == 201, r.text
+    a = r.json()["account"]
+    assert (a["role"], a["status"], a["registeredVia"], a["village"], a["hasPassword"], a["verifiedBy"]) == (
+        "petani", "approved", "admin", "Cangkuang", False, "Admin Temu Tani")
+    assert sql("select s.quantity_kg from stocks s join users u on u.id = s.farmer_id where u.phone = '+6281355566677'")[0]["quantity_kg"] == 0
+    assert client.post("/api/admin/users", headers=HA, json=FARMER).status_code == 409
+    assert client.post("/api/admin/users", headers=HA, json={**FARMER, "phone": PHONES["tengkulak"]}).status_code == 409
+    # dengan password awal: langsung bisa masuk
+    r = client.post("/api/admin/users", headers=HA, json={**FARMER, "phone": "081355566688", "password": "Petani2026"})
+    assert r.status_code == 201
+    assert client.post("/api/auth/login", json={"phone": "081355566688", "password": "Petani2026"}).json()["user"]["role"] == "petani"
+    # validasi
+    assert client.post("/api/admin/users", headers=HA, json={**FARMER, "phone": "081355566699", "password": "lemah"}).status_code == 400
+    assert client.post("/api/admin/users", headers=HA, json={**FARMER, "phone": "081355566699", "village": "Fiktif"}).status_code == 400
+
+
+def test_admin_exports_accounts(client, login):
+    import csv, io, zipfile
+    HA = login("admin")
+    client.post("/api/auth/register", json=TK_BODY)
+    assert client.get("/api/admin/users/export", headers=login("petani")).status_code == 403
+    r = client.get("/api/admin/users/export", headers=HA, params={"format": "csv", "role": "petani"})
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"] and "petani" in r.headers["content-disposition"]
+    rows = list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
+    assert rows[0][:4] == ["Nama", "Nomor HP", "Peran", "Status"] and len(rows) == 4 and all(x[2] == "Petani" for x in rows[1:])
+    assert any(x[1] == PHONES["petani"] for x in rows[1:])  # nomor tetap diawali 0
+    r = client.get("/api/admin/users/export", headers=HA, params={"status": "pending"})
+    assert r.headers["content-type"].startswith("application/vnd.openxmlformats")
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    sheet = z.read("xl/worksheets/sheet1.xml").decode()
+    assert "CV Padi Jaya" in sheet and "Menunggu verifikasi" in sheet and "Pak Asep" not in sheet
+    r = client.get("/api/admin/users/export", headers=HA, params={"format": "csv", "q": "budi"})
+    assert [x[0] for x in list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))[1:]] == ["Pak Budi Santoso"]
 
 
 def test_register_validation(client):
-    base = {"role": "petani", "name": "Bu Ani", "phone": "081300000000", "password": "rahasia123", "district": "Cibeber"}
-    r = client.post("/api/auth/register", json={**base, "region": "Sukabumi"})
+    post = lambda **kw: client.post("/api/auth/register", json={**TK_BODY, **kw})
+    r = post(region="Sukabumi")
     assert r.status_code == 400 and "Garut atau Cianjur" in r.json()["detail"]
-    assert client.post("/api/auth/register", json={**base, "region": "Garut", "district": ""}).status_code == 400
-    assert client.post("/api/auth/register", json={**base, "region": "Garut", "phone": "021555666777"}).status_code == 400
-    assert client.post("/api/auth/register", json={**base, "region": "Garut", "password": "pendek"}).status_code == 422
-    assert client.post("/api/auth/register", json={**base, "role": "admin", "region": "Garut"}).status_code == 422
+    assert post(district="Cugenang").status_code == 400            # kecamatan Cianjur, bukan Garut
+    assert post(village="Desa Fiktif").status_code == 400
+    assert post(phone="021555666777").status_code == 400
+    r = post(password="rahasia123")
+    assert r.status_code == 400 and "huruf besar" in r.json()["detail"]
+    assert post(password="Pendek1").status_code == 422
+    assert post(role="petani").status_code == 422                  # petani tidak bisa daftar mandiri
+    assert post(role="admin").status_code == 422
 
 
 def test_whatsapp_registered_number_must_use_forgot_password(client):
-    r = client.post("/api/auth/register", json={"role": "petani", "name": "Pak Ujang", "phone": PHONES["wa_farmer"],
-                                                "password": "rahasia123", "region": "Garut", "district": "Leles"})
+    r = client.post("/api/auth/register", json={**TK_BODY, "phone": PHONES["wa_farmer"]})
     assert r.status_code == 409 and "Lupa Password" in r.json()["detail"]
     r = client.post("/api/auth/login", json={"phone": PHONES["wa_farmer"], "password": "apasaja1"})
     assert r.status_code == 401 and "Lupa Password" in r.json()["detail"]
+
+
+def test_wilayah_endpoint(client):
+    data = client.get("/api/wilayah").json()
+    kabs = {k["nama"]: k for k in data["kabupaten"]}
+    assert set(kabs) == {"Garut", "Cianjur"}
+    assert len(kabs["Garut"]["kecamatan"]) == 42 and len(kabs["Cianjur"]["kecamatan"]) == 32
+    assert "Kepmendagri" in data["source"]
 
 
 def test_login(client):
@@ -91,10 +218,13 @@ def test_update_profile(client, login, sql):
     HD = login("petani_cianjur")
     client.put("/api/auth/profile", headers=HD, json={"name": "Dewi Lestari", "region": "Cianjur", "district": "Ciranjang"})
     assert sql("select display_name from users where phone = %s", (e164(PHONES["petani_cianjur"]),))[0]["display_name"] == "Petani E"
-    # tengkulak: hanya nama
-    r = client.put("/api/auth/profile", headers=login("tengkulak"), json={"name": "Budi S.", "region": "Garut", "district": "Leles", "shareContact": True})
+    # tengkulak: nama + alamat lengkap (kabupaten, kecamatan, desa/kelurahan); tidak punya izin kontak
+    HT = login("tengkulak")
+    r = client.put("/api/auth/profile", headers=HT, json={"name": "Budi S.", "region": "Garut", "district": "Leles", "village": "Leles", "shareContact": True})
     u = r.json()["user"]
-    assert u["name"] == "Budi S." and u["region"] == "" and u["shareContact"] is False
+    assert (u["name"], u["region"], u["district"], u["village"], u["shareContact"]) == ("Budi S.", "Garut", "Leles", "Leles", False)
+    assert client.put("/api/auth/profile", headers=HT, json={"name": "Budi S.", "region": "Garut", "district": "Leles", "village": "Sukagalih"}).status_code == 400
+    assert client.put("/api/auth/profile", headers=HT, json={"name": "Budi"}).json()["user"]["village"] == "Leles"
 
 
 def test_forgot_password_flow(client, sql):
@@ -107,13 +237,13 @@ def test_forgot_password_flow(client, sql):
     assert client.post("/api/auth/otp", json={"purpose": "reset_password", "phone": phone}).status_code == 429
     # kode salah dicatat
     bad = "000000" if code != "000000" else "111111"
-    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": bad, "password": "barubaru1"}).status_code == 400
+    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": bad, "password": "Barubaru1"}).status_code == 400
     assert sql("select attempts from otp_codes where phone = %s", (e164(phone),))[0]["attempts"] == 1
-    r = client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "barubaru1"})
+    r = client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "Barubaru1"})
     assert r.status_code == 200 and r.json()["user"]["role"] == "petani"
     # kode sekali pakai
-    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "barubaru2"}).status_code == 400
-    assert client.post("/api/auth/login", json={"phone": phone, "password": "barubaru1"}).status_code == 200
+    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "Barubaru2"}).status_code == 400
+    assert client.post("/api/auth/login", json={"phone": phone, "password": "Barubaru1"}).status_code == 200
 
 
 def test_forgot_password_does_not_reveal_unknown_number(client, sql):
@@ -127,19 +257,25 @@ def test_otp_locked_after_max_attempts(client):
     code = client.post("/api/auth/otp", json={"purpose": "reset_password", "phone": phone}).json()["devCode"]
     bad = "000000" if code != "000000" else "111111"
     for _ in range(5):
-        assert client.post("/api/auth/password/reset", json={"phone": phone, "code": bad, "password": "barubaru1"}).status_code == 400
-    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "barubaru1"}).status_code == 429
+        assert client.post("/api/auth/password/reset", json={"phone": phone, "code": bad, "password": "Barubaru1"}).status_code == 400
+    assert client.post("/api/auth/password/reset", json={"phone": phone, "code": code, "password": "Barubaru1"}).status_code == 429
 
 
-def test_change_password_requires_otp_and_revokes_old_sessions(client, login):
+def test_change_password_requires_current_password_and_revokes_old_sessions(client, login):
     H = login("tengkulak")
-    assert client.post("/api/auth/otp", json={"purpose": "change_password"}).status_code == 401
-    code = client.post("/api/auth/otp", headers=H, json={"purpose": "change_password"}).json()["devCode"]
-    r = client.post("/api/auth/password/change", headers=H, json={"code": code, "password": "passwordbaru"})
+    body = {"currentPassword": PASSWORD, "password": "PasswordBaru1"}
+    assert client.post("/api/auth/password/change", json=body).status_code == 401
+    weak = client.post("/api/auth/password/change", headers=H, json={**body, "password": "passwordbaru"})
+    assert weak.status_code == 400 and "huruf besar" in weak.json()["detail"]
+    wrong = client.post("/api/auth/password/change", headers=H, json={**body, "currentPassword": "salah-salah"})
+    assert wrong.status_code == 400 and "saat ini salah" in wrong.json()["detail"]
+    same = client.post("/api/auth/password/change", headers=H, json={"currentPassword": PASSWORD, "password": PASSWORD})
+    assert same.status_code == 400
+    r = client.post("/api/auth/password/change", headers=H, json=body)
     assert r.status_code == 200, r.text
     assert client.get("/api/state", headers=H).status_code == 401  # token lama tidak berlaku
     assert client.get("/api/state", headers={"Authorization": "Bearer " + r.json()["token"]}).status_code == 200
-    assert client.post("/api/auth/login", json={"phone": PHONES["tengkulak"], "password": "passwordbaru"}).status_code == 200
+    assert client.post("/api/auth/login", json={"phone": PHONES["tengkulak"], "password": "PasswordBaru1"}).status_code == 200
 
 
 def test_otp_unavailable_without_whatsapp_in_production(client, monkeypatch):
@@ -340,3 +476,117 @@ def test_version_changes_on_mutation(client, login):
     v1 = client.get("/api/state/version").json()["version"]
     add(client, login("petani"), 100, "2026-11-20")
     assert client.get("/api/state/version").json()["version"] > v1
+
+
+def test_buyer_cancel_via_chatbot_shows_dibatalkan(client, login, sql):
+    """Chatbot WA membatalkan penawaran: offers.status=FAILED + offer_events(actor=buyer, action=fail, note=cancelled_by_buyer)."""
+    P, sid = setup_stock(client, login)
+    T = login("tengkulak")
+    oid = client.post("/api/offers", headers=T, json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    n = int(oid.split("-")[1])
+    sql(f"update offers set status = 'FAILED' where id = {n}")
+    sql(f"insert into offer_events (offer_id, actor, action, price, note) values ({n}, 'buyer', 'fail', 6800, 'cancelled_by_buyer')")
+    for H in (P, T):
+        st = client.get("/api/state", headers=H).json()
+        o = st["offers"][0]
+        assert o["status"] == "Dibatalkan" and o["history"][-1]["label"] == "Penawaran dibatalkan pembeli"
+        assert st["activities"][0]["title"] == f"Penawaran dibatalkan {oid}"
+    d = client.get("/api/admin/dashboard", headers=login("admin")).json()
+    assert d["offers"][0]["status"] == "Dibatalkan"
+
+
+def test_new_offer_appears_first_in_farmer_activity(client, login):
+    P, sid = setup_stock(client, login)
+    for i in range(14):  # banyak riwayat stok lama
+        add(client, P, 10, "2026-11-0%d" % (1 + i % 9))
+    oid = client.post("/api/offers", headers=login("tengkulak"), json={"stockId": sid, "volume": 100, "price": 6800}).json()["id"]
+    acts = client.get("/api/state", headers=P).json()["activities"]
+    assert acts[0]["title"] == f"Penawaran baru {oid}"
+    assert [a["at"] for a in acts] == sorted((a["at"] for a in acts), reverse=True)
+
+
+def test_farmer_counter_from_web_sends_poll_to_buyer(client, login, sql, monkeypatch):
+    """Harga balik petani di web -> tengkulak dapat teks + poll WA, dan poll_id disimpan ke chat_sessions
+    agar Router n8n menerima vote-nya (vote dari poll yang id-nya tidak cocok dianggap kedaluwarsa)."""
+    sql("create table if not exists chat_sessions (phone text primary key, step text, context jsonb not null default '{}'::jsonb,"
+        " updated_at timestamptz not null default now())")
+    from backend import wa
+    texts, polls = [], []
+    monkeypatch.setenv("WAHA_URL", "https://waha.example")
+    monkeypatch.setattr(wa, "send_text", lambda phone, text: texts.append((phone, text)))
+    monkeypatch.setattr(wa, "send_poll", lambda phone, name, options: polls.append((phone, name, options)) or "3EB0POLL%d" % len(polls))
+    P, sid = setup_stock(client, login)
+    T = login("tengkulak")
+    oid = client.post("/api/offers", headers=T, json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    assert polls[-1][0] == e164(PHONES["petani"]) and polls[-1][1] == "Tanggapi penawaran:"  # petani juga dapat poll
+    assert client.post(f"/api/offers/{oid}/counter", headers=P, json={"price": 7100}).status_code == 200
+    phone, name, options = polls[-1]
+    assert phone == e164(PHONES["tengkulak"]) and name.startswith("Tanggapi ") and len(options) == 4
+    assert options[0] == "1. Setuju Rp7.100/kg" and options[2] == "3. Batalkan penawaran"
+    assert texts[-1][0] == phone and "harga balik" in texts[-1][1] and "1. Setuju" not in texts[-1][1]
+    row = sql("select step, context from chat_sessions where phone = %s", (phone,))[0]
+    assert row["step"] == "buyer_offer_action" and row["context"]["poll_id"] == "3EB0POLL2"
+    assert row["context"]["actions"] == ["accept", "counter", "cancel", "list"] and row["context"]["offer_id"] == int(oid.split("-")[1])
+
+
+def test_poll_failure_falls_back_to_numbered_text(client, login, sql, monkeypatch):
+    sql("create table if not exists chat_sessions (phone text primary key, step text, context jsonb not null default '{}'::jsonb,"
+        " updated_at timestamptz not null default now())")
+    from backend import wa
+    texts = []
+    monkeypatch.setenv("WAHA_URL", "https://waha.example")
+    monkeypatch.setattr(wa, "send_text", lambda phone, text: texts.append((phone, text)))
+
+    def boom(*a, **k):
+        raise wa.WhatsAppError("x")
+    monkeypatch.setattr(wa, "send_poll", boom)
+    P, sid = setup_stock(client, login)
+    oid = client.post("/api/offers", headers=login("tengkulak"), json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    assert client.post(f"/api/offers/{oid}/counter", headers=P, json={"price": 7100}).status_code == 200
+    assert texts[-1][0] == e164(PHONES["tengkulak"]) and texts[-1][1].startswith("1. Setuju Rp7.100/kg\n2. Tawar lagi")
+
+
+def test_waha_poll_id_parsing():
+    from backend import wa
+    assert wa.poll_id({"id": {"id": "ABC", "_serialized": "true_62@c.us_ABC"}}) == "ABC"
+    assert wa.poll_id({"id": {"_serialized": "true_6281@c.us_3EB0XYZ"}}) == "3EB0XYZ"
+    assert wa.poll_id({"id": "true_6281@c.us_3EB0XYZ"}) == "3EB0XYZ" and wa.poll_id({}) == ""
+
+
+def test_buyer_cancels_offer_from_web(client, login, sql, monkeypatch):
+    sql("create table if not exists chat_sessions (phone text primary key, step text, context jsonb not null default '{}'::jsonb,"
+        " updated_at timestamptz not null default now())")
+    from backend import wa
+    texts, polls = [], []
+    monkeypatch.setenv("WAHA_URL", "https://waha.example")
+    monkeypatch.setattr(wa, "send_text", lambda phone, text: texts.append((phone, text)))
+    monkeypatch.setattr(wa, "send_poll", lambda phone, name, options: polls.append((phone, name, options)) or "PID%d" % len(polls))
+    P, sid = setup_stock(client, login)
+    T = login("tengkulak")
+    oid = client.post("/api/offers", headers=T, json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    n = int(oid.split("-")[1])
+    assert client.post(f"/api/offers/{oid}/cancel", headers=P).status_code == 403            # petani tidak bisa membatalkan
+    assert client.post(f"/api/offers/{oid}/cancel", headers=login("tengkulak2")).status_code == 404  # bukan miliknya
+    client.post(f"/api/offers/{oid}/counter", headers=P, json={"price": 7100})               # bisa dibatalkan saat harga balik
+    r = client.post(f"/api/offers/{oid}/cancel", headers=T)
+    assert r.status_code == 200 and r.json()["state"]["offers"][0]["status"] == "Dibatalkan"
+    assert client.post(f"/api/offers/{oid}/cancel", headers=T).status_code == 409
+    assert client.post(f"/api/offers/{oid}/accept-counter", headers=T).status_code == 409
+    ev = sql("select actor, action, note from offer_events where offer_id = %s order by id desc limit 1", (n,))[0]
+    assert ev == {"actor": "buyer", "action": "fail", "note": "cancelled_by_buyer"}
+    assert sql("select r.offered_kg from requests r join offers o on o.request_id = r.id where o.id = %s", (n,))[0]["offered_kg"] == 0
+    st = client.get("/api/state", headers=P).json()
+    assert st["offers"][0]["status"] == "Dibatalkan" and st["activities"][0]["title"] == f"Penawaran dibatalkan {oid}"
+    farmer = e164(PHONES["petani"])
+    assert texts[-1][0] == farmer and "membatalkan" in texts[-1][1] and polls[-1][1] == "Pilih layanan Temu Tani:"
+    row = sql("select step, context from chat_sessions where phone = %s", (farmer,))[0]
+    assert row["step"] is None and row["context"] == {"poll_id": "PID%d" % len(polls)}
+
+
+def test_farmer_reject_returns_offered_kg(client, login, sql):
+    P, sid = setup_stock(client, login)
+    oid = client.post("/api/offers", headers=login("tengkulak"), json={"stockId": sid, "volume": 1000, "price": 6800}).json()["id"]
+    client.post(f"/api/offers/{oid}/reject", headers=P)
+    n = int(oid.split("-")[1])
+    assert sql("select r.offered_kg from requests r join offers o on o.request_id = r.id where o.id = %s", (n,))[0]["offered_kg"] == 0
+    assert sql("select note from offer_events where offer_id = %s and action = 'fail'", (n,))[0]["note"] == "rejected_by_farmer"

@@ -18,6 +18,9 @@ export default function MasukPage() {
   useEffect(() => {
     const s = getSession();
     if (s) router.replace(dashboardPath(s.user.role));
+    // Dari halaman tunggu pendaftaran (akun disetujui): isi nomor HP otomatis.
+    const fromSignup = new URLSearchParams(window.location.search).get("phone");
+    if (fromSignup) setPhone(fromSignup);
   }, [router]);
 
   async function submit(e: FormEvent) {
@@ -39,7 +42,7 @@ export default function MasukPage() {
       subtitle="Gunakan nomor HP dan password yang Anda daftarkan."
       footer={
         <>
-          Belum punya akun? <Link href="/daftar">Daftar sekarang</Link>
+          Tengkulak belum punya akun? <Link href="/daftar">Daftar sekarang</Link>
         </>
       }
     >

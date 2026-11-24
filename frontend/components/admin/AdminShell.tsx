@@ -12,7 +12,7 @@ import { initials } from "@/lib/format";
 const TABLE_PATHS = ["/admin/stok", "/admin/penawaran", "/admin/transaksi", "/admin/aktivitas"];
 
 export function AdminShell({ children }: { children: ReactNode }) {
-  const { offers, setQuery, queueQuery, session, logout } = useAdmin();
+  const { offers, pendingAccounts, setQuery, queueQuery, session, logout } = useAdmin();
   const adminName = session?.user.name || "Admin";
   const pathname = usePathname();
   const router = useRouter();
@@ -26,7 +26,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     { href: "/admin/transaksi", icon: "receipt-text", label: "Riwayat Kesepakatan" },
     { href: "/admin/aktivitas", icon: "messages-square", label: "Aktivitas Chatbot" },
     { href: "/admin/berita", icon: "newspaper", label: "Berita & Analisis" },
-    { href: "/admin/profil", icon: "user", label: "Profil Saya" },
+    { href: "/admin/akun", icon: "users", label: "Kelola Akun", count: pendingAccounts },
   ];
 
   function globalQuery(q: string) {
@@ -43,6 +43,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       variant="admin"
       brandSmall="Administrator"
       user={{ name: adminName, initials: initials(adminName) }}
+      profileHref="/admin/profil"
       onLogout={logout}
       nav={nav}
       topExtra={
@@ -57,6 +58,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           "Informasi terbaru",
           <>
             {[
+              ...(pendingAccounts ? [pendingAccounts + " tengkulak baru menunggu verifikasi di menu Kelola Akun."] : []),
               "Ada " + active + " penawaran yang menunggu respons atau penawaran balik.",
               "Data stok, penawaran, dan kesepakatan dibaca langsung dari database Temu Tani (web & chatbot WhatsApp).",
             ].map((t) => (

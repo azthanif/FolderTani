@@ -3,6 +3,7 @@
    counterOffer, actions() dan handleForm() dari app.js). Isi modal dirender oleh UIProvider (di luar
    RoleDataProvider), jadi semua data/aksi diteruskan lewat props/closure, bukan context. */
 import type { FormEvent } from "react";
+import { showAlert, showConfirm } from "@/lib/dialog";
 import { Icon } from "@/components/Icon";
 import { useUI } from "@/components/UIProvider";
 import { useRole } from "./RoleDataProvider";
@@ -132,7 +133,10 @@ export function useRoleActions() {
       const qty = Number(data.get("volume"));
       const price = Number(data.get("price"));
       if (st && st.status === "Tersedia" && qty > 0 && availability(st) + 1e-8 < qty) {
-        alert(`Volume yang Anda tawarkan (${number(qty)} kg) melebihi stok tersedia (${number(availability(st))} kg ${st.type}).\n\nKurangi volume penawaran Anda.`);
+        void showAlert({
+          title: "Volume melebihi stok",
+          message: `Volume yang Anda tawarkan (${number(qty)} kg) melebihi stok tersedia (${number(availability(st))} kg ${st.type}). Kurangi volume penawaran Anda.`,
+        });
         return;
       }
       if (!st || st.status !== "Tersedia" || availability(st) + 1e-8 < qty || qty <= 0 || !Number.isFinite(price) || price <= 0)
@@ -142,7 +146,7 @@ export function useRoleActions() {
         before: () => navigate("penawaran"),
         onError: (er) => {
           if (er.status === 409 && er.message.startsWith("Volume yang Anda tawarkan")) {
-            alert(er.message + "\n\nKurangi volume penawaran Anda.");
+            void showAlert({ title: "Volume melebihi stok", message: er.message + " Kurangi volume penawaran Anda." });
             return true;
           }
           return false;
@@ -199,27 +203,39 @@ export function useRoleActions() {
       if (isFarmer) {
         if (cur.farmerId !== me() || cur.status !== "Menunggu Petani") return toast("Penawaran tidak bisa diubah.");
         if (p <= cur.currentBid) {
-          alert(`Harga balik harus lebih tinggi dari harga yang diajukan pembeli (${rupiah(cur.currentBid)}/kg).`);
+          void showAlert({ title: "Harga balik terlalu rendah", message: `Harga balik harus lebih tinggi dari harga yang diajukan pembeli (${rupiah(cur.currentBid)}/kg).` });
           return;
         }
       } else {
         if (cur.buyerId !== me() || cur.status !== "Penawaran Balik") return toast("Penawaran tidak bisa diubah.");
         if (p < cur.initialBid) {
-          alert(`Harga Anda tidak boleh lebih rendah dari penawaran pertama Anda (${rupiah(cur.initialBid)}/kg).`);
+          void showAlert({ title: "Harga terlalu rendah", message: `Harga Anda tidak boleh lebih rendah dari penawaran pertama Anda (${rupiah(cur.initialBid)}/kg).` });
           return;
         }
-        if (p > (cur.counter || 0) && !confirm(`Petani memberi harga ${rupiah(cur.counter)}/kg, apakah Anda yakin memberi harga balik ${rupiah(p)}/kg?`)) return;
       }
-      mutate(`/offers/${enc(cur.id)}/counter`, {
-        body: { price: Math.round(p) },
-        onError: (er) => {
-          if (er.status === 400) {
-            alert(er.message);
-            return true;
-          }
-          return false;
-        },
-      });
+      const send = () =>
+        mutate(`/offers/${enc(cur.id)}/counter`, {
+          body: { price: Math.round(p) },
+          onError: (er) => {
+            if (er.status === 400) {
+              void showAlert({ title: "Harga belum bisa dikirim", message: er.message });
+              return true;
+            }
+            return false;
+          },
+        });
+      if (!isFarmer && p > (cur.counter || 0)) {
+        showConfirm({
+          title: "Harga Anda di atas harga petani",
+          message: `Petani meminta ${rupiah(cur.counter)}/kg. Yakin memberi harga ${rupiah(p)}/kg? Sebaiknya terima saja harga balik petani.`,
+          confirmLabel: "Tetap kirim",
+          tone: "warning",
+        }).then((ok) => {
+      if (ok) void send();
+    });
+        return;
+      }
+      send();
     };
     openModal(
       isFarmer ? "Ajukan Harga Balik" : "Ajukan Harga Baru",
@@ -259,18 +275,63 @@ export function useRoleActions() {
   function acceptOffer(id: string) {
     if (!isFarmer) return;
     const o = (getDb() as RoleState).offers.find((x) => x.id === id && x.farmerId === me() && x.status === "Menunggu Petani");
-    if (o && confirm("Terima harga " + rupiah(o.currentBid) + "/kg untuk " + number(o.volume) + " kg?")) mutate(`/offers/${enc(id)}/accept`);
+    if (!o) return;
+    showConfirm({
+      title: "Terima penawaran ini?",
+      message: `Harga ${rupiah(o.currentBid)}/kg untuk ${number(o.volume)} kg. Kesepakatan langsung tercatat dan stok Anda berkurang.`,
+      confirmLabel: "Terima harga",
+      tone: "success",
+      mascot: "panen",
+    }).then((ok) => {
+      if (ok) void mutate(`/offers/${enc(id)}/accept`);
+    });
   }
   function rejectOffer(id: string) {
     if (!isFarmer) return;
     const o = (getDb() as RoleState).offers.find((x) => x.id === id && x.farmerId === me() && x.status === "Menunggu Petani");
-    if (o && confirm("Tolak penawaran ini?")) mutate(`/offers/${enc(id)}/reject`);
+    if (!o) return;
+    showConfirm({
+      title: "Tolak penawaran ini?",
+      message: `Penawaran ${rupiah(o.currentBid)}/kg untuk ${number(o.volume)} kg akan ditolak dan negosiasi berakhir.`,
+      confirmLabel: "Tolak penawaran",
+      tone: "danger",
+    }).then((ok) => {
+      if (ok) void mutate(`/offers/${enc(id)}/reject`);
+    });
   }
   function acceptCounter(id: string) {
     if (isFarmer) return;
     const o = (getDb() as RoleState).offers.find((x) => x.id === id && x.buyerId === me() && x.status === "Penawaran Balik");
-    if (o && confirm("Setujui harga balik " + rupiah(o.counter) + "/kg?")) mutate(`/offers/${enc(id)}/accept-counter`);
+    if (!o) return;
+    showConfirm({
+      title: "Setujui harga balik petani?",
+      message: `Harga ${rupiah(o.counter)}/kg untuk ${number(o.volume)} kg. Kesepakatan langsung tercatat.`,
+      confirmLabel: "Setujui harga",
+      tone: "success",
+      mascot: "panen",
+    }).then((ok) => {
+      if (ok) void mutate(`/offers/${enc(id)}/accept-counter`);
+    });
   }
+  /** Tengkulak membatalkan penawaran yang masih berjalan (setara pilihan "Batalkan penawaran" di chatbot WA). */
+  function cancelOffer(id: string) {
+    if (isFarmer) return;
+    const o = (getDb() as RoleState).offers.find(
+      (x) => x.id === id && x.buyerId === me() && (x.status === "Menunggu Petani" || x.status === "Penawaran Balik"),
+    );
+    if (!o) return toast("Penawaran sudah tidak berjalan.");
+    const price = o.status === "Penawaran Balik" ? o.counter ?? o.currentBid : o.currentBid;
+    showConfirm({
+      title: "Batalkan penawaran ini?",
+      message: `Penawaran ${o.id} (${number(o.volume)} kg, ${rupiah(price)}/kg) akan dibatalkan dan negosiasi berakhir. Petani akan diberi tahu lewat WhatsApp. Pembatalan tidak bisa diurungkan.`,
+      confirmLabel: "Ya, batalkan",
+      cancelLabel: "Kembali",
+      tone: "danger",
+    }).then((ok) => {
+      if (ok) void mutate(`/offers/${enc(id)}/cancel`);
+    });
+  }
+
   /* ---------- Detail penawaran ---------- */
   function offerDetail(id: string) {
     const S = sel();
@@ -311,11 +372,22 @@ export function useRoleActions() {
         <>
           <div className="divider" />
           <div className="notice-card">
-            Petani mengajukan harga balik <b>{rupiah(o.counter)}/kg</b>. Anda dapat menerima atau mengajukan harga baru.
+            Petani mengajukan harga balik <b>{rupiah(o.counter)}/kg</b>. Anda dapat menerima, mengajukan harga baru, atau membatalkan penawaran.
           </div>
           <div className="form-actions">
+            <Btn cl="danger" onClick={() => cancelOffer(o.id)}>Batalkan Penawaran</Btn>
             <Btn cl="secondary" onClick={() => counterOffer(o.id)}>Tawar Lagi</Btn>
             <Btn cl="primary" onClick={() => acceptCounter(o.id)}>{"Setujui " + rupiah(o.counter)}</Btn>
+          </div>
+        </>
+      );
+    if (!isFarmer && o.status === "Menunggu Petani")
+      actions = (
+        <>
+          <div className="divider" />
+          <div className="notice-card">Menunggu respons petani. Anda masih bisa membatalkan penawaran ini selama belum disepakati.</div>
+          <div className="form-actions">
+            <Btn cl="danger" onClick={() => cancelOffer(o.id)}>Batalkan Penawaran</Btn>
           </div>
         </>
       );
@@ -421,5 +493,5 @@ export function useRoleActions() {
     );
   }
 
-  return { newStock, updateStockRemaining, newOffer, offerDetail, trxDetail, counterOffer, notifications, navigate, base };
+  return { newStock, updateStockRemaining, newOffer, offerDetail, trxDetail, counterOffer, cancelOffer, notifications, navigate, base };
 }

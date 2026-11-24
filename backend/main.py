@@ -10,21 +10,24 @@ Jalankan lokal:  DATABASE_URL=postgresql://... uvicorn backend.main:app --reload
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
 from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional
+from uuid import UUID
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, pricing, wa
+from . import auth, pricing, wa, xlsx
 from .db import DatabaseNotConfigured, set_log_context, tx
 from .news import load_news, load_news_supabase
 from .store import BlobStore
@@ -39,6 +42,7 @@ NEWS_CSV = Path(os.getenv("TEMUTANI_NEWS_CSV", BASE_DIR / "data" / "berita.csv")
 # "supabase" = baca news_articles hasil news_pipeline (butuh SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY di server)
 NEWS_SOURCE = os.getenv("TEMUTANI_NEWS_SOURCE", "csv").strip().lower()
 CHATBOT_MAX_BYTES = 2_000_000
+WILAYAH_FILE = BASE_DIR / "data" / "wilayah.json"  # kecamatan & desa/kelurahan Garut + Cianjur (Kepmendagri)
 
 WIB = timezone(timedelta(hours=7))
 REGIONS = ("Garut", "Cianjur")  # wilayah layanan (sesuai constraint database)
@@ -46,6 +50,7 @@ GRAIN = "GKP"
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des")
 STATUS_WEB = {"FARMER_TURN": "Menunggu Petani", "BUYER_TURN": "Penawaran Balik", "AGREED": "Disepakati", "FAILED": "Ditolak"}
 STATUS_ADMIN = {"FARMER_TURN": "Menunggu", "BUYER_TURN": "Penawaran Balik", "AGREED": "Disetujui", "FAILED": "Ditolak"}
+CANCELLED = "Dibatalkan"  # FAILED karena pembeli membatalkan (chatbot: offer_events.note = 'cancelled_by_buyer')
 
 chatbot_store = BlobStore(DATA_DIR / "chatbot_state.json")  # simulasi chatbot di halaman /chatbot (bukan WA asli)
 
@@ -58,6 +63,7 @@ if _origins:
         allow_origins=_origins,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
+        expose_headers=["Content-Disposition"],
     )
 
 
@@ -146,7 +152,8 @@ class Actor(BaseModel):
     consent: bool = False
 
 
-USER_COLS = "id, phone, role, name, display_name, kabupaten, kecamatan, contact_sharing_consent, password_hash"
+USER_COLS = ("id, phone, role, name, display_name, kabupaten, kecamatan, kelurahan, contact_sharing_consent, password_hash,"
+             " status, review_note")
 
 
 def _actor_from_row(u: dict) -> Actor:
@@ -158,13 +165,15 @@ def _bearer_user(authorization: str) -> Optional[dict]:
     if not authorization.lower().startswith("bearer "):
         return None
     data = auth.read_token(authorization[7:].strip())
-    if not data:
+    if not data or data.get("k"):  # token halaman tunggu pendaftaran bukan sesi login
         err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
     with tx() as cur:
         cur.execute(f"select {USER_COLS} from users where id = %s", (data["u"],))
         u = cur.fetchone()
     if not u or u["role"] != data.get("r") or not u["password_hash"] or auth.password_fingerprint(u["password_hash"]) != data.get("pv"):
         err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
+    if u["status"] != "approved":
+        err(401, "Akun belum aktif. Silakan masuk kembali setelah diverifikasi admin.")
     return u
 
 
@@ -190,7 +199,8 @@ def _session(u: dict) -> dict:
         "token": auth.issue_token(str(u["id"]), u["role"], u["password_hash"]),
         "user": {
             "id": str(u["id"]), "role": u["role"], "phone": auth.from_e164(u["phone"]), "name": u["name"],
-            "region": u["kabupaten"] or "", "district": u["kecamatan"] or "", "shareContact": u["contact_sharing_consent"],
+            "region": u["kabupaten"] or "", "district": u["kecamatan"] or "", "village": u["kelurahan"] or "",
+            "shareContact": u["contact_sharing_consent"],
         },
     }
 
@@ -240,6 +250,25 @@ def stock_view(s: dict) -> dict:
     }
 
 
+def is_cancel(e: dict) -> bool:
+    """Pembatalan oleh pembeli (chatbot WA menulis offer_events.note = 'cancelled_by_buyer')."""
+    return e["action"] == "fail" and e["note"] == "cancelled_by_buyer"
+
+
+def fail_label(e: dict, short: bool = False) -> str:
+    if is_cancel(e):
+        return "Dibatalkan pembeli" if short else "Penawaran dibatalkan pembeli"
+    if e["note"] == "insufficient_stock":
+        return "Stok tidak mencukupi" if short else "Stok tidak mencukupi, penawaran gagal"
+    return "Penawaran ditolak"
+
+
+def offer_status(o: dict, events: list[dict], table: dict[str, str]) -> str:
+    if o["status"] == "FAILED" and any(is_cancel(e) for e in events):
+        return CANCELLED
+    return table[o["status"]]
+
+
 def offer_rows(cur, where: str, params: tuple) -> tuple[list[dict], dict[int, list[dict]]]:
     cur.execute(
         f"""select o.*, r.buyer_phone, u.kabupaten as farmer_kab, u.name as farmer_name, u.display_name as farmer_display,
@@ -271,13 +300,13 @@ def offer_view(o: dict, events: list[dict], buyer_id: str, ai_ref: Optional[int]
         elif e["action"] == "accept":
             label = "Harga disepakati"
         else:
-            label = "Stok tidak mencukupi, penawaran gagal" if e["note"] == "insufficient_stock" else "Penawaran ditolak"
+            label = fail_label(e)
         history.append({"at": iso(e["created_at"]), "actor": who, "label": label, "price": e["price"] if e["action"] != "fail" else None})
     view = {
         "id": o["code"], "buyerId": buyer_id, "farmerId": str(o["farmer_id"]), "stockId": f"STK-{o['stock_id']}",
         "volume": o["qty_kg"], "initialBid": o["initial_price"], "currentBid": last_buyer,
         "counter": o["current_price"] if o["current_by"] == "farmer" else None,
-        "status": STATUS_WEB[o["status"]], "created": iso(o["created_at"]), "history": history,
+        "status": offer_status(o, events, STATUS_WEB), "created": iso(o["created_at"]), "history": history,
     }
     if o["status"] == "AGREED":
         view["agreedPrice"] = o["agreed_price"]
@@ -306,13 +335,20 @@ def activity_feed(offers: list[dict], events: dict[int, list[dict]], logs: list[
             elif e["action"] == "accept":
                 title, note = f"Kesepakatan baru {o['code']}", f"TRX-{o['id']} • {fmt_number(o['qty_kg'])} kg"
             else:
-                title, note = f"Penawaran tidak berlanjut {o['code']}", "Stok tidak mencukupi" if e["note"] == "insufficient_stock" else "Penawaran ditolak"
-            feed.append({"id": f"EVT-{e['id']}", "at": iso(e["created_at"]), "title": title, "note": note})
+                if is_cancel(e):
+                    title, note = f"Penawaran dibatalkan {o['code']}", f"Dibatalkan pembeli • {fmt_number(o['qty_kg'])} kg GKP • {rupiah(e['price'] or o['current_price'])}/kg"
+                else:
+                    title, note = f"Penawaran tidak berlanjut {o['code']}", fail_label(e, short=True)
+            feed.append({"id": f"EVT-{e['id']}", "at": iso(e["created_at"]), "title": title, "note": note, "_k": (e["created_at"], 1, e["id"])})
     for x in logs:
         sign = "+" if x["delta_kg"] >= 0 else "−"
         feed.append({"id": f"LOG-{x['id']}", "at": iso(x["created_at"]), "title": x["activity"],
-                     "note": f"{sign}{fmt_number(abs(x['delta_kg']))} kg • total {fmt_number(x['total_kg'])} kg"})
-    feed.sort(key=lambda a: a["at"], reverse=True)
+                     "note": f"{sign}{fmt_number(abs(x['delta_kg']))} kg • total {fmt_number(x['total_kg'])} kg",
+                     "_k": (x["created_at"], 0, x["id"])})
+    # Urut terbaru dulu berdasarkan timestamp penuh (bukan string per detik) + id sebagai pemecah seri.
+    feed.sort(key=lambda a: a["_k"], reverse=True)
+    for a in feed:
+        del a["_k"]
     return feed[:12]
 
 
@@ -391,14 +427,16 @@ def _clean(v: Optional[str]) -> Optional[str]:
 
 
 class RegisterIn(BaseModel):
-    role: Literal["petani", "tengkulak"]
+    """Daftar mandiri di web hanya untuk tengkulak. Akun petani dimasukkan admin / chatbot."""
+    role: Literal["tengkulak"] = "tengkulak"
     name: str = Field(min_length=3, max_length=80)
     phone: str = Field(min_length=9, max_length=20)
     password: str = Field(min_length=8, max_length=128)
-    region: Optional[str] = Field(default=None, max_length=60)    # kabupaten (petani)
-    district: Optional[str] = Field(default=None, max_length=60)  # kecamatan (petani)
+    region: str = Field(min_length=1, max_length=60)    # kabupaten
+    district: str = Field(min_length=1, max_length=60)  # kecamatan
+    village: str = Field(min_length=1, max_length=80)   # desa/kelurahan
 
-    @field_validator("name", "region", "district")
+    @field_validator("name", "region", "district", "village")
     @classmethod
     def _strip(cls, v: Optional[str]) -> Optional[str]:
         return _clean(v)
@@ -413,9 +451,10 @@ class ProfileIn(BaseModel):
     name: str = Field(min_length=3, max_length=80)
     region: Optional[str] = Field(default=None, max_length=60)
     district: Optional[str] = Field(default=None, max_length=60)
+    village: Optional[str] = Field(default=None, max_length=80)  # tengkulak
     shareContact: Optional[bool] = None
 
-    @field_validator("name", "region", "district")
+    @field_validator("name", "region", "district", "village")
     @classmethod
     def _strip(cls, v: Optional[str]) -> Optional[str]:
         return _clean(v)
@@ -433,8 +472,38 @@ class ResetPasswordIn(BaseModel):
 
 
 class ChangePasswordIn(BaseModel):
-    code: str = Field(pattern=r"^\d{6}$")
+    currentPassword: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=8, max_length=128)
+
+
+class AdminFarmerIn(BaseModel):
+    """Admin menambahkan akun petani. Password opsional: bila kosong, petani membuatnya lewat Lupa Password."""
+    name: str = Field(min_length=3, max_length=80)
+    phone: str = Field(min_length=9, max_length=20)
+    region: str = Field(min_length=1, max_length=60)
+    district: str = Field(min_length=1, max_length=60)
+    village: str = Field(min_length=1, max_length=80)
+    password: Optional[str] = Field(default=None, max_length=128)
+
+    @field_validator("name", "region", "district", "village")
+    @classmethod
+    def _strip(cls, v: Optional[str]) -> Optional[str]:
+        return _clean(v)
+
+    @field_validator("password")
+    @classmethod
+    def _empty_none(cls, v: Optional[str]) -> Optional[str]:
+        return v or None
+
+
+class VerifyAccountIn(BaseModel):
+    action: Literal["approve", "reject"]
+    reason: Optional[str] = Field(default=None, max_length=300)
+
+    @field_validator("reason")
+    @classmethod
+    def _strip(cls, v: Optional[str]) -> Optional[str]:
+        return _clean(v) or None
 
 
 class StockIn(BaseModel):
@@ -477,6 +546,59 @@ def _valid_region(region: Optional[str], district: Optional[str]) -> tuple[str, 
     return kab, district
 
 
+PASSWORD_RULES = (
+    (lambda p: len(p) >= 8, "minimal 8 karakter"),
+    (lambda p: re.search(r"[a-z]", p), "minimal 1 huruf kecil"),
+    (lambda p: re.search(r"[A-Z]", p), "minimal 1 huruf besar"),
+    (lambda p: re.search(r"\d", p), "minimal 1 angka"),
+)
+
+
+def _check_password(password: str) -> None:
+    """Aturan password baru (daftar, lupa & ubah password). Login tetap menerima password lama."""
+    missing = [label for ok, label in PASSWORD_RULES if not ok(password)]
+    if missing:
+        err(400, "Password belum memenuhi syarat: " + ", ".join(missing) + ".")
+
+
+@lru_cache(maxsize=1)
+def _wilayah() -> dict:
+    with open(WILAYAH_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _valid_address(region: Optional[str], district: Optional[str], village: Optional[str]) -> tuple[str, str, str]:
+    """Cocokkan kabupaten -> kecamatan -> desa/kelurahan dengan data Kepmendagri; kembalikan nama baku."""
+    kab = pricing.canonical_region(region or "")
+    data = _wilayah()["kabupaten"].get(kab) if kab in REGIONS else None
+    if not data:
+        err(400, "Kabupaten harus Garut atau Cianjur.")
+    kec = next((k for k in data["kecamatan"] if k["nama"].casefold() == (district or "").casefold()), None)
+    if not kec:
+        err(400, f"Kecamatan tidak ditemukan di Kabupaten {kab}.")
+    desa = next((d for d in kec["desa"] if d["nama"].casefold() == (village or "").casefold()), None)
+    if not desa:
+        err(400, f"Desa/kelurahan tidak ditemukan di Kecamatan {kec['nama']}.")
+    return kab, kec["nama"], desa["nama"]
+
+
+def _notify(phone_e164: str, text: str) -> None:
+    """Kirim WhatsApp bila WAHA aktif; kegagalan tidak membatalkan aksi admin."""
+    if not wa.configured():
+        return
+    try:
+        wa.send_text(phone_e164, text)
+    except Exception:  # noqa: BLE001
+        log.warning("Notifikasi WhatsApp gagal dikirim ke %s", auth.mask_phone(auth.from_e164(phone_e164)))
+
+
+def _inactive_message(u: dict) -> str:
+    if u["status"] == "pending":
+        return "Akun Anda masih menunggu verifikasi admin. Kami kabari lewat WhatsApp setelah akun disetujui."
+    reason = f" Alasan: {u['review_note']}." if u.get("review_note") else ""
+    return f"Pendaftaran akun Anda ditolak admin.{reason} Hubungi admin Temu Tani untuk informasi lebih lanjut."
+
+
 # ---------------------------------------------------------------------------
 # Endpoint umum
 # ---------------------------------------------------------------------------
@@ -494,27 +616,69 @@ def health():
 # ---------------------------------------------------------------------------
 # Akun
 # ---------------------------------------------------------------------------
+@app.get("/api/wilayah", tags=["umum"])
+def get_wilayah():
+    """Daftar kabupaten -> kecamatan -> desa/kelurahan wilayah layanan (untuk dropdown alamat)."""
+    data = _wilayah()
+    return {
+        "source": data.get("source", ""),
+        "kabupaten": [
+            {"nama": kab, "kecamatan": [{"nama": k["nama"], "desa": [{"nama": d["nama"], "jenis": d["jenis"]} for d in k["desa"]]}
+                                         for k in data["kabupaten"][kab]["kecamatan"]]}
+            for kab in REGIONS if kab in data["kabupaten"]
+        ],
+    }
+
+
 @app.post("/api/auth/register", tags=["akun"], status_code=201)
 def register(body: RegisterIn):
+    """Tengkulak daftar mandiri -> status 'pending' sampai disetujui admin (belum bisa masuk)."""
     phone = _valid_phone(body.phone)
-    kab, kec = _valid_region(body.region, body.district) if body.role == "petani" else (None, None)
+    _check_password(body.password)
+    kab, kec, kel = _valid_address(body.region, body.district, body.village)
     password_hash = auth.hash_password(body.password)
     with tx() as cur:
-        cur.execute("select password_hash from users where phone = %s", (phone,))
+        cur.execute("select id, role, password_hash, status from users where phone = %s", (phone,))
         existing = cur.fetchone()
-        if existing:
+        if existing and not (existing["role"] == "tengkulak" and existing["status"] == "rejected"):
+            if existing["status"] == "pending":
+                err(409, "Nomor ini sudah mendaftar dan sedang menunggu verifikasi admin.")
             if not existing["password_hash"]:
                 err(409, "Nomor ini sudah terdaftar melalui WhatsApp. Gunakan menu Lupa Password untuk membuat password.")
             err(409, "Nomor HP sudah terdaftar. Silakan masuk.")
-        cur.execute(
-            f"insert into users (phone, role, name, display_name, kabupaten, kecamatan, password_hash)"
-            f" values (%s, %s, %s, %s, %s, %s, %s) returning {USER_COLS}",
-            (phone, body.role, body.name, body.name, kab, kec, password_hash),
-        )
-        user = cur.fetchone()
-        if body.role == "petani":
-            cur.execute("insert into stocks (farmer_id, grain_type, quantity_kg) values (%s, 'GKP', 0) on conflict do nothing", (user["id"],))
-    return _session(user)
+        if existing:  # pernah ditolak: ajukan ulang dengan data baru
+            cur.execute(
+                """update users set name = %s, display_name = %s, kabupaten = %s, kecamatan = %s, kelurahan = %s,
+                       password_hash = %s, status = 'pending', registered_via = 'web',
+                       review_note = null, reviewed_at = null, reviewed_by = null
+                   where id = %s""",
+                (body.name, body.name, kab, kec, kel, password_hash, existing["id"]),
+            )
+            user_id = str(existing["id"])
+        else:
+            cur.execute(
+                "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, password_hash, status, registered_via)"
+                " values (%s, 'tengkulak', %s, %s, %s, %s, %s, %s, 'pending', 'web') returning id",
+                (phone, body.name, body.name, kab, kec, kel, password_hash),
+            )
+            user_id = str(cur.fetchone()["id"])
+    return {"status": "pending", "statusToken": auth.issue_signup_token(user_id, password_hash),
+            "message": "Pendaftaran berhasil dikirim. Akun Anda akan aktif setelah diverifikasi admin; kabar dikirim lewat WhatsApp."}
+
+
+@app.get("/api/auth/register/status", tags=["akun"])
+def register_status(token: str = Query(min_length=10, max_length=600)):
+    """Dipanggil berkala oleh halaman tunggu pendaftaran: status terbaru (pending/approved/rejected)."""
+    data = auth.read_token(token)
+    if not data or data.get("k") != "signup":
+        err(401, "Tautan status pendaftaran tidak berlaku. Silakan coba masuk atau daftar ulang.")
+    with tx() as cur:
+        cur.execute("select name, status, review_note, password_hash from users where id = %s", (data["u"],))
+        u = cur.fetchone()
+    if not u or not u["password_hash"] or auth.password_fingerprint(u["password_hash"]) != data.get("pv"):
+        err(401, "Tautan status pendaftaran tidak berlaku. Silakan coba masuk atau daftar ulang.")
+    return {"status": u["status"], "name": u["name"],
+            "reason": (u["review_note"] or "") if u["status"] == "rejected" else ""}
 
 
 @app.post("/api/auth/login", tags=["akun"])
@@ -529,6 +693,8 @@ def login(body: LoginIn):
         err(401, "Akun ini belum memiliki password. Gunakan menu Lupa Password untuk membuatnya.")
     if not user or not auth.verify_password(body.password, user["password_hash"]):
         err(401, "Nomor HP atau password salah.")
+    if user["status"] != "approved":
+        err(403, _inactive_message(user))
     return _session(user)
 
 
@@ -541,16 +707,20 @@ def me(actor: Actor = Depends(get_actor)):
 
 @app.put("/api/auth/profile", tags=["akun"])
 def update_profile(body: ProfileIn, actor: Actor = Depends(get_actor)):
-    kab, kec = _valid_region(body.region, body.district) if actor.role == "petani" else (None, None)
+    kab = kec = kel = None
+    if actor.role == "petani":
+        kab, kec = _valid_region(body.region, body.district)
+    elif actor.role == "tengkulak" and (body.region or body.district or body.village):
+        kab, kec, kel = _valid_address(body.region, body.district, body.village)
     with tx() as cur:
         cur.execute(
             f"""update users set
                    display_name = case when display_name = name then %s else display_name end,
                    name = %s,
-                   kabupaten = coalesce(%s, kabupaten), kecamatan = coalesce(%s, kecamatan),
+                   kabupaten = coalesce(%s, kabupaten), kecamatan = coalesce(%s, kecamatan), kelurahan = coalesce(%s, kelurahan),
                    contact_sharing_consent = case when role = 'petani' then coalesce(%s, contact_sharing_consent) else contact_sharing_consent end
                 where id = %s returning {USER_COLS}""",
-            (body.name, body.name, kab, kec, body.shareContact, actor.user),
+            (body.name, body.name, kab, kec, kel, body.shareContact, actor.user),
         )
         user = cur.fetchone()
     return {**_session(user), "message": "Profil berhasil diperbarui."}
@@ -643,18 +813,31 @@ def _set_password(user_id: str, password: str) -> dict:
 @app.post("/api/auth/password/reset", tags=["akun"])
 def reset_password(body: ResetPasswordIn):
     phone = _valid_phone(body.phone)
+    _check_password(body.password)
     _consume_otp(phone, "reset_password", body.code)
     with tx() as cur:
-        cur.execute("select id from users where phone = %s", (phone,))
+        cur.execute("select id, status, review_note from users where phone = %s", (phone,))
         row = cur.fetchone()
     if not row:
         err(400, "Kode verifikasi salah.")
+    if row["status"] != "approved":
+        err(403, _inactive_message(row))
     return {**_session(_set_password(str(row["id"]), body.password)), "message": "Password berhasil diatur ulang."}
 
 
 @app.post("/api/auth/password/change", tags=["akun"])
 def change_password(body: ChangePasswordIn, actor: Actor = Depends(get_actor)):
-    _consume_otp(actor.phone, "change_password", body.code)
+    """Ubah password dengan memasukkan password lama. Lupa password lama: pakai /password/reset (kode WhatsApp)."""
+    with tx() as cur:
+        cur.execute(f"select {USER_COLS} from users where id = %s", (actor.user,))
+        user = cur.fetchone()
+    if not user or not user["password_hash"]:
+        err(400, "Akun ini belum memiliki password. Gunakan menu Lupa Password untuk membuatnya.")
+    if not auth.verify_password(body.currentPassword, user["password_hash"]):
+        err(400, "Password saat ini salah.")
+    if body.currentPassword == body.password:
+        err(400, "Password baru harus berbeda dari password saat ini.")
+    _check_password(body.password)
     # Token baru (sidik password berubah): sesi di perangkat lain otomatis keluar.
     return {**_session(_set_password(actor.user, body.password)), "message": "Password berhasil diubah."}
 
@@ -715,6 +898,206 @@ def get_news(
 
 
 # ---------------------------------------------------------------------------
+# Admin: kelola akun (petani dari database/chatbot + tengkulak daftar mandiri)
+# ---------------------------------------------------------------------------
+def _account_out(u: dict) -> dict:
+    return {
+        "id": str(u["id"]), "name": u["name"], "phone": auth.from_e164(u["phone"]), "role": u["role"],
+        "region": u["kabupaten"] or "", "district": u["kecamatan"] or "", "village": u["kelurahan"] or "",
+        "status": u["status"], "rejectionReason": (u["review_note"] or "") if u["status"] == "rejected" else "",
+        "registeredVia": u["registered_via"], "hasPassword": bool(u["password_hash"]),
+        "createdAt": u["created_at"].isoformat() if u["created_at"] else None,
+        "verifiedAt": u["reviewed_at"].isoformat() if u["reviewed_at"] else None,
+        "verifiedBy": u["reviewed_by"] or "",
+    }
+
+
+ACCOUNT_SELECT = (f"select {', '.join('u.' + c.strip() for c in USER_COLS.split(','))}, u.created_at, u.reviewed_at, u.reviewed_by,"
+                  " u.registered_via from users u")
+
+
+@app.get("/api/admin/users", tags=["admin"])
+def admin_list_users(
+    role: Optional[Literal["petani", "tengkulak", "admin"]] = Query(default=None),
+    status: Optional[Literal["pending", "approved", "rejected"]] = Query(default=None),
+    actor: Actor = Depends(get_actor),
+):
+    require(actor, "admin")
+    where, params = ["true"], []
+    if role:
+        where.append("u.role = %s")
+        params.append(role)
+    if status:
+        where.append("u.status = %s")
+        params.append(status)
+    with tx() as cur:
+        cur.execute(
+            f"{ACCOUNT_SELECT} where {' and '.join(where)}"
+            " order by (u.status = 'pending') desc, u.created_at desc",
+            tuple(params),
+        )
+        rows = cur.fetchall()
+        cur.execute(
+            """select count(*) filter (where status = 'pending') as pending,
+                      count(*) filter (where role = 'petani') as petani,
+                      count(*) filter (where role = 'tengkulak') as tengkulak,
+                      count(*) as total
+               from users"""
+        )
+        counts = cur.fetchone()
+    return {"items": [_account_out(r) for r in rows], "counts": counts}
+
+
+@app.post("/api/admin/users", tags=["admin"], status_code=201)
+def admin_create_farmer(body: AdminFarmerIn, actor: Actor = Depends(get_actor)):
+    """Tambah akun petani (langsung aktif). Stok GKP awal 0 kg dibuat seperti pendaftaran via chatbot."""
+    require(actor, "admin")
+    phone = _valid_phone(body.phone)
+    kab, kec, kel = _valid_address(body.region, body.district, body.village)
+    if body.password:
+        _check_password(body.password)
+    with tx() as cur:
+        cur.execute("select role, name from users where phone = %s", (phone,))
+        existing = cur.fetchone()
+        if existing:
+            err(409, f"Nomor HP sudah terdaftar atas nama {existing['name']} ({existing['role']}).")
+        cur.execute(
+            "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, password_hash,"
+            " status, registered_via, reviewed_at, reviewed_by, review_note)"
+            " values (%s, 'petani', %s, %s, %s, %s, %s, %s, 'approved', 'admin', now(), %s, 'ditambahkan admin') returning id",
+            (phone, body.name, body.name, kab, kec, kel, auth.hash_password(body.password) if body.password else None, actor.name),
+        )
+        uid = cur.fetchone()["id"]
+        cur.execute("insert into stocks (farmer_id, grain_type, quantity_kg) values (%s, 'GKP', 0) on conflict do nothing", (uid,))
+        cur.execute(f"{ACCOUNT_SELECT} where u.id = %s", (uid,))
+        out = _account_out(cur.fetchone())
+    how = ("Silakan masuk dengan nomor HP ini dan password dari admin." if body.password
+           else "Buat password lewat menu Lupa Password di web, atau langsung gunakan chatbot WhatsApp ini.")
+    _notify(phone, f"Halo {body.name}, akun petani Temu Tani Anda sudah dibuat oleh admin. {how}")
+    return {"account": out, "message": f"Akun petani {body.name} berhasil ditambahkan."}
+
+
+EXPORT_HEADERS = ["Nama", "Nomor HP", "Peran", "Status", "Kabupaten", "Kecamatan", "Desa/Kelurahan", "Terdaftar via",
+                  "Tanggal terdaftar", "Login web", "Ditinjau oleh", "Tanggal ditinjau", "Catatan peninjauan"]
+_STATUS_ID = {"pending": "Menunggu verifikasi", "approved": "Aktif", "rejected": "Ditolak"}
+_ROLE_ID = {"petani": "Petani", "tengkulak": "Tengkulak", "admin": "Admin"}
+_VIA_ID = {"seed": "Data awal / chatbot", "web": "Daftar mandiri (web)", "admin": "Ditambahkan admin"}
+
+
+def _wib(ts) -> str:
+    return ts.astimezone(WIB).strftime("%d-%m-%Y %H:%M") if ts else ""
+
+
+@app.get("/api/admin/users/export", tags=["admin"])
+def admin_export_users(
+    format: Literal["xlsx", "csv"] = Query(default="xlsx"),
+    role: Optional[Literal["petani", "tengkulak", "admin"]] = Query(default=None),
+    status: Optional[Literal["pending", "approved", "rejected"]] = Query(default=None),
+    q: str = Query(default="", max_length=80),
+    actor: Actor = Depends(get_actor),
+):
+    """Unduh daftar akun (mengikuti filter tab & pencarian di halaman Kelola Akun)."""
+    require(actor, "admin")
+    where, params = ["true"], []
+    if role:
+        where.append("u.role = %s")
+        params.append(role)
+    if status:
+        where.append("u.status = %s")
+        params.append(status)
+    with tx() as cur:
+        cur.execute(f"{ACCOUNT_SELECT} where {' and '.join(where)} order by u.role, u.name", tuple(params))
+        rows = cur.fetchall()
+    needle = q.strip().casefold()
+    data = []
+    for u in rows:
+        local = auth.from_e164(u["phone"])
+        if needle and needle not in " ".join([u["name"], local, u["kabupaten"] or "", u["kecamatan"] or "", u["kelurahan"] or ""]).casefold():
+            continue
+        data.append([u["name"], local, _ROLE_ID.get(u["role"], u["role"]), _STATUS_ID.get(u["status"], u["status"]),
+                     u["kabupaten"] or "", u["kecamatan"] or "", u["kelurahan"] or "", _VIA_ID.get(u["registered_via"], u["registered_via"]),
+                     _wib(u["created_at"]), "Sudah" if u["password_hash"] else "Belum", u["reviewed_by"] or "", _wib(u["reviewed_at"]),
+                     u["review_note"] or ""])
+    stamp = datetime.now(WIB).strftime("%Y%m%d-%H%M")
+    scope = status or role or "semua"
+    filename = f"temutani-akun-{scope}-{stamp}.{format}"
+    if format == "csv":
+        import csv, io
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(EXPORT_HEADERS)
+        w.writerows(data)
+        content = ("\ufeff" + buf.getvalue()).encode("utf-8")  # BOM agar Excel membaca UTF-8
+        media = "text/csv; charset=utf-8"
+    else:
+        content = xlsx.build_xlsx("Akun Temu Tani", EXPORT_HEADERS, data)
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                                                         "Access-Control-Expose-Headers": "Content-Disposition",
+                                                         "Cache-Control": "no-store"})
+
+
+@app.post("/api/admin/users/{user_id}/verify", tags=["admin"])
+def admin_verify_user(user_id: UUID, body: VerifyAccountIn, actor: Actor = Depends(get_actor)):
+    """Setujui / tolak pendaftaran tengkulak. Akun yang sudah aktif juga bisa dinonaktifkan (tolak)."""
+    require(actor, "admin")
+    if body.action == "reject" and not body.reason:
+        err(400, "Tuliskan alasan penolakan agar pendaftar tahu apa yang perlu diperbaiki.")
+    with tx() as cur:
+        cur.execute(f"select {USER_COLS} from users where id = %s for update", (str(user_id),))
+        u = cur.fetchone()
+        if not u:
+            err(404, "Akun tidak ditemukan.")
+        if u["role"] != "tengkulak":
+            err(400, "Verifikasi hanya untuk akun tengkulak. Akun petani dikelola dari database/chatbot.")
+        target = "approved" if body.action == "approve" else "rejected"
+        if u["status"] == target:
+            err(409, "Status akun sudah " + ("aktif." if target == "approved" else "ditolak."))
+        # reviewed_by bertipe teks di database: simpan nama admin (skema yang juga dipakai chatbot).
+        cur.execute(
+            """update users set status = %s, review_note = %s, reviewed_at = now(), reviewed_by = %s
+               where id = %s""",
+            (target, body.reason if target == "rejected" else None, actor.name, str(user_id)),
+        )
+        cur.execute(f"{ACCOUNT_SELECT} where u.id = %s", (str(user_id),))
+        out = _account_out(cur.fetchone())
+    if target == "approved":
+        _notify(u["phone"], f"Halo {u['name']}, akun tengkulak Temu Tani Anda sudah disetujui admin. Silakan masuk dengan nomor HP dan password Anda.")
+        message = f"Akun {u['name']} disetujui dan sekarang bisa masuk."
+    else:
+        _notify(u["phone"], f"Halo {u['name']}, pendaftaran akun Temu Tani Anda belum dapat disetujui. Alasan: {body.reason}")
+        message = f"Pendaftaran {u['name']} ditolak."
+    return {"account": out, "message": message}
+
+
+@app.delete("/api/admin/users/{user_id}", tags=["admin"])
+def admin_delete_user(user_id: UUID, actor: Actor = Depends(get_actor)):
+    """Hapus akun petani/tengkulak secara permanen. Akun yang punya riwayat penawaran tidak bisa dihapus
+    agar riwayat negosiasi & kesepakatan tetap utuh. Stok dan riwayat stok petani ikut terhapus."""
+    require(actor, "admin")
+    if str(user_id) == actor.user:
+        err(400, "Anda tidak bisa menghapus akun Anda sendiri.")
+    with tx() as cur:
+        cur.execute("select id, phone, role, name from users where id = %s for update", (str(user_id),))
+        u = cur.fetchone()
+        if not u:
+            err(404, "Akun tidak ditemukan.")
+        if u["role"] == "admin":
+            err(400, "Akun admin tidak bisa dihapus dari menu ini.")
+        if u["role"] == "petani":
+            cur.execute("select count(*) as n from offers where farmer_id = %s", (u["id"],))
+        else:
+            cur.execute("select count(*) as n from requests where buyer_phone = %s", (u["phone"],))
+        if cur.fetchone()["n"]:
+            err(409, f"{u['name']} punya riwayat penawaran/kesepakatan, jadi akunnya tidak bisa dihapus agar riwayat transaksi tetap utuh."
+                     + (" Tolak akunnya saja bila tidak ingin ia masuk lagi." if u["role"] == "tengkulak" else ""))
+        cur.execute("delete from otp_codes where phone = %s", (u["phone"],))
+        cur.execute("delete from users where id = %s", (u["id"],))
+    log.info("Akun %s (%s) dihapus oleh admin %s", u["id"], u["role"], actor.user)
+    return {"message": f"Akun {u['name']} berhasil dihapus."}
+
+
+# ---------------------------------------------------------------------------
 # Admin: ringkasan dari data asli database
 # ---------------------------------------------------------------------------
 @app.get("/api/admin/dashboard", tags=["admin"])
@@ -729,6 +1112,8 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
             "select l.*, u.name, u.kabupaten from stock_logs l join users u on u.id = l.farmer_id order by l.created_at desc limit 30"
         )
         logs = cur.fetchall()
+        cur.execute("select count(*) as n from users where status = 'pending'")
+        pending_accounts = cur.fetchone()["n"]
     open_offers: dict[int, int] = {}
     for o in offers:
         if o["status"] in ("FARMER_TURN", "BUYER_TURN"):
@@ -744,13 +1129,13 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
 
     def a_offer(o):
         hist = [[{"initial": "Penawaran dikirim", "counter": "Petani ajukan penawaran balik" if e["actor"] == "farmer" else "Pembeli ajukan harga baru",
-                  "accept": "Kesepakatan tercapai", "fail": "Stok tidak mencukupi" if e["note"] == "insufficient_stock" else "Penawaran ditolak"}[e["action"]],
+                  "accept": "Kesepakatan tercapai", "fail": fail_label(e, short=True)}[e["action"]],
                   f"{id_date(e['created_at'])} · {id_time(e['created_at'])}",
                   f"{rupiah(e['price'])}/kg" if e["price"] and e["action"] != "fail" else "-"] for e in events[o["id"]]]
         buyer_price = next((e["price"] for e in reversed(events[o["id"]]) if e["actor"] == "buyer" and e["price"]), o["initial_price"])
         item = {"id": o["code"], "buyer": buyer_label(o["buyer_phone"], tk), "location": o["farmer_kab"], "farmer": o["farmer_name"],
                 "stock": f"STK-{o['stock_id']}", "volume": o["qty_kg"], "price": buyer_price, "ai": refs.get(o["farmer_kab"]),
-                "status": STATUS_ADMIN[o["status"]], "date": id_date(o["created_at"]), "time": id_time(o["created_at"]), "history": hist}
+                "status": offer_status(o, events[o["id"]], STATUS_ADMIN), "date": id_date(o["created_at"]), "time": id_time(o["created_at"]), "history": hist}
         if o["current_by"] == "farmer" and o["status"] != "AGREED":
             item["counter"] = o["current_price"]
         return item
@@ -765,7 +1150,8 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
                 "initial": ("Penawaran", "handshake", f"{buyer_label(o['buyer_phone'], tk)} mengajukan penawaran"),
                 "counter": ("Negosiasi", "arrow-left-right", f"{o['farmer_name'] if e['actor'] == 'farmer' else buyer_label(o['buyer_phone'], tk)} mengajukan harga balik"),
                 "accept": ("Negosiasi", "handshake", f"Kesepakatan {o['code']} tercapai"),
-                "fail": ("Negosiasi", "message-circle-warning", f"Penawaran {o['code']} tidak berlanjut"),
+                "fail": ("Negosiasi", "message-circle-warning",
+                         f"Penawaran {o['code']} dibatalkan pembeli" if is_cancel(e) else f"Penawaran {o['code']} tidak berlanjut"),
             }[e["action"]]
             ev.append((e["created_at"], {"icon": icon, "title": title, "note": f"{o['code']} · {o['farmer_kab']} · {rupiah(e['price'] or o['current_price'])}/kg",
                                          "time": id_time(e["created_at"]), "kind": kind, "status": "Berhasil", "location": o["farmer_kab"]}))
@@ -779,6 +1165,7 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
         "offers": [a_offer(o) for o in reversed(offers)],
         "transactions": trx,
         "events": [e for _, e in ev[:20]],
+        "pendingAccounts": pending_accounts,
     }
 
 
@@ -888,7 +1275,17 @@ def create_offer(body: OfferIn, actor: Actor = Depends(get_actor)):
         )
         o = cur.fetchone()
         cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, 'buyer', 'initial', %s, 'web')", (o["id"], body.price))
+    _push_offer_notifications(o["id"], "created")
     return result(actor, "Penawaran dikirim kepada petani.", id=o["code"])
+
+
+def _close_offer(cur, o: dict, actor: str) -> None:
+    """Tutup penawaran persis seperti node n8n "Tutup penawaran": FAILED, offered_kg permintaan dikembalikan,
+    dan offer_events.note = rejected_by_farmer (petani menolak) / cancelled_by_buyer (tengkulak membatalkan)."""
+    cur.execute("update offers set status = 'FAILED' where id = %s", (o["id"],))
+    cur.execute("update requests set offered_kg = greatest(offered_kg - %s, 0) where id = %s", (o["qty_kg"], o["request_id"]))
+    cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, %s, 'fail', %s, %s)",
+                (o["id"], actor, o["current_price"], "rejected_by_farmer" if actor == "farmer" else "cancelled_by_buyer"))
 
 
 def _own_offer(cur, actor: Actor, code: str) -> dict:
@@ -903,6 +1300,149 @@ def _own_offer(cur, actor: Actor, code: str) -> dict:
     return o
 
 
+# ---- Notifikasi WhatsApp untuk aksi penawaran dari web ---------------------
+# Pesan dikirim dari nomor chatbot (WAHA). Sesi chat penerima ikut diatur agar ia bisa
+# langsung membalas dengan angka di WhatsApp (langkah yang sama dengan alur n8n).
+WA_HINT = "Balas dengan angka pilihan di atas, atau ketik *0* untuk ke menu."
+POLL_HINT = "Ketuk pilihan di bawah, atau balas dengan angka."  # sama dengan HINT di workflow n8n
+WEB_URL = os.getenv("TEMUTANI_WEB_URL", "https://temutani-web.vercel.app").rstrip("/")
+
+
+def _offer_info(cur, offer_id: int) -> Optional[dict]:
+    cur.execute(
+        """select o.id, o.code, o.qty_kg, o.initial_price, o.current_price, o.status, o.request_id,
+                  f.phone as farmer_phone, f.name as farmer_name, f.display_name as farmer_display, f.kabupaten,
+                  r.buyer_phone, coalesce(b.name, 'Tengkulak') as buyer_name
+           from offers o
+           join users f on f.id = o.farmer_id
+           join requests r on r.id = o.request_id
+           left join users b on b.phone = r.buyer_phone
+           where o.id = %s""",
+        (offer_id,),
+    )
+    return cur.fetchone()
+
+
+def _set_chat_step(cur, phone: str, step: Optional[str], context: dict) -> None:
+    """Samakan sesi chatbot penerima notifikasi (tabel chat_sessions milik n8n)."""
+    cur.execute(
+        "insert into chat_sessions (phone, step, context, updated_at) values (%s, %s, %s::jsonb, now())"
+        " on conflict (phone) do update set step = excluded.step, context = excluded.context, updated_at = now()",
+        (phone, step, json.dumps(context)),
+    )
+
+
+def _wa_contact(phone: str) -> str:
+    return "https://wa.me/" + phone.lstrip("+")
+
+
+def _set_chat_poll(phone: str, pid: str) -> None:
+    """Sama dengan node n8n "Simpan poll_id": Router hanya menerima vote dari poll terbaru (context.poll_id)."""
+    with tx() as cur:
+        cur.execute(
+            "insert into chat_sessions (phone, step, context, updated_at) values (%s, null, jsonb_build_object('poll_id', %s::text), now())"
+            " on conflict (phone) do update set context = chat_sessions.context || jsonb_build_object('poll_id', %s::text), updated_at = now()",
+            (phone, pid, pid),
+        )
+
+
+def _notify_poll(phone: str, text: str, poll: dict) -> None:
+    """Teks + poll WhatsApp seperti balasan chatbot n8n. Bila poll gagal, pilihan dikirim sebagai daftar angka
+    (Router tetap menerima balasan angka karena step & context sudah disimpan)."""
+    if not wa.configured():
+        return
+    masked = auth.mask_phone(auth.from_e164(phone))
+    try:
+        wa.send_text(phone, text)
+    except Exception:  # noqa: BLE001
+        log.warning("Notifikasi WhatsApp gagal dikirim ke %s", masked)
+        return
+    try:
+        pid = wa.send_poll(phone, poll["name"], poll["options"])
+        if pid:
+            _set_chat_poll(phone, pid)
+        else:
+            log.warning("WAHA tidak mengembalikan id poll untuk %s", masked)
+        return
+    except Exception:  # noqa: BLE001
+        log.warning("Poll WhatsApp gagal dikirim ke %s; kirim pilihan sebagai teks", masked)
+    _notify(phone, "\n".join(poll["options"]) + f"\n\n{WA_HINT}")
+
+
+def _notify_farmer_offer(i: dict, title: str, ai: Optional[int]) -> tuple[str, dict, dict]:
+    text = (f"📩 *{title}*\n\n*{i['code']}* • {i['kabupaten']} • {GRAIN} • {fmt_number(i['qty_kg'])} kg\n"
+            f"Dari: *{i['buyer_name']}*\nHarga dari tengkulak: *{rupiah(i['current_price'])}/kg*")
+    if ai:
+        text += f"\n📊 Referensi harga wajar AI saat ini: *{rupiah(ai)}/kg*\n_Harga AI hanya referensi, bukan harga wajib._"
+    text += f"\n\n{POLL_HINT}\nBisa juga ditanggapi di web: {WEB_URL}/petani/penawaran"
+    poll = {"name": "Tanggapi penawaran:",
+            "options": [f"1. Setuju {rupiah(i['current_price'])}/kg", "2. Tawar balik", "3. Tolak penawaran", "4. Lihat semua penawaran"]}
+    return text, {"offer_id": int(i["id"]), "actions": ["accept", "counter", "reject", "list"]}, poll
+
+
+def _push_offer_notifications(offer_id: int, event: str, prev_price: Optional[int] = None) -> None:
+    """Kirim notifikasi WA setelah transaksi web di-commit. Kegagalan tidak membatalkan aksi."""
+    if not wa.configured():
+        return
+    try:
+        msgs: list[tuple[str, str, Optional[dict]]] = []  # (nomor, teks, poll)
+        with tx() as cur:
+            i = _offer_info(cur, offer_id)
+            if not i:
+                return
+            detail = f"*{i['code']}* • {fmt_number(i['qty_kg'])} kg • {GRAIN}"
+            if event in ("created", "buyer_counter"):
+                title = "Penawaran baru dari tengkulak" if event == "created" else "Tengkulak mengajukan harga baru"
+                text, ctx, poll = _notify_farmer_offer(i, title, ai_reference(cur, i["kabupaten"]).get(GRAIN))
+                _set_chat_step(cur, i["farmer_phone"], "farmer_offer_action", ctx)
+                msgs.append((i["farmer_phone"], text, poll))
+            elif event == "farmer_counter":
+                text = (f"🔁 *{i['farmer_name']}* mengajukan *harga balik*\n\n{detail}\n"
+                        + (f"Harga Anda sebelumnya: {rupiah(prev_price)}/kg\n" if prev_price else "")
+                        + f"Harga balik petani: *{rupiah(i['current_price'])}/kg*\n\n"
+                        f"{POLL_HINT}\nBisa juga ditanggapi di web: {WEB_URL}/tengkulak/penawaran")
+                # Poll & aksi identik dengan node n8n "Balas harga balik" (harga balik dari chatbot).
+                poll = {"name": f"Tanggapi {i['farmer_display']}:",
+                        "options": [f"1. Setuju {rupiah(i['current_price'])}/kg", "2. Tawar lagi", "3. Batalkan penawaran",
+                                    "4. Lihat status penawaran"]}
+                _set_chat_step(cur, i["buyer_phone"], "buyer_offer_action",
+                               {"offer_id": int(i["id"]), "actions": ["accept", "counter", "cancel", "list"]})
+                msgs.append((i["buyer_phone"], text, poll))
+            elif event == "agreed":
+                # Sama dengan alur chatbot n8n: tengkulak menerima kontak petani, petani menunggu dihubungi.
+                harga = (f"Harga akhir: *{rupiah(i['current_price'])}/kg*\n"
+                         f"Nilai kesepakatan: *{rupiah(i['current_price'] * i['qty_kg'])}*")
+                info = f"*{i['code']}* • {i['kabupaten']} • {GRAIN} • {fmt_number(i['qty_kg'])} kg\n{harga}"
+                msgs.append((i["buyer_phone"], f"✅ *Harga disepakati dengan {i['farmer_name']}!*\n\n{info}\n\n"
+                             f"📱 *Kontak WhatsApp petani:* {_wa_contact(i['farmer_phone'])}\n"
+                             "Silakan hubungi petani langsung untuk mengatur waktu, lokasi pengambilan, dan pembayaran.\n\n"
+                             "Status: *Harga Disepakati* (belum berarti pembayaran atau serah terima selesai).", None))
+                msgs.append((i["farmer_phone"], f"✅ *Harga sudah disepakati!*\n\n{info}\n\n"
+                             "📩 *Tengkulak akan menghubungi Anda langsung melalui WhatsApp* untuk janji temu, "
+                             "pengambilan gabah, dan pembayaran.", None))
+                for ph in (i["farmer_phone"], i["buyer_phone"]):
+                    _set_chat_step(cur, ph, None, {})
+            elif event == "farmer_rejected":
+                # Sama dengan node n8n "Balas tutup penawaran" (petani menolak).
+                msgs.append((i["buyer_phone"], f"❌ *{i['farmer_display']}* menolak penawaran Anda ({detail} • {rupiah(i['current_price'])}/kg).\n\n"
+                                               f"Anda bisa mengajukan kebutuhan ini ke petani lain.\n\n{POLL_HINT}",
+                             {"name": "Langkah berikutnya:", "options": ["1. Pilih petani lain", "2. Lihat status penawaran", "0. Kembali ke menu"]}))
+                _set_chat_step(cur, i["buyer_phone"], "buyer_after_offer", {"request_id": int(i["request_id"]), "kabupaten": i["kabupaten"]})
+            elif event == "buyer_cancelled":
+                # Sama dengan node n8n "Balas tutup penawaran" (tengkulak membatalkan): petani diberi tahu + menu utama.
+                msgs.append((i["farmer_phone"], f"ℹ️ Tengkulak *membatalkan* penawaran *{i['code']} • {fmt_number(i['qty_kg'])} kg • {rupiah(i['current_price'])}/kg*.\n\n{POLL_HINT}",
+                             {"name": "Pilih layanan Temu Tani:",
+                              "options": ["1. Update stok gabah", "2. Lihat harga wajar gabah", "3. Penawaran masuk"]}))
+                _set_chat_step(cur, i["farmer_phone"], None, {})
+        for phone, text, poll in msgs:
+            if poll:
+                _notify_poll(phone, text, poll)
+            else:
+                _notify(phone, text)
+    except Exception:  # noqa: BLE001
+        log.exception("Notifikasi penawaran %s (%s) gagal disiapkan", offer_id, event)
+
+
 def _accept(actor: Actor, code: str, who: str, message: str) -> dict:
     with tx() as cur:
         o = _own_offer(cur, actor, code)
@@ -913,6 +1453,7 @@ def _accept(actor: Actor, code: str, who: str, message: str) -> dict:
         if res.get("reason") == "insufficient_stock":
             err(409, "Stok sudah berkurang. Penawaran tidak dapat disetujui.")
         err(409, "Status penawaran sudah berubah.")
+    _push_offer_notifications(o["id"], "agreed")
     return result(actor, message, id=f"TRX-{o['id']}")
 
 
@@ -935,10 +1476,22 @@ def reject_offer(offer_id: str, actor: Actor = Depends(get_actor)):
         o = _own_offer(cur, actor, offer_id)
         if o["status"] != "FARMER_TURN":
             err(409, "Status penawaran sudah berubah.")
-        cur.execute("update offers set status = 'FAILED' where id = %s", (o["id"],))
-        cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, 'farmer', 'fail', %s, 'rejected')",
-                    (o["id"], o["current_price"]))
+        _close_offer(cur, o, "farmer")
+    _push_offer_notifications(o["id"], "farmer_rejected")
     return result(actor, "Penawaran ditolak.")
+
+
+@app.post("/api/offers/{offer_id}/cancel", tags=["tengkulak"])
+def cancel_offer(offer_id: str, actor: Actor = Depends(get_actor)):
+    """Tengkulak membatalkan penawaran yang masih berjalan (sama dengan pilihan "Batalkan penawaran" di chatbot)."""
+    require(actor, "tengkulak")
+    with tx() as cur:
+        o = _own_offer(cur, actor, offer_id)
+        if o["status"] not in ("FARMER_TURN", "BUYER_TURN"):
+            err(409, "Penawaran sudah tidak berjalan (sudah disepakati, ditolak, atau dibatalkan).")
+        _close_offer(cur, o, "buyer")
+    _push_offer_notifications(o["id"], "buyer_cancelled")
+    return result(actor, "Penawaran dibatalkan. Petani sudah diberi tahu.")
 
 
 @app.post("/api/offers/{offer_id}/counter", tags=["petani", "tengkulak"])
@@ -964,6 +1517,10 @@ def counter_offer(offer_id: str, body: PriceIn, actor: Actor = Depends(get_actor
             cur.execute("update offers set current_price = %s, current_by = 'buyer', status = 'FARMER_TURN' where id = %s", (p, o["id"]))
             cur.execute("insert into offer_events (offer_id, actor, action, price, note) values (%s, 'buyer', 'counter', %s, 'web')", (o["id"], p))
             message = "Harga penawaran baru dikirim."
+    if actor.role == "petani":
+        _push_offer_notifications(o["id"], "farmer_counter", prev_price=o["current_price"])
+    else:
+        _push_offer_notifications(o["id"], "buyer_counter")
     return result(actor, message)
 
 

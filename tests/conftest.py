@@ -92,13 +92,13 @@ def client(database_url, monkeypatch, tmp_path):
     with psycopg.connect(database_url, autocommit=True) as conn:
         conn.execute("truncate otp_codes, stock_logs, stock_batches, offer_events, offers, requests, stocks, price_predictions, users restart identity cascade")
         conn.execute(
-            """insert into users (phone, role, name, display_name, kabupaten, kecamatan, password_hash, contact_sharing_consent) values
-               (%s,'admin','Admin Temu Tani','Admin Temu Tani',null,null,%s,false),
-               (%s,'petani','Pak Asep Hidayat','Pak Asep Hidayat','Garut','Tarogong Kidul',%s,false),
-               (%s,'petani','Bu Dewi','Petani E','Cianjur','Ciranjang',%s,true),
-               (%s,'tengkulak','Pak Budi Santoso','Pak Budi Santoso',null,null,%s,false),
-               (%s,'tengkulak','Pak Hendra','Pak Hendra',null,null,%s,false),
-               (%s,'petani','Pak Ujang','Petani B','Garut','Leles',null,false)""",
+            """insert into users (phone, role, name, display_name, kabupaten, kecamatan, password_hash, contact_sharing_consent, status) values
+               (%s,'admin','Admin Temu Tani','Admin Temu Tani',null,null,%s,false,'approved'),
+               (%s,'petani','Pak Asep Hidayat','Pak Asep Hidayat','Garut','Tarogong Kidul',%s,false,'approved'),
+               (%s,'petani','Bu Dewi','Petani E','Cianjur','Ciranjang',%s,true,'approved'),
+               (%s,'tengkulak','Pak Budi Santoso','Pak Budi Santoso',null,null,%s,false,'approved'),
+               (%s,'tengkulak','Pak Hendra','Pak Hendra',null,null,%s,false,'approved'),
+               (%s,'petani','Pak Ujang','Petani B','Garut','Leles',null,false,default)""",
             (e(PHONES["admin"]), pw, e(PHONES["petani"]), pw, e(PHONES["petani_cianjur"]), pw,
              e(PHONES["tengkulak"]), pw, e(PHONES["tengkulak2"]), pw, e(PHONES["wa_farmer"])),
         )

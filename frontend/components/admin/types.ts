@@ -58,6 +58,8 @@ export interface AdminDashboardResponse {
   offers: AdminOffer[];
   transactions: AdminTransaction[];
   events: AdminEvent[];
+  /** Jumlah tengkulak yang menunggu verifikasi admin. */
+  pendingAccounts: number;
 }
 
 export interface AdminData extends AdminDashboardResponse {

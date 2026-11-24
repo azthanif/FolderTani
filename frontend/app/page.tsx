@@ -3,12 +3,6 @@ import "@/styles/landing.css";
 
 export const metadata = { title: "TemuTani" };
 
-const ChevronRight = () => (
-  <svg className="action-icon" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="m9 18 6-6-6-6" />
-  </svg>
-);
-
 const svgProps = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, viewBox: "0 0 24 24" } as const;
 
 export default function Home() {
@@ -42,6 +36,10 @@ export default function Home() {
       </header>
       <main>
         <section className="hero" id="beranda">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="hero-mascot left" src="/assets/maskot/menyambut.webp" alt="" aria-hidden="true" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="hero-mascot right" src="/assets/maskot/cek-harga.webp" alt="" aria-hidden="true" />
           <div className="wrap">
             <div className="hero-inner">
               <div className="eyebrow">
@@ -53,9 +51,25 @@ export default function Home() {
                 <span className="accent">bertumbuh bersama.</span>
               </h1>
               <p className="hero-copy">
-                TemuTani menghubungkan petani dengan pembeli dan menghadirkan referensi harga gabah berbasis AI. Daftar sebagai petani atau
-                tengkulak untuk mulai menggunakan TemuTani.
+                TemuTani menghubungkan petani dengan pembeli dan menghadirkan referensi harga gabah berbasis AI. Tengkulak bisa
+                daftar mandiri; akun petani dibuatkan oleh admin TemuTani.
               </p>
+              <div className="hero-cta">
+                <Link className="hero-login" href="/masuk">
+                  Masuk ke TemuTani
+                  <svg {...svgProps} height="20" width="20" aria-hidden="true">
+                    <path d="M5 12h14" />
+                    <path d="m13 6 6 6-6 6" />
+                  </svg>
+                </Link>
+                <Link className="hero-signup" href="/daftar">
+                  Daftar sebagai Tengkulak
+                </Link>
+              </div>
+              <p className="hero-cta-note">Untuk petani dan tengkulak di Garut &amp; Cianjur</p>
+              {/* Maskot versi layar sempit (maskot kiri-kanan disembunyikan di bawah 980px) */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="hero-mascot-mobile" src="/assets/maskot/menyambut.webp" alt="" aria-hidden="true" />
             </div>
             <div className="trust-row" />
           </div>
@@ -187,9 +201,6 @@ export default function Home() {
                 TemuTani dikembangkan sebagai bagian dari ekosistem MaxxiTani. Integrasi informasi pasar dengan data pertanian dan lingkungan membuka
                 peluang pengambilan keputusan yang lebih menyeluruh.
               </p>
-              <a className="btn btn-secondary" href="#mulai">
-                Kenali inisiatif TemuTani <ChevronRight />
-              </a>
             </div>
             <div className="ecosystem-points">
               <div className="eco-point">
@@ -230,18 +241,14 @@ export default function Home() {
 
         <section className="cta" id="mulai">
           <div className="wrap cta-box">
-            <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="cta-mascot" src="/assets/maskot/senang.webp" alt="" aria-hidden="true" />
+            <div className="cta-copy">
               <h2>Bangun pasar gabah yang lebih terbuka bersama TemuTani.</h2>
               <p>Kenali inisiatif TemuTani dalam ekosistem digital MaxxiTani.</p>
             </div>
             <div className="cta-actions">
-              <a className="btn btn-primary" href="#tentang">
-                Kenali TemuTani{" "}
-                <svg className="action-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M7 17 17 7M8 7h9v9" />
-                </svg>
-              </a>
-              <a className="btn btn-secondary" href="#beranda">
+              <a className="btn btn-primary" href="#beranda">
                 Kembali ke atas{" "}
                 <svg className="action-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m6 14 6-6 6 6" />

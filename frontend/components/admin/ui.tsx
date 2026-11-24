@@ -13,9 +13,12 @@ const BADGE: Record<string, string> = {
   "Penawaran Balik": "blue",
   Disetujui: "green",
   Ditolak: "red",
+  Dibatalkan: "gray",
   Selesai: "green",
   Berhasil: "green",
   "Perlu Tinjauan": "red",
+  "Menunggu Verifikasi": "gold",
+  Aktif: "green",
 };
 
 export function Badge({ status }: { status: string }) {

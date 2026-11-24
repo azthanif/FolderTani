@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { AuthShell, PasswordField } from "@/components/auth/AuthShell";
+import { ConfirmHint, PasswordRules } from "@/components/auth/PasswordRules";
 import { ApiError } from "@/lib/api";
-import { dashboardPath, requestOtp, resetPassword } from "@/lib/auth";
+import { dashboardPath, isStrongPassword, requestOtp, resetPassword } from "@/lib/auth";
 
 function ForgotForm() {
   const router = useRouter();
@@ -47,6 +48,7 @@ function ForgotForm() {
   async function reset(e: FormEvent) {
     e.preventDefault();
     setError("");
+    if (!isStrongPassword(password)) return setError("Password baru belum memenuhi semua persyaratan.");
     if (password !== confirm) return setError("Konfirmasi password tidak sama.");
     setBusy(true);
     try {
@@ -61,6 +63,7 @@ function ForgotForm() {
   return (
     <AuthShell
       title="Lupa password"
+      mascot="ide"
       subtitle={step === 1 ? "Masukkan nomor HP Anda. Kode verifikasi akan dikirim lewat WhatsApp." : "Masukkan kode dari WhatsApp dan buat password baru."}
       footer={
         <>
@@ -95,9 +98,11 @@ function ForgotForm() {
             <label htmlFor="password">Password baru</label>
             <PasswordField id="password" value={password} onChange={setPassword} autoComplete="new-password" minLength={8} />
           </div>
+          <PasswordRules value={password} />
           <div className="auth-field">
             <label htmlFor="confirm">Ulangi password baru</label>
             <PasswordField id="confirm" value={confirm} onChange={setConfirm} autoComplete="new-password" minLength={8} />
+            <ConfirmHint password={password} confirm={confirm} />
           </div>
           {error ? <div className="auth-error" role="alert">{error}</div> : null}
           <button className="auth-submit" type="submit" disabled={busy}>

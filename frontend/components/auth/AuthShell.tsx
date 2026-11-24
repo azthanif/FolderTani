@@ -4,7 +4,20 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import "@/styles/auth.css";
 
-export function AuthShell({ title, subtitle, children, footer }: { title: string; subtitle: string; children: ReactNode; footer: ReactNode }) {
+export function AuthShell({
+  title,
+  subtitle,
+  children,
+  footer,
+  mascot = "melambai",
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+  footer: ReactNode;
+  /** Nama file maskot di /assets/maskot (tanpa .webp) untuk kolom kiri. */
+  mascot?: string;
+}) {
   return (
     <div className="auth">
       <aside className="auth-side" aria-hidden="true">
@@ -17,12 +30,17 @@ export function AuthShell({ title, subtitle, children, footer }: { title: string
           <h2>Terhubung lebih mudah, bertumbuh bersama.</h2>
           <p>Catat stok gabah, terima penawaran pembeli, dan bandingkan dengan referensi harga gabah berbasis AI.</p>
         </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="auth-mascot" src={`/assets/maskot/${mascot}.webp`} alt="" />
         <small>© 2026 TemuTani. Prototipe oleh TemanTani</small>
       </aside>
       <main className="auth-main">
         <Link className="auth-back" href="/">
           ← Kembali ke beranda
         </Link>
+        {/* Di layar sempit kolom kiri disembunyikan: maskot "mengintip" di atas kartu. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="auth-mascot-mobile" src={`/assets/maskot/${mascot}.webp`} alt="" aria-hidden="true" />
         <div className="auth-card">
           <h1>{title}</h1>
           <p className="auth-sub">{subtitle}</p>

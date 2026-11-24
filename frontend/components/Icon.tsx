@@ -12,6 +12,7 @@ const SVG: Record<string, string> = {
  "plus": "<path d=\"M12 5v14M5 12h14\"/>",
  "edit": "<path d=\"m15 5 4 4M3 21l4.5-1 12-12a2.8 2.8 0 0 0-4-4l-12 12L3 21Z\"/>",
  "package": "<path d=\"m12 2 9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10\"/>",
+ "trash": "<path d=\"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6\"/>",
  "check": "<path d=\"m5 12 4 4L19 6\"/>",
  "clock": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>",
  "activity": "<path d=\"M3 12h3l3-8 4 16 3-8h5\"/>",

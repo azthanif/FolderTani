@@ -45,7 +45,7 @@ export type Selectors = ReturnType<typeof selectors>;
 const BADGE: Record<string, string> = {
   Tersedia: "green", Disepakati: "green", Aktif: "green",
   "Menunggu Petani": "gold", "Penawaran Balik": "blue",
-  Ditolak: "red", "Akan Panen": "gray", Ditutup: "gray",
+  Ditolak: "red", Dibatalkan: "gray", "Akan Panen": "gray", Ditutup: "gray",
 };
 export const Badge = ({ s }: { s: string }) => <span className={`pill ${BADGE[s] || "gray"}`}>{s}</span>;
 
@@ -139,13 +139,15 @@ export function ActivityCard({ db }: { db: RoleState }) {
       <div className="section-header">
         <div>
           <h3 className="section-title">Aktivitas Terkini</h3>
-          <div className="section-subtitle">Aktivitas simulasi yang berkaitan dengan transaksi</div>
+          <div className="section-subtitle">Perubahan stok dan penawaran terbaru</div>
         </div>
       </div>
+      {!db.activities.length ? <div className="empty-state">Belum ada aktivitas.</div> : null}
+      {/* Terbaru dulu (jangan dibalik: server sudah mengirim urutan terbaru, sort ulang agar tetap aman). */}
       {db.activities
         .slice()
-        .reverse()
-        .slice(0, 4)
+        .sort((x, y) => (y.at || "").localeCompare(x.at || ""))
+        .slice(0, 5)
         .map((a) => (
           <div className="activity" key={a.id}>
             <div className="activity-icon">

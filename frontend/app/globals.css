@@ -25,3 +25,25 @@ html { scroll-behavior: smooth; }
 }
 @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Indikator proses aksi database (lihat lib/api.ts beginBusy). */
+@keyframes tt-spin { to { transform: rotate(360deg); } }
+@keyframes tt-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
+html.api-busy, html.api-busy * { cursor: progress; }
+html.api-busy body::before {
+  content: "";
+  position: fixed; top: 0; left: 0; z-index: 10000;
+  width: 25%; height: 3px; border-radius: 0 3px 3px 0;
+  background: #2f8a5b; box-shadow: 0 0 8px rgba(47, 138, 91, .6);
+  animation: tt-bar 1s ease-in-out infinite;
+  pointer-events: none;
+}
+button.is-loading, input.is-loading { position: relative; cursor: progress !important; opacity: .85 !important; }
+button.is-loading::before {
+  content: "";
+  display: inline-block; flex: 0 0 auto;
+  width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: tt-spin .7s linear infinite;
+}
+button.is-loading > svg { display: none; }

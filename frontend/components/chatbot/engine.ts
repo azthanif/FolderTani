@@ -7,6 +7,8 @@
  * - Listener elemen statis memakai AbortController; timer dilacak dan dibersihkan.
  * - Fungsi cleanup aman dipanggil sebelum boot asinkron selesai (React StrictMode).
  */
+import { showConfirm } from "@/lib/dialog";
+
 export function startChatbot(root: HTMLElement): () => void {
   let disposed = false;
   const controller = new AbortController();
@@ -707,7 +709,7 @@ export function startChatbot(root: HTMLElement): () => void {
         state.currentFarmerId = farmerId; save(); refs.sheet.innerHTML = ''; ensureWelcome(role, myId()); render(); }
     function showSwitchSheet() { const allFarm = state.farmerProfiles.map(f => `<button class="sheet-choice ${state.role === 'farmer' && myId() === f.id ? 'active' : ''}" data-role="farmer" data-farmer="${f.id}"><span class="circ">${svg('wheat')}</span><span class="text"><strong>${escapeHTML(f.name)}</strong><small>Kabupaten ${escapeHTML(f.region)} • data simulasi</small></span>${state.offers.some(o => o.farmerId === f.id && o.status === 'FARMER_TURN') ? '<span class="unread">Penawaran</span>' : ''}</button>`).join(''); refs.sheet.innerHTML = `<div class="sheet-overlay"><div class="sheet" role="dialog" aria-modal="true" aria-label="Pilih pengguna"><div class="sheet-head"><h3>Ganti tampilan pengguna</h3><button class="closebtn" type="button" id="closeSheet" aria-label="Tutup">×</button></div><p class="sheet-sub">Mode simulasi: pindah peran untuk melihat penawaran dan balasan di dua sisi percakapan.</p><button class="sheet-choice ${state.role === 'buyer' ? 'active' : ''}" data-role="buyer"><span class="circ">${svg('cart')}</span><span class="text"><strong>Tengkulak • Tanpa Registrasi</strong><small>Mencari stok, mengirim harga awal, dan negosiasi</small></span>${state.offers.some(o => o.status === 'BUYER_TURN') ? '<span class="unread">Respons baru</span>' : ''}</button>${allFarm}<div class="sheet-info">Dalam implementasi sebenarnya, hanya petani atau tengkulak yang bisa membuka akunnya sendiri.</div><button class="sheet-choice sheet-danger" id="resetSheet"><span class="circ">↻</span><span class="text"><strong>Reset seluruh simulasi</strong><small>Hapus penawaran dan mulai kembali dari awal</small></span></button></div></div>`; refs.sheet.querySelector('.sheet-overlay').addEventListener('click', e => { if (e.target.classList.contains('sheet-overlay'))
         refs.sheet.innerHTML = ''; }); $id('closeSheet').onclick = () => refs.sheet.innerHTML = ''; refs.sheet.querySelectorAll('[data-role]').forEach(el => el.addEventListener('click', () => changeRole(el.dataset.role, el.dataset.farmer))); $id('resetSheet').onclick = resetDemo; }
-    function resetDemo() { if (!confirm('Reset semua percakapan, stok tambahan, dan penawaran simulasi?'))
+    async function resetDemo() { if (!(await showConfirm({ title: 'Reset seluruh simulasi?', message: 'Semua percakapan, stok tambahan, dan penawaran simulasi akan dihapus.', confirmLabel: 'Reset simulasi', tone: 'danger' })))
         return; state = defaultData(); save(); refs.sheet.innerHTML = ''; render(); toast('Simulasi berhasil direset'); }
     function openMenu() { setFlow({ step: null }); bot('Silakan pilih layanan TemuTani yang dibutuhkan.', menuButtons(), state.role, { tag: 'MENU UTAMA' }); render(); }
     const el = (id, fn) => $id(id).addEventListener('click', fn, { signal });

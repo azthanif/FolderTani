@@ -1,0 +1,4469 @@
+{
+ "source": "Kepmendagri No. 300.2.2-2138 Tahun 2025 (via github.com/cahyadsn/wilayah db/wilayah.sql, commit c2eff0881e3c75b8822f8c84ea9d23affc11aadb, last data edit 2026-02-13); kecamatan typo fixes vs source: 32.03.06 Bonjogpicung->Bojongpicung, 32.03.18 Pagelarang->Pagelaran, 32.03.20 Cubinong->Cibinong (per Kepmendagri 100.1.1-6117/2022, BPS, Wikipedia)",
+ "kabupaten": {
+  "Garut": {
+   "kode": "32.05",
+   "kecamatan": [
+    {
+     "kode": "32.05.23",
+     "nama": "Banjarwangi",
+     "desa": [
+      {
+       "kode": "32.05.23.2001",
+       "nama": "Banjarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2010",
+       "nama": "Bojong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2008",
+       "nama": "Dangiang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2006",
+       "nama": "Jayabakti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2004",
+       "nama": "Kadongdong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2007",
+       "nama": "Mulyajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2003",
+       "nama": "Padahurip",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2002",
+       "nama": "Talagajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2005",
+       "nama": "Talagasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2009",
+       "nama": "Tanjungjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.23.2011",
+       "nama": "Wangunjaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.06",
+     "nama": "Banyuresmi",
+     "desa": [
+      {
+       "kode": "32.05.06.2011",
+       "nama": "Bagendit",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2001",
+       "nama": "Banyuresmi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2010",
+       "nama": "Binakarya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2002",
+       "nama": "Cimareme",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2006",
+       "nama": "Cipicung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2007",
+       "nama": "Dangdeur",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2012",
+       "nama": "Karyamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2013",
+       "nama": "Karyasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2009",
+       "nama": "Pamekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2008",
+       "nama": "Sukakarya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2015",
+       "nama": "Sukalaksana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2014",
+       "nama": "Sukamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2005",
+       "nama": "Sukaraja",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2003",
+       "nama": "Sukaratu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.06.2004",
+       "nama": "Sukasenang",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.17",
+     "nama": "Bayongbong",
+     "desa": [
+      {
+       "kode": "32.05.17.2012",
+       "nama": "Banjarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2001",
+       "nama": "Bayongbong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2009",
+       "nama": "Ciburuy",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2010",
+       "nama": "Ciela",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2011",
+       "nama": "Cikedokan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2017",
+       "nama": "Cinisti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2003",
+       "nama": "Hegarmanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2005",
+       "nama": "Karyajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2014",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2008",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2006",
+       "nama": "Mulyasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2007",
+       "nama": "Pamalayan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2002",
+       "nama": "Panembong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2004",
+       "nama": "Salakuray",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2015",
+       "nama": "Sirnagalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2018",
+       "nama": "Sukamanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2016",
+       "nama": "Sukarame",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.17.2013",
+       "nama": "Sukasenang",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.31",
+     "nama": "Bungbulang",
+     "desa": [
+      {
+       "kode": "32.05.31.2007",
+       "nama": "Bojong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2001",
+       "nama": "Bungbulang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2010",
+       "nama": "Cihikeu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2003",
+       "nama": "Gunamekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2012",
+       "nama": "Gunung Jampang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2002",
+       "nama": "Hanjuang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2013",
+       "nama": "Hegarmanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2006",
+       "nama": "Margalaksana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2005",
+       "nama": "Mekarbakti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2009",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2008",
+       "nama": "Sinarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2004",
+       "nama": "Tegallega",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.31.2011",
+       "nama": "Wangunjaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.36",
+     "nama": "Caringin",
+     "desa": [
+      {
+       "kode": "32.05.36.2001",
+       "nama": "Caringin",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.36.2003",
+       "nama": "Cimahi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.36.2002",
+       "nama": "Indralayang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.36.2005",
+       "nama": "Purbayani",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.36.2006",
+       "nama": "Samuderajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.36.2004",
+       "nama": "Sukarame",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.29",
+     "nama": "Cibalong",
+     "desa": [
+      {
+       "kode": "32.05.29.2009",
+       "nama": "Cigaronggong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2004",
+       "nama": "Karyamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2001",
+       "nama": "Karyasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2002",
+       "nama": "Maroko",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2008",
+       "nama": "Mekar Mukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2006",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2010",
+       "nama": "Mekarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2011",
+       "nama": "Najaten",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2005",
+       "nama": "Sagara",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2003",
+       "nama": "Sancang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.29.2007",
+       "nama": "Simpang",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.12",
+     "nama": "Cibatu",
+     "desa": [
+      {
+       "kode": "32.05.12.2001",
+       "nama": "Cibatu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2003",
+       "nama": "Cibunar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2009",
+       "nama": "Girimukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2008",
+       "nama": "Karyamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2010",
+       "nama": "Keresek",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2005",
+       "nama": "Kertajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2002",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2007",
+       "nama": "Padasuka",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2004",
+       "nama": "Sindangsuka",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2006",
+       "nama": "Sukalilah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.12.2011",
+       "nama": "Wanakerta",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.40",
+     "nama": "Cibiuk",
+     "desa": [
+      {
+       "kode": "32.05.40.2002",
+       "nama": "Cibiuk Kaler",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.40.2003",
+       "nama": "Cibiuk Kidul",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.40.2001",
+       "nama": "Cipareuan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.40.2005",
+       "nama": "Lingkungpasir",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.40.2004",
+       "nama": "Majasari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.18",
+     "nama": "Cigedug",
+     "desa": [
+      {
+       "kode": "32.05.18.2002",
+       "nama": "Barusuda",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.18.2001",
+       "nama": "Cigedug",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.18.2005",
+       "nama": "Cintanagara",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.18.2004",
+       "nama": "Sindangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.18.2003",
+       "nama": "Sukahurip",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.25",
+     "nama": "Cihurip",
+     "desa": [
+      {
+       "kode": "32.05.25.2001",
+       "nama": "Cihurip",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.25.2002",
+       "nama": "Cisangkal",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.25.2004",
+       "nama": "Jayamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.25.2003",
+       "nama": "Mekarwangi",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.22",
+     "nama": "Cikajang",
+     "desa": [
+      {
+       "kode": "32.05.22.2006",
+       "nama": "Cibodas",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2001",
+       "nama": "Cikajang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2008",
+       "nama": "Cikandang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2011",
+       "nama": "Cipangramatan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2005",
+       "nama": "Giriawas",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2004",
+       "nama": "Girijaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2012",
+       "nama": "Karamatwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2010",
+       "nama": "Margamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2007",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2003",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2009",
+       "nama": "Padasuka",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.22.2002",
+       "nama": "Simpang",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.30",
+     "nama": "Cikelet",
+     "desa": [
+      {
+       "kode": "32.05.30.2010",
+       "nama": "Awassagara",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2004",
+       "nama": "Cigadog",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2007",
+       "nama": "Cijambe",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2001",
+       "nama": "Cikelet",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2009",
+       "nama": "Ciroyom",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2008",
+       "nama": "Girimukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2006",
+       "nama": "Karangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2003",
+       "nama": "Kertamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2002",
+       "nama": "Linggamanik",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2005",
+       "nama": "Pamalayan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.30.2011",
+       "nama": "Tipar",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.19",
+     "nama": "Cilawu",
+     "desa": [
+      {
+       "kode": "32.05.19.2001",
+       "nama": "Cilawu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2012",
+       "nama": "Dangiang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2004",
+       "nama": "Dawungsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2013",
+       "nama": "Dayeuhmanggung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2009",
+       "nama": "Desakolot",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2003",
+       "nama": "Karyamekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2015",
+       "nama": "Mangkurakyat",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2011",
+       "nama": "Margalaksana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2008",
+       "nama": "Mekarmukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2007",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2016",
+       "nama": "Ngamplang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2010",
+       "nama": "Ngamplangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2005",
+       "nama": "Pasanggrahan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2006",
+       "nama": "Sukahati",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2014",
+       "nama": "Sukamaju",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2002",
+       "nama": "Sukamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2018",
+       "nama": "Sukamurni",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.19.2017",
+       "nama": "Sukatani",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.35",
+     "nama": "Cisewu",
+     "desa": [
+      {
+       "kode": "32.05.35.2004",
+       "nama": "Cikarang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.35.2001",
+       "nama": "Cisewu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.35.2002",
+       "nama": "Girimukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.35.2007",
+       "nama": "Karangsewu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.35.2008",
+       "nama": "Mekarsewu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.35.2006",
+       "nama": "Nyalindung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.35.2003",
+       "nama": "Pamalayan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.35.2009",
+       "nama": "Panggalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.35.2005",
+       "nama": "Sukajaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.28",
+     "nama": "Cisompet",
+     "desa": [
+      {
+       "kode": "32.05.28.2002",
+       "nama": "Cihaurkuning",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2006",
+       "nama": "Cikondang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2001",
+       "nama": "Cisompet",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2007",
+       "nama": "Depok",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2009",
+       "nama": "Jatisari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2003",
+       "nama": "Margamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2010",
+       "nama": "Neglasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2008",
+       "nama": "Panyindangan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2011",
+       "nama": "Sindangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2004",
+       "nama": "Sukamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.28.2005",
+       "nama": "Sukanagara",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.20",
+     "nama": "Cisurupan",
+     "desa": [
+      {
+       "kode": "32.05.20.2007",
+       "nama": "Balewangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2002",
+       "nama": "Cidatar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2017",
+       "nama": "Cintaasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2011",
+       "nama": "Cipaganti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2009",
+       "nama": "Cisero",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2001",
+       "nama": "Cisurupan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2010",
+       "nama": "Karamatwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2006",
+       "nama": "Pakuwon",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2012",
+       "nama": "Pamulihan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2015",
+       "nama": "Pangauban",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2016",
+       "nama": "Simpangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2014",
+       "nama": "Sirnagalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2008",
+       "nama": "Sirnajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2005",
+       "nama": "Situsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2004",
+       "nama": "Sukatani",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2003",
+       "nama": "Sukawangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.20.2013",
+       "nama": "Tambakbaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.01",
+     "nama": "Garut Kota",
+     "desa": [
+      {
+       "kode": "32.05.01.1011",
+       "nama": "Cimuncang",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1007",
+       "nama": "Ciwalen",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1001",
+       "nama": "Kota Kulon",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1002",
+       "nama": "Kota Wetan",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1003",
+       "nama": "Margawati",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1005",
+       "nama": "Muara Sanding",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1004",
+       "nama": "Pakuwon",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1008",
+       "nama": "Paminggir",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1009",
+       "nama": "Regol",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1006",
+       "nama": "Sukamentri",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.01.1010",
+       "nama": "Sukanegla",
+       "jenis": "Kelurahan"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.10",
+     "nama": "Kadungora",
+     "desa": [
+      {
+       "kode": "32.05.10.2003",
+       "nama": "Cikembulan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2004",
+       "nama": "Cisaat",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2002",
+       "nama": "Gandamekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2009",
+       "nama": "Harumansari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2011",
+       "nama": "Hegarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2001",
+       "nama": "Kadungora",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2008",
+       "nama": "Karangmulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2013",
+       "nama": "Karangtengah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2005",
+       "nama": "Mandalasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2007",
+       "nama": "Mekarbakti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2012",
+       "nama": "Neglasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2014",
+       "nama": "Rancasalak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2010",
+       "nama": "Talagasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.10.2006",
+       "nama": "Tanggulun",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.02",
+     "nama": "Karangpawitan",
+     "desa": [
+      {
+       "kode": "32.05.02.2006",
+       "nama": "Cimurah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2009",
+       "nama": "Godog",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2008",
+       "nama": "Jatisari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.1003",
+       "nama": "Karangmulya",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.02.2004",
+       "nama": "Karangpawitan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2011",
+       "nama": "Karangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2013",
+       "nama": "Lebakagung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.1002",
+       "nama": "Lebakjaya",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.02.1014",
+       "nama": "Lengkongjaya",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.02.2016",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2015",
+       "nama": "Sindanggalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2017",
+       "nama": "Sindanglaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2012",
+       "nama": "Sindangpalay",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2005",
+       "nama": "Situgede",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2020",
+       "nama": "Situjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2019",
+       "nama": "Situsaeur",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2010",
+       "nama": "Situsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.2007",
+       "nama": "Suci",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.02.1001",
+       "nama": "Suci Kaler",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.02.2018",
+       "nama": "Tanjungsari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.16",
+     "nama": "Karangtengah",
+     "desa": [
+      {
+       "kode": "32.05.16.2001",
+       "nama": "Caringin",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.16.2003",
+       "nama": "Cinta",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.16.2002",
+       "nama": "Cintamanik",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.16.2004",
+       "nama": "Sindanggalih",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.13",
+     "nama": "Kersamanah",
+     "desa": [
+      {
+       "kode": "32.05.13.2004",
+       "nama": "Girijaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.13.2001",
+       "nama": "Kersamanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.13.2006",
+       "nama": "Mekarraya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.13.2002",
+       "nama": "Nanjungjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.13.2005",
+       "nama": "Sukamaju",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.13.2003",
+       "nama": "Sukamerang",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.09",
+     "nama": "Leles",
+     "desa": [
+      {
+       "kode": "32.05.09.2006",
+       "nama": "Cangkuang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2002",
+       "nama": "Ciburial",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2010",
+       "nama": "Cipancar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2012",
+       "nama": "Dano",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2011",
+       "nama": "Haruman",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2003",
+       "nama": "Jangkurang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2008",
+       "nama": "Kandangmukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2001",
+       "nama": "Leles",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2005",
+       "nama": "Lembang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2009",
+       "nama": "Margaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2007",
+       "nama": "Salamnunggal",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.09.2004",
+       "nama": "Sukarame",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.11",
+     "nama": "Leuwigoong",
+     "desa": [
+      {
+       "kode": "32.05.11.2005",
+       "nama": "Dungusiku",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.11.2002",
+       "nama": "Karanganyar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.11.2008",
+       "nama": "Karangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.11.2001",
+       "nama": "Leuwigoong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.11.2003",
+       "nama": "Margacinta",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.11.2004",
+       "nama": "Margahayu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.11.2007",
+       "nama": "Sindangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.11.2006",
+       "nama": "Tambak Sari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.38",
+     "nama": "Limbangan",
+     "desa": [
+      {
+       "kode": "32.05.38.2011",
+       "nama": "Cigagade",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2005",
+       "nama": "Cijolang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2010",
+       "nama": "Ciwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2013",
+       "nama": "Dunguswiru",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2003",
+       "nama": "Galihpakuwon",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2002",
+       "nama": "Limbangan Barat",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2001",
+       "nama": "Limbangan Tengah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2012",
+       "nama": "Limbangan Timur",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2006",
+       "nama": "Neglasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2014",
+       "nama": "Pangeureunan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2008",
+       "nama": "Pasirwaru",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2007",
+       "nama": "Simpen Kaler",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2009",
+       "nama": "Simpen Kidul",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.38.2004",
+       "nama": "Surabaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.14",
+     "nama": "Malangbong",
+     "desa": [
+      {
+       "kode": "32.05.14.2020",
+       "nama": "Baru Dua",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2022",
+       "nama": "Bunisari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2008",
+       "nama": "Campaka",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2003",
+       "nama": "Cibunar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2019",
+       "nama": "Cihaurkuning",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2004",
+       "nama": "Cikarag",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2011",
+       "nama": "Cilampuyang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2012",
+       "nama": "Cinagara",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2007",
+       "nama": "Cisitu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2014",
+       "nama": "Citeras",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2024",
+       "nama": "Girimakmur",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2002",
+       "nama": "Karangmulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2017",
+       "nama": "Kutanagara",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2009",
+       "nama": "Lewobaru",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2001",
+       "nama": "Malangbong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2006",
+       "nama": "Mekarasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2023",
+       "nama": "Mekarmulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2005",
+       "nama": "Sakawayana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2018",
+       "nama": "Sanding",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2016",
+       "nama": "Sekarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2021",
+       "nama": "Sukajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2010",
+       "nama": "Sukamanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2015",
+       "nama": "Sukarasa",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.14.2013",
+       "nama": "Sukaratu",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.32",
+     "nama": "Mekarmukti",
+     "desa": [
+      {
+       "kode": "32.05.32.2004",
+       "nama": "Cijayana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.32.2003",
+       "nama": "Jagabaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.32.2002",
+       "nama": "Karangwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.32.2001",
+       "nama": "Mekarmukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.32.2005",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.33",
+     "nama": "Pakenjeng",
+     "desa": [
+      {
+       "kode": "32.05.33.2011",
+       "nama": "Depok",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2008",
+       "nama": "Jatiwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2013",
+       "nama": "Jayamekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2012",
+       "nama": "Karangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2001",
+       "nama": "Neglasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2009",
+       "nama": "Panyindangan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2006",
+       "nama": "Pasirlangu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2005",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2007",
+       "nama": "Talagawangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2002",
+       "nama": "Tanjungjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2003",
+       "nama": "Tanjungmulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2010",
+       "nama": "Tegalgede",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.33.2004",
+       "nama": "Wangunjaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.27",
+     "nama": "Pameungpeuk",
+     "desa": [
+      {
+       "kode": "32.05.27.2006",
+       "nama": "Bojong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.27.2008",
+       "nama": "Bojong Kidul",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.27.2005",
+       "nama": "Jatimulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.27.2002",
+       "nama": "Mancagahar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.27.2004",
+       "nama": "Mandalakasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.27.2003",
+       "nama": "Paas",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.27.2001",
+       "nama": "Pameungpeuk",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.27.2007",
+       "nama": "Sirnabakti",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.34",
+     "nama": "Pamulihan",
+     "desa": [
+      {
+       "kode": "32.05.34.2002",
+       "nama": "Garumukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.34.2005",
+       "nama": "Linggarjati",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.34.2001",
+       "nama": "Pakenjeng",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.34.2004",
+       "nama": "Pananjung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.34.2003",
+       "nama": "Panawa",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.41",
+     "nama": "Pangatikan",
+     "desa": [
+      {
+       "kode": "32.05.41.2003",
+       "nama": "Babakan Loa",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.41.2006",
+       "nama": "Cihuni",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.41.2002",
+       "nama": "Cimaragas",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.41.2001",
+       "nama": "Citangtu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.41.2008",
+       "nama": "Karangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.41.2004",
+       "nama": "Sukahurip",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.41.2005",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.41.2007",
+       "nama": "Sukarasa",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.08",
+     "nama": "Pasirwangi",
+     "desa": [
+      {
+       "kode": "32.05.08.2007",
+       "nama": "Barusari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2004",
+       "nama": "Karyamekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2006",
+       "nama": "Padaasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2009",
+       "nama": "Padamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2012",
+       "nama": "Padamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2003",
+       "nama": "Padasuka",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2005",
+       "nama": "Padawaas",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2002",
+       "nama": "Pasirkiamis",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2001",
+       "nama": "Pasirwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2011",
+       "nama": "Sarimukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2010",
+       "nama": "Sinarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.08.2008",
+       "nama": "Talaga",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.26",
+     "nama": "Peundeuy",
+     "desa": [
+      {
+       "kode": "32.05.26.2004",
+       "nama": "Pangrumasan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.26.2001",
+       "nama": "Peundeuy",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.26.2006",
+       "nama": "Purwajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.26.2003",
+       "nama": "Saribakti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.26.2005",
+       "nama": "Sukanagara",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.26.2002",
+       "nama": "Toblong",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.07",
+     "nama": "Samarang",
+     "desa": [
+      {
+       "kode": "32.05.07.2010",
+       "nama": "Cintaasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2006",
+       "nama": "Cintakarya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2002",
+       "nama": "Cintarakyat",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2009",
+       "nama": "Cintarasa",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2008",
+       "nama": "Cisarua",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2004",
+       "nama": "Parakan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2001",
+       "nama": "Samarang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2011",
+       "nama": "Sirnasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2005",
+       "nama": "Sukakarya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2012",
+       "nama": "Sukalaksana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2003",
+       "nama": "Sukarasa",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2007",
+       "nama": "Tanjung Karya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.07.2013",
+       "nama": "Tanjunganom",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.39",
+     "nama": "Selaawi",
+     "desa": [
+      {
+       "kode": "32.05.39.2003",
+       "nama": "Cigawir",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.39.2005",
+       "nama": "Cirapuhan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.39.2006",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.39.2004",
+       "nama": "Pelitaasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.39.2002",
+       "nama": "Putrajawa",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.39.2007",
+       "nama": "Samida",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.39.2001",
+       "nama": "Selaawi",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.24",
+     "nama": "Singajaya",
+     "desa": [
+      {
+       "kode": "32.05.24.2008",
+       "nama": "Cigintung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.24.2002",
+       "nama": "Ciudian",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.24.2009",
+       "nama": "Girimukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.24.2007",
+       "nama": "Karangagung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.24.2003",
+       "nama": "Mekartani",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.24.2006",
+       "nama": "Pancasura",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.24.2001",
+       "nama": "Singajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.24.2004",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.24.2005",
+       "nama": "Sukawangi",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.42",
+     "nama": "Sucinaraja",
+     "desa": [
+      {
+       "kode": "32.05.42.2005",
+       "nama": "Cigadog",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.42.2006",
+       "nama": "Linggamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.42.2001",
+       "nama": "Sadang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.42.2007",
+       "nama": "Sukalaksana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.42.2002",
+       "nama": "Sukaratu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.42.2004",
+       "nama": "Tegalpanjang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.42.2003",
+       "nama": "Tenjonagara",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.21",
+     "nama": "Sukaresmi",
+     "desa": [
+      {
+       "kode": "32.05.21.2002",
+       "nama": "Cintadamai",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.21.2003",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.21.2006",
+       "nama": "Padamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.21.2004",
+       "nama": "Sukajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.21.2007",
+       "nama": "Sukalilah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.21.2005",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.21.2001",
+       "nama": "Sukaresmi",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.15",
+     "nama": "Sukawening",
+     "desa": [
+      {
+       "kode": "32.05.15.2009",
+       "nama": "Maripari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2011",
+       "nama": "Mekar Hurip",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2003",
+       "nama": "Mekarluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2010",
+       "nama": "Mekarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2008",
+       "nama": "Pasanggrahan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2005",
+       "nama": "Sudalarang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2007",
+       "nama": "Sukahaji",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2004",
+       "nama": "Sukaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2002",
+       "nama": "Sukamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2006",
+       "nama": "Sukasono",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.15.2001",
+       "nama": "Sukawening",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.37",
+     "nama": "Talegong",
+     "desa": [
+      {
+       "kode": "32.05.37.2003",
+       "nama": "Mekarmukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.37.2004",
+       "nama": "Mekarmulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.37.2007",
+       "nama": "Mekarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.37.2006",
+       "nama": "Selaawi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.37.2005",
+       "nama": "Sukalaksana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.37.2001",
+       "nama": "Sukamaju",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.37.2002",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.04",
+     "nama": "Tarogong Kaler",
+     "desa": [
+      {
+       "kode": "32.05.04.2002",
+       "nama": "Cimanganten",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2003",
+       "nama": "Jati",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2009",
+       "nama": "Langensari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2008",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2010",
+       "nama": "Mekarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.1012",
+       "nama": "Pananjung",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.04.2013",
+       "nama": "Panjiwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2011",
+       "nama": "Pasawahan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2004",
+       "nama": "Rancabango",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2006",
+       "nama": "Sirnajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2001",
+       "nama": "Sukajadi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2005",
+       "nama": "Sukawangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.04.2007",
+       "nama": "Tanjung Kamuning",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.05",
+     "nama": "Tarogong Kidul",
+     "desa": [
+      {
+       "kode": "32.05.05.2005",
+       "nama": "Cibunar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.05.2004",
+       "nama": "Haurpanggung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.05.2003",
+       "nama": "Jayaraga",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.05.1006",
+       "nama": "Jayawaras",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.05.2011",
+       "nama": "Kersamenak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.05.2010",
+       "nama": "Mekargalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.05.1001",
+       "nama": "Pataruman",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.05.2007",
+       "nama": "Sukabakti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.05.1002",
+       "nama": "Sukagalih",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.05.1012",
+       "nama": "Sukajaya",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.05.1009",
+       "nama": "Sukakarya",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.05.05.2008",
+       "nama": "Tarogong",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.05.03",
+     "nama": "Wanaraja",
+     "desa": [
+      {
+       "kode": "32.05.03.2003",
+       "nama": "Cinunuk",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.03.2015",
+       "nama": "Sindangmekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.03.2024",
+       "nama": "Sindangprabu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.03.2008",
+       "nama": "Sindangratu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.03.2007",
+       "nama": "Sukamenak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.03.2011",
+       "nama": "Wanajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.03.2002",
+       "nama": "Wanamekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.03.2001",
+       "nama": "Wanaraja",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.05.03.2019",
+       "nama": "Wanasari",
+       "jenis": "Desa"
+      }
+     ]
+    }
+   ]
+  },
+  "Cianjur": {
+   "kode": "32.03",
+   "kecamatan": [
+    {
+     "kode": "32.03.22",
+     "nama": "Agrabinta",
+     "desa": [
+      {
+       "kode": "32.03.22.2005",
+       "nama": "Bojongkaso",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2006",
+       "nama": "Bunisari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2016",
+       "nama": "Karangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2019",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2017",
+       "nama": "Mulyasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2014",
+       "nama": "Neglasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2010",
+       "nama": "Sinarlaut",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2004",
+       "nama": "Sukamanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2018",
+       "nama": "Tanjung Sari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2007",
+       "nama": "Wanasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.22.2022",
+       "nama": "Wangunjaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.06",
+     "nama": "Bojongpicung",
+     "desa": [
+      {
+       "kode": "32.03.06.2002",
+       "nama": "Bojongpicung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2004",
+       "nama": "Cibarengkok",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2009",
+       "nama": "Cikondang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2001",
+       "nama": "Hegarmanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2008",
+       "nama": "Jati",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2014",
+       "nama": "Jatisari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2006",
+       "nama": "Kemang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2013",
+       "nama": "Neglasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2007",
+       "nama": "Sukajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2010",
+       "nama": "Sukarama",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.06.2012",
+       "nama": "Sukaratu",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.15",
+     "nama": "Campaka",
+     "desa": [
+      {
+       "kode": "32.03.15.2008",
+       "nama": "Campaka",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2001",
+       "nama": "Cidadap",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2002",
+       "nama": "Cimenteng",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2010",
+       "nama": "Girimukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2007",
+       "nama": "Karyamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2006",
+       "nama": "Margaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2011",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2005",
+       "nama": "Sukadana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2004",
+       "nama": "Sukajadi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2003",
+       "nama": "Susukan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.15.2009",
+       "nama": "Wangunjaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.25",
+     "nama": "Campakamulya",
+     "desa": [
+      {
+       "kode": "32.03.25.2004",
+       "nama": "Campakamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.25.2002",
+       "nama": "Campakawarna",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.25.2001",
+       "nama": "Cibanggala",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.25.2005",
+       "nama": "Sukabungah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.25.2003",
+       "nama": "Sukasirna",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.01",
+     "nama": "Cianjur",
+     "desa": [
+      {
+       "kode": "32.03.01.2001",
+       "nama": "Babakankaret",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.01.1008",
+       "nama": "Bojongherang",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.03.01.2005",
+       "nama": "Limbangansari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.01.2004",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.01.1011",
+       "nama": "Muka",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.03.01.2002",
+       "nama": "Nagrak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.01.1006",
+       "nama": "Pamoyanan",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.03.01.1007",
+       "nama": "Sawahgede",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.03.01.1009",
+       "nama": "Sayang",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.03.01.1010",
+       "nama": "Solokpandan",
+       "jenis": "Kelurahan"
+      },
+      {
+       "kode": "32.03.01.2003",
+       "nama": "Sukamaju",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.03",
+     "nama": "Cibeber",
+     "desa": [
+      {
+       "kode": "32.03.03.2016",
+       "nama": "Cibadak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2004",
+       "nama": "Cibaregbeg",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2009",
+       "nama": "Cibokor",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2002",
+       "nama": "Cihaur",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2008",
+       "nama": "Cikondang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2003",
+       "nama": "Cimanggu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2001",
+       "nama": "Cipetir",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2015",
+       "nama": "Cisalak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2014",
+       "nama": "Girimulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2012",
+       "nama": "Kanoman",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2011",
+       "nama": "Karangnunggal",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2007",
+       "nama": "Mayak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2006",
+       "nama": "Peuteuycondong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2018",
+       "nama": "Salamnunggal",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2010",
+       "nama": "Selagedang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2013",
+       "nama": "Sukamaju",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2017",
+       "nama": "Sukamanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.03.2005",
+       "nama": "Sukaraharja",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.20",
+     "nama": "Cibinong",
+     "desa": [
+      {
+       "kode": "32.03.20.2008",
+       "nama": "Batulawang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2014",
+       "nama": "Ciburial",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2002",
+       "nama": "Cikangkareng",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2006",
+       "nama": "Cimaskara",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2011",
+       "nama": "Girijaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2010",
+       "nama": "Hamerang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2013",
+       "nama": "Mekarmukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2005",
+       "nama": "Padasuka",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2007",
+       "nama": "Pamoyanan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2001",
+       "nama": "Pananggapan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2004",
+       "nama": "Panyindangan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2003",
+       "nama": "Sukajadi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2009",
+       "nama": "Sukamekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.20.2012",
+       "nama": "Wargaluyu",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.23",
+     "nama": "Cidaun",
+     "desa": [
+      {
+       "kode": "32.03.23.2002",
+       "nama": "Cibuluh",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2001",
+       "nama": "Cidamar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2004",
+       "nama": "Cimaragang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2003",
+       "nama": "Cisalak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2008",
+       "nama": "Gelarpawitan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2014",
+       "nama": "Gelarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2011",
+       "nama": "Jayapura",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2009",
+       "nama": "Karangwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2010",
+       "nama": "Karyabakti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2006",
+       "nama": "Kertajadi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2005",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2012",
+       "nama": "Neglasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2013",
+       "nama": "Puncakbaru",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.23.2007",
+       "nama": "Sukapura",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.29",
+     "nama": "Cijati",
+     "desa": [
+      {
+       "kode": "32.03.29.2003",
+       "nama": "Bojonglarang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.29.2008",
+       "nama": "Caringin",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.29.2005",
+       "nama": "Cibodas",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.29.2002",
+       "nama": "Cijati",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.29.2004",
+       "nama": "Padaasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.29.2001",
+       "nama": "Parakantugu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.29.2009",
+       "nama": "Sinarbakti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.29.2007",
+       "nama": "Sukaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.29.2006",
+       "nama": "Sukamahi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.29.2010",
+       "nama": "Sukamaju",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.26",
+     "nama": "Cikadu",
+     "desa": [
+      {
+       "kode": "32.03.26.2002",
+       "nama": "Cikadu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.26.2006",
+       "nama": "Cisaranten",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.26.2001",
+       "nama": "Kalapanunggal",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.26.2009",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.26.2007",
+       "nama": "Mekarlaksana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.26.2003",
+       "nama": "Mekarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.26.2004",
+       "nama": "Padaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.26.2008",
+       "nama": "Sukaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.26.2010",
+       "nama": "Sukamanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.26.2005",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.12",
+     "nama": "Cikalongkulon",
+     "desa": [
+      {
+       "kode": "32.03.12.2012",
+       "nama": "Cigunungherang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2004",
+       "nama": "Cijagang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2003",
+       "nama": "Cinangsi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2008",
+       "nama": "Ciramagirang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2002",
+       "nama": "Gudang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2006",
+       "nama": "Kamurang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2015",
+       "nama": "Lembahsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2005",
+       "nama": "Majalaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2014",
+       "nama": "Mekargalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2009",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2018",
+       "nama": "Mekarmulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2017",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2016",
+       "nama": "Mentengsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2013",
+       "nama": "Neglasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2011",
+       "nama": "Padajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2001",
+       "nama": "Sukagalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2010",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.12.2007",
+       "nama": "Warudoyong",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.04",
+     "nama": "Cilaku",
+     "desa": [
+      {
+       "kode": "32.03.04.2005",
+       "nama": "Cibinonghilir",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.04.2009",
+       "nama": "Ciharashas",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.04.2010",
+       "nama": "Mulyasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.04.2007",
+       "nama": "Munjul",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.04.2006",
+       "nama": "Rahong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.04.2001",
+       "nama": "Rancagoong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.04.2008",
+       "nama": "Sindangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.04.2003",
+       "nama": "Sirnagalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.04.2004",
+       "nama": "Sukakerta",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.04.2002",
+       "nama": "Sukasari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.28",
+     "nama": "Cipanas",
+     "desa": [
+      {
+       "kode": "32.03.28.2005",
+       "nama": "Batulawang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.28.2003",
+       "nama": "Ciloto",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.28.2002",
+       "nama": "Cimacan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.28.2001",
+       "nama": "Cipanas",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.28.2006",
+       "nama": "Palasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.28.2007",
+       "nama": "Sindangjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.28.2004",
+       "nama": "Sindanglaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.05",
+     "nama": "Ciranjang",
+     "desa": [
+      {
+       "kode": "32.03.05.2004",
+       "nama": "Cibiuk",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.05.2001",
+       "nama": "Ciranjang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.05.2005",
+       "nama": "Gunungsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.05.2006",
+       "nama": "Karangwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.05.2008",
+       "nama": "Kertajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.05.2012",
+       "nama": "Mekargalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.05.2007",
+       "nama": "Nanggalamekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.05.2002",
+       "nama": "Sindangjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.05.2009",
+       "nama": "Sindangsari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.11",
+     "nama": "Cugenang",
+     "desa": [
+      {
+       "kode": "32.03.11.2011",
+       "nama": "Benjot",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2004",
+       "nama": "Cibeureum",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2010",
+       "nama": "Cibulakan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2003",
+       "nama": "Cijedil",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2014",
+       "nama": "Cirumput",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2016",
+       "nama": "Galudra",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2002",
+       "nama": "Gasol",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2006",
+       "nama": "Mangunkerta",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2005",
+       "nama": "Nyalindung",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2015",
+       "nama": "Padaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2007",
+       "nama": "Sarampad",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2009",
+       "nama": "Sukajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2001",
+       "nama": "Sukamanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2012",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2008",
+       "nama": "Talaga",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.11.2013",
+       "nama": "Wangunjaya",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.27",
+     "nama": "Gekbrong",
+     "desa": [
+      {
+       "kode": "32.03.27.2001",
+       "nama": "Bangbayang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.27.2007",
+       "nama": "Cikahuripan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.27.2004",
+       "nama": "Cikancana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.27.2008",
+       "nama": "Cintaasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.27.2006",
+       "nama": "Gekbrong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.27.2005",
+       "nama": "Kebonpeuteuy",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.27.2002",
+       "nama": "Songgom",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.27.2003",
+       "nama": "Sukaratu",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.31",
+     "nama": "Haurwangi",
+     "desa": [
+      {
+       "kode": "32.03.31.2002",
+       "nama": "Cihea",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.31.2007",
+       "nama": "Cipeuyeum",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.31.2001",
+       "nama": "Haurwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.31.2008",
+       "nama": "Kertamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.31.2006",
+       "nama": "Kertasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.31.2005",
+       "nama": "Mekarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.31.2004",
+       "nama": "Mekarwangi/Sukatani",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.31.2003",
+       "nama": "Ramasari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.17",
+     "nama": "Kadupandak",
+     "desa": [
+      {
+       "kode": "32.03.17.2009",
+       "nama": "Bojongkasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2022",
+       "nama": "Gandasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2021",
+       "nama": "Kadupandak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2016",
+       "nama": "Neglasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2006",
+       "nama": "Pasirdalem",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2023",
+       "nama": "Sindangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2014",
+       "nama": "Sukakerta",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2011",
+       "nama": "Sukaraharja",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2020",
+       "nama": "Sukaraja",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2017",
+       "nama": "Sukaresmi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2003",
+       "nama": "Sukasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2008",
+       "nama": "Talagasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2010",
+       "nama": "Wargaasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.17.2019",
+       "nama": "Wargasari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.07",
+     "nama": "Karangtengah",
+     "desa": [
+      {
+       "kode": "32.03.07.2009",
+       "nama": "Babakancaringin",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2002",
+       "nama": "Bojong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2005",
+       "nama": "Ciherang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2014",
+       "nama": "Hegarmanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2013",
+       "nama": "Langensari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2004",
+       "nama": "Maleber",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2010",
+       "nama": "Sabandar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2011",
+       "nama": "Sindangasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2003",
+       "nama": "Sindanglaka",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2015",
+       "nama": "Sukajadi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2001",
+       "nama": "Sukamanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2006",
+       "nama": "Sukamantri",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2016",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2007",
+       "nama": "Sukasarana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2008",
+       "nama": "Sukasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.07.2012",
+       "nama": "Sukataris",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.30",
+     "nama": "Leles",
+     "desa": [
+      {
+       "kode": "32.03.30.2010",
+       "nama": "Karyamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2011",
+       "nama": "Mandalawangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2006",
+       "nama": "Nagasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2004",
+       "nama": "Puncakwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2003",
+       "nama": "Purabaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2001",
+       "nama": "Pusakasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2012",
+       "nama": "Sindangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2009",
+       "nama": "Sirnasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2005",
+       "nama": "Sukajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2008",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2007",
+       "nama": "Sukasirna",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.30.2002",
+       "nama": "Walahir",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.08",
+     "nama": "Mande",
+     "desa": [
+      {
+       "kode": "32.03.08.2002",
+       "nama": "Bobojong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2007",
+       "nama": "Ciandam",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2004",
+       "nama": "Cikidangbayabang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2003",
+       "nama": "Jamali",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2001",
+       "nama": "Kademangan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2011",
+       "nama": "Kutawaringin",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2009",
+       "nama": "Leuwikoja",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2005",
+       "nama": "Mande",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2010",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2006",
+       "nama": "Mulyasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2012",
+       "nama": "Murnisari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.08.2008",
+       "nama": "Sukamanah",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.24",
+     "nama": "Naringgul",
+     "desa": [
+      {
+       "kode": "32.03.24.2002",
+       "nama": "Balegede",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2005",
+       "nama": "Cinerang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2008",
+       "nama": "Malati",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2011",
+       "nama": "Margasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2004",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2001",
+       "nama": "Naringgul",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2007",
+       "nama": "Sukabakti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2010",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2006",
+       "nama": "Wanasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2003",
+       "nama": "Wangunjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.24.2009",
+       "nama": "Wangunsari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.10",
+     "nama": "Pacet",
+     "desa": [
+      {
+       "kode": "32.03.10.2003",
+       "nama": "Cibodas",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.10.2001",
+       "nama": "Ciherang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.10.2007",
+       "nama": "Cipendawa",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.10.2010",
+       "nama": "Ciputri",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.10.2012",
+       "nama": "Gadog",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.10.2005",
+       "nama": "Sukanagalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.10.2013",
+       "nama": "Sukatani",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.18",
+     "nama": "Pagelaran",
+     "desa": [
+      {
+       "kode": "32.03.18.2009",
+       "nama": "Bunijaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2005",
+       "nama": "Buniwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2004",
+       "nama": "Gelaranyar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2015",
+       "nama": "Karangharja",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2012",
+       "nama": "Kertaraharja",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2011",
+       "nama": "Mekarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2014",
+       "nama": "Padamaju",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2001",
+       "nama": "Pagelaran",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2002",
+       "nama": "Pangadegan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2008",
+       "nama": "Pasirbaru",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2013",
+       "nama": "Selagedang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2007",
+       "nama": "Sindangkerta",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2010",
+       "nama": "Situhiang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.18.2018",
+       "nama": "Sukamaju",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.32",
+     "nama": "Pasirkuda",
+     "desa": [
+      {
+       "kode": "32.03.32.2008",
+       "nama": "Girijaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.32.2005",
+       "nama": "Girimukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.32.2002",
+       "nama": "Kalibaru",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.32.2006",
+       "nama": "Karangjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.32.2004",
+       "nama": "Kubang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.32.2007",
+       "nama": "Mekarmulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.32.2009",
+       "nama": "Padamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.32.2003",
+       "nama": "Pusakajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.32.2001",
+       "nama": "Simpang",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.21",
+     "nama": "Sindangbarang",
+     "desa": [
+      {
+       "kode": "32.03.21.2007",
+       "nama": "Girimukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2009",
+       "nama": "Hegarsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2003",
+       "nama": "Jatisari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2005",
+       "nama": "Jayagiri",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2011",
+       "nama": "Kertamukti",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2006",
+       "nama": "Kertasari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2010",
+       "nama": "Mekarlaksana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2002",
+       "nama": "Muaracikadu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2001",
+       "nama": "Saganten",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2004",
+       "nama": "Sirnagalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.21.2008",
+       "nama": "Talagasari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.09",
+     "nama": "Sukaluyu",
+     "desa": [
+      {
+       "kode": "32.03.09.2009",
+       "nama": "Babakansari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.09.2010",
+       "nama": "Hegarmanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.09.2006",
+       "nama": "Mekarjaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.09.2003",
+       "nama": "Panyusuhan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.09.2001",
+       "nama": "Selajambe",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.09.2005",
+       "nama": "Sindangraja",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.09.2008",
+       "nama": "Sukaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.09.2002",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.09.2007",
+       "nama": "Sukasirna",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.09.2004",
+       "nama": "Tanjungsari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.14",
+     "nama": "Sukanagara",
+     "desa": [
+      {
+       "kode": "32.03.14.2004",
+       "nama": "Ciguha",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.14.2006",
+       "nama": "Gunungsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.14.2010",
+       "nama": "Jayagiri",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.14.2009",
+       "nama": "Sindangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.14.2002",
+       "nama": "Sukajembar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.14.2003",
+       "nama": "Sukakarya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.14.2007",
+       "nama": "Sukalaksana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.14.2005",
+       "nama": "Sukamekar",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.14.2001",
+       "nama": "Sukanagara",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.14.2008",
+       "nama": "Sukarame",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.13",
+     "nama": "Sukaresmi",
+     "desa": [
+      {
+       "kode": "32.03.13.2005",
+       "nama": "Cibadak",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2008",
+       "nama": "Cibanteng",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2002",
+       "nama": "Cikancana",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2001",
+       "nama": "Cikanyere",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2003",
+       "nama": "Ciwalen",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2004",
+       "nama": "Kawungluwuk",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2009",
+       "nama": "Kubang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2010",
+       "nama": "Pakuon",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2011",
+       "nama": "Rawabelut",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2006",
+       "nama": "Sukamahi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.13.2007",
+       "nama": "Sukaresmi",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.16",
+     "nama": "Takokak",
+     "desa": [
+      {
+       "kode": "32.03.16.2006",
+       "nama": "Bungbangsari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.16.2007",
+       "nama": "Cisujen",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.16.2008",
+       "nama": "Hegarmanah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.16.2001",
+       "nama": "Pasawahan",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.16.2004",
+       "nama": "Simpang",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.16.2003",
+       "nama": "Sindanghayu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.16.2002",
+       "nama": "Sindangresmi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.16.2005",
+       "nama": "Sukagalih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.16.2009",
+       "nama": "Waringinsari",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.19",
+     "nama": "Tanggeung",
+     "desa": [
+      {
+       "kode": "32.03.19.2007",
+       "nama": "Bojongpetir",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2003",
+       "nama": "Cilongsong",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2005",
+       "nama": "Karangtengah",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2013",
+       "nama": "Kertajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2004",
+       "nama": "Margaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2015",
+       "nama": "Padaluyu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2006",
+       "nama": "Pagermaneuh",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2009",
+       "nama": "Pasirjambu",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2002",
+       "nama": "Rawagede",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2010",
+       "nama": "Sirnajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2014",
+       "nama": "Sukajaya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.19.2001",
+       "nama": "Tanggeung",
+       "jenis": "Desa"
+      }
+     ]
+    },
+    {
+     "kode": "32.03.02",
+     "nama": "Warungkondang",
+     "desa": [
+      {
+       "kode": "32.03.02.2008",
+       "nama": "Bunikasih",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2014",
+       "nama": "Bunisari",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2017",
+       "nama": "Cieundeur",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2007",
+       "nama": "Cikaroya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2006",
+       "nama": "Cisarandi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2009",
+       "nama": "Ciwalen",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2002",
+       "nama": "Jambudipa",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2018",
+       "nama": "Mekarwangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2016",
+       "nama": "Sukamulya",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2011",
+       "nama": "Sukawangi",
+       "jenis": "Desa"
+      },
+      {
+       "kode": "32.03.02.2010",
+       "nama": "Tegallega",
+       "jenis": "Desa"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}
