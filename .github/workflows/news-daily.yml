@@ -86,7 +86,7 @@ jobs:
           RUN_DATE: ${{ inputs.date }}
           FROM_STEP: ${{ inputs.from_step || 'geturl' }}
         run: |
-          args=(--config news_pipeline/config.ci.yaml --from-step "$FROM_STEP")
+          args=(--config news_pipeline/config.ci.yaml --from-step "$FROM_STEP" --to-step publish)
           if [ -n "$RUN_DATE" ]; then
             [[ "$RUN_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "::error::Format tanggal harus YYYY-MM-DD"; exit 1; }
             args+=(--date "$RUN_DATE" --force)
