@@ -115,7 +115,7 @@ def _llm_sorotan(items: list[dict], kab: str, lc: dict) -> str | None:
 
 
 def _compose(kab: str, run_date, local: list[dict], national: list[dict], dc: dict, sorotan: str | None) -> str:
-    lines = [f"*Kabar Tani {kab}*", tanggal_id(run_date), ""]
+    lines = ["*Kabar Tani Terkini*", tanggal_id(run_date), ""]
     if sorotan:
         lines += ["*Sorotan hari ini*", sorotan, ""]
     for title, rows in ((f"Berita {kab}", local), ("Berita Nasional", national)):
@@ -123,7 +123,8 @@ def _compose(kab: str, run_date, local: list[dict], national: list[dict], dc: di
             lines.append(f"*{title}*")
             for i, it in enumerate(rows, 1):
                 lines += [f"{i}. *{it['title']}* ({it['media_name']})", it["summary"], it["url"], ""]
-    lines.append(f"_{dc['footer']}_")
+    website_url = dc.get("website_url", "https://temutani.web.id/berita")
+    lines += [f"📰 Baca selengkapnya: {website_url}", "", f"_{dc['footer']}_"]
     return "\n".join(lines)
 
 
@@ -149,10 +150,11 @@ def run(ctx) -> int:
     items = build_items(ctx)
     digests = []
     for kab in dc["kabupaten"]:
+        max_total = int(dc.get("max_total", int(dc["max_local"]) + int(dc["max_national"])))
         local = dedupe([it for it in items if kab in it["wilayah"]])[: int(dc["max_local"])]
         local_ids = {it["id"] for it in local}
         national = dedupe([it for it in items if "Nasional" in it["wilayah"] and it["id"] not in local_ids],
-                          also_exclude=local)[: int(dc["max_national"])]
+                          also_exclude=local)[: max(0, max_total - len(local))]
         if not local and not national and dc["skip_if_empty"]:
             digests.append({"kabupaten": kab, "digest_date": ctx.run_date.isoformat(), "status": "SKIPPED",
                             "content": "", "article_ids": []})

@@ -78,19 +78,18 @@ def build_message(nama: str, kab: str, today: date, digest_content: str,
     h1 = next((f for f in forecasts if f["horizon"] == 1), None)
     h2 = next((f for f in forecasts if f["horizon"] == 2), None)
     if h1 or h2:
-        lines.append("*Prakiraan Harga GKP*")
+        lines.append("*Prakiraan AI Harga GKP*")
         if h1:
             sim = " _(simulasi)_" if h1.get("is_simulation") else ""
             lines.append(f"Hari ini: *{_fmt_price(h1['price_per_kg'])}/kg*{sim}")
         if h2:
             sim = " _(simulasi)_" if h2.get("is_simulation") else ""
             lines.append(f"Besok: *{_fmt_price(h2['price_per_kg'])}/kg*{sim}")
-        lines.append("_(Prakiraan AI, bukan harga resmi)_")
         lines.append("")
 
     # 3. Digest berita (lokal utama; nasional sebagai fallback sudah ada di content)
     lines.append("━━━━━━━━━━━━━━━━━━━━")
-    lines.append(f"*Kabar Tani {kab}*")
+    lines.append(f"*Kabar Tani Terkini*")
     lines.append("")
     lines.append(_strip_digest_header(digest_content))
 

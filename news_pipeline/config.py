@@ -79,7 +79,7 @@ DEFAULTS: dict[str, Any] = {
         },
     },
     "digest": {
-        "kabupaten": ["Garut", "Cianjur"], "max_local": 5, "max_national": 3, "max_chars": 3500,
+        "kabupaten": ["Garut", "Cianjur"], "max_local": 2, "max_national": 2, "max_total": 2, "max_chars": 3500,
         "skip_if_empty": True,
         "footer": "Dikirim otomatis oleh Temu Tani. Balas STOP untuk berhenti berlangganan.",
         "llm": {"enabled": False, "ollama_url": "http://localhost:11434", "model": "qwen2.5:7b", "timeout_sec": 180},

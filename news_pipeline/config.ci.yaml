@@ -26,6 +26,9 @@ summary:
     model: openai/gpt-oss-20b
 
 digest:
+  max_local: 2
+  max_total: 2
+  website_url: https://temutani-web.vercel.app/petani/berita
   llm:
     enabled: false          # tidak ada Ollama di runner
 
