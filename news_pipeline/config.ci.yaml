@@ -30,7 +30,7 @@ digest:
     enabled: false          # tidak ada Ollama di runner
 
 notify:
-  enabled: true            # pipeline hanya simpan ke DB; pengiriman WA dilakukan morning-broadcast.yml (07:00 WIB)
+  enabled: false            # pipeline hanya simpan ke DB; pengiriman WA dilakukan morning-broadcast.yml (07:00 WIB)
   waha_url: https://waha.temutani.web.id
   api_key_env: WAHA_API_KEY
   session: "session_01m7yhrn721a4g9386vrvrhg5a"
