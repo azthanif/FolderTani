@@ -8,7 +8,7 @@ Contoh:
 Env: DATABASE_URL (wajib), GEE_SERVICE_ACCOUNT_KEY + GEE_PROJECT (kecuali --skip-gee).
 """
 from __future__ import annotations
-
+from .fetch_bappebti import fetch_harga_bappebti, WILAYAH
 import argparse
 import logging
 import os
@@ -74,6 +74,19 @@ def refresh_gee(conn, kab: str, end: pd.Timestamp, days: int) -> int:
              df["chirps_precip_mm"].last_valid_index())
     return n
 
+def refresh_prices(conn, kab: str) -> int:
+    kode = WILAYAH.get(kab.lower())
+    if kode is None:
+        return 0
+    since = store.last_real_price_date(conn, kab)
+    df_baru = fetch_harga_bappebti(kode, since=since)
+    if df_baru.empty:
+        log.info("%s: tidak ada harga Bappebti baru", kab)
+        return 0
+    df_baru = df_baru.rename(columns={"tanggal": "date"})
+    n = store.upsert_prices(conn, kab, df_baru, "asli", "bappebti")
+    log.info("%s: %d baris harga Bappebti diupsert", kab, n)
+    return n
 
 def fill_simulation(conn, kab: str, end: pd.Timestamp) -> int:
     """Isi hari tanpa observasi asli dengan simulasi deterministik (hanya kabupaten yang punya sim_params)."""
@@ -128,6 +141,13 @@ def main(argv=None) -> int:
         for kab in regions:
             try:
                 if not a.skip_gee:
+                    n_prices = refresh_prices(conn, kab)
+                    if n_prices:
+                        log.info("%s: %d baris harga Bappebti baru", kab, n_prices)
+                    conn.commit()
+                    if not a.skip_gee:
+                        refresh_gee(conn, kab, run_date, a.gee_days)
+                        conn.commit()
                     refresh_gee(conn, kab, run_date, a.gee_days)
                     conn.commit()
                 n_sim = fill_simulation(conn, kab, run_date)
