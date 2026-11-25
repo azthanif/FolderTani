@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import date, timedelta
 
 import requests
@@ -34,6 +35,18 @@ def _tanggal(d: date) -> str:
 
 def _fmt_price(p: int) -> str:
     return f"Rp{p:,.0f}".replace(",", ".")
+
+
+def _normalize_phone(raw: str) -> str | None:
+    """Nomor HP Indonesia -> format WhatsApp 628xxxxxxxxx; selain itu None."""
+    d = re.sub(r"\D", "", str(raw or ""))
+    if d.startswith("620"):
+        d = "62" + d[3:]
+    elif d.startswith("0"):
+        d = "62" + d[1:]
+    elif d.startswith("8"):
+        d = "62" + d
+    return d if re.fullmatch(r"628\d{8,12}", d) else None
 
 
 def _strip_digest_header(content: str) -> str:
@@ -160,7 +173,10 @@ def run(ctx) -> int:
             log.debug("Sudah terkirim ke %s (%s)", r["name"], kab)
             continue
 
-        phone = r.get("phone", "")
+        phone = _normalize_phone(r.get("phone", ""))
+        if not phone:
+            log.warning("Nomor tidak valid, dilewati: %s (%s)", r["name"], r.get("phone", ""))
+            continue
         pkey = "phone:" + phone
         if pkey in phones_done:
             log.debug("Nomor %s sudah dikirimi (akun ganda)", phone)
