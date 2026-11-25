@@ -53,6 +53,10 @@ def database_url():
     for _ in range(50):
         try:
             with psycopg.connect(url, autocommit=True) as conn:
+                # Role bawaan Supabase yang dirujuk migrasi (mis. 005 grant ke authenticated/service_role).
+                for role in ("anon", "authenticated", "service_role"):
+                    conn.execute(f"do $$ begin if not exists (select 1 from pg_roles where rolname = '{role}')"
+                                 f" then create role {role} nologin; end if; end $$")
                 for f in MIGRATIONS:
                     conn.execute(Path(f).read_text())
             break

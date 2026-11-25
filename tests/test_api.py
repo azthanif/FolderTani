@@ -381,7 +381,7 @@ def test_full_negotiation_flow(client, login, sql):
     # request dibuat otomatis sesuai skema chatbot
     req = sql("select r.buyer_phone, r.kabupaten, r.need_kg, r.offered_kg from requests r join offers o on o.request_id = r.id where o.code = %s", (oid,))[0]
     assert (req["buyer_phone"], req["kabupaten"], req["need_kg"], req["offered_kg"]) == (e164(PHONES["tengkulak"]), "Garut", 3000, 3000)
-    # petani melihat penawaran + harga AI dari price_predictions
+    # petani melihat penawaran + harga AI dari price_predictions (belum ada price_forecasts)
     s = client.get("/api/state", headers=P).json()
     assert s["aiReference"] == {"GKP": 6900}
     o = s["offers"][0]
@@ -609,3 +609,26 @@ def test_berita_default_reads_pipeline_csv(client):
             if e["entity"] in ("MON", "QTY"):      # angka tidak lagi terpecah ("Rp5" + "000")
                 assert re.search(r"\d", e["word"]) or re.search(r"(?i)ribu|juta|miliar", e["word"])
                 assert not re.search(r"\d[.,]$", src[:e["start"]]) and not re.match(r"[.,]\d", src[e["end"]:])
+
+
+def _insert_forecast(sql, kab: str, days_ago: int, prices: list[int]):
+    """Satu run prakiraan h0..h7 dengan tanggal asal = hari ini WIB - days_ago."""
+    sql("insert into price_forecasts (kabupaten, run_date, target_date, horizon, price_per_kg, model_version,"
+        " is_simulation, price_source) select %s, d, d + h, h, (%s::int[])[h + 1], 'test', false, 'asli'"
+        " from (select (now() at time zone 'Asia/Jakarta')::date - %s as d) x, generate_series(0, 7) h",
+        (kab, prices, days_ago))
+
+
+def test_ai_reference_uses_latest_forecast(client, login, sql):
+    """Harga wajar = rata-rata prakiraan h+1..h+7 run terbaru (sama dengan web), bukan price_predictions."""
+    P = login("petani")
+    _insert_forecast(sql, "Garut", 1, [7000, 7100, 7100, 7100, 7100, 7100, 7100, 7100])
+    _insert_forecast(sql, "Garut", 0, [7300, 7200, 7210, 7220, 7230, 7240, 7250, 7260])
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 7230}
+
+
+def test_ai_reference_falls_back_when_forecast_stale(client, login, sql):
+    """Prakiraan lebih tua dari MAX_FORECAST_AGE_DAYS dianggap basi: kembali ke price_predictions."""
+    P = login("petani")
+    _insert_forecast(sql, "Garut", 10, [8000] * 8)
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 6900}

@@ -211,9 +211,28 @@ def _session(u: dict) -> dict:
 # Query bersama
 # ---------------------------------------------------------------------------
 def ai_reference(cur, kabupaten: Optional[str]) -> dict[str, int]:
-    """Harga wajar terbaru dari price_predictions (bulan berjalan atau sebelumnya); fallback simulasi."""
+    """Harga wajar AI (Rp/kg GKP) untuk satu kabupaten.
+
+    Urutan sumber:
+      1. price_forecasts (LSTM harian): rata-rata prakiraan h+1..h+7 dari run terbaru yang belum basi
+         (<= MAX_FORECAST_AGE_DAYS hari). Definisi sama dengan "current" di pricing.load_forecasts (web).
+      2. price_predictions (tabel bulanan lama milik chatbot).
+      3. Simulasi pricing.AI_REFERENCE.
+    """
     if not kabupaten:
         return {}
+    cur.execute(
+        "select round(avg(f.price_per_kg))::int as price_per_kg, count(*)::int as n"
+        " from price_forecasts f"
+        " where f.kabupaten = %s and f.horizon between 1 and %s"
+        "   and f.run_date = (select max(run_date) from price_forecasts"
+        "                     where kabupaten = %s and run_date <= (now() at time zone 'Asia/Jakarta')::date"
+        "                       and run_date >= (now() at time zone 'Asia/Jakarta')::date - %s)",
+        (kabupaten, pricing.FORECAST_DAYS, kabupaten, pricing.MAX_FORECAST_AGE_DAYS),
+    )
+    row = cur.fetchone()
+    if row and row["n"] == pricing.FORECAST_DAYS and row["price_per_kg"]:
+        return {GRAIN: row["price_per_kg"]}
     cur.execute(
         "select price_per_kg from price_predictions where kabupaten = %s and grain_type = 'GKP'"
         " and period <= date_trunc('month', (now() at time zone 'Asia/Jakarta'))::date order by period desc, id desc limit 1",
