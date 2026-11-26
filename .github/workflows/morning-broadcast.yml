@@ -2,7 +2,7 @@ name: Siaran Pagi (Berita + Harga)
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 07:00 WIB (UTC+7) setiap hari
+    - cron: "57 23 * * *"   # 06:57 WIB, sama dengan cron eksternal. Workflow ini DISABLED: broadcast kini via n8n 07:00
   workflow_dispatch:
     inputs:
       date:
