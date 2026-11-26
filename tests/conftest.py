@@ -89,7 +89,7 @@ def client(database_url, monkeypatch, tmp_path):
     import psycopg
     from fastapi.testclient import TestClient
 
-    from backend import auth, db, main
+    from backend import auth, cache, db, main
 
     pw = auth.hash_password(PASSWORD)
     e = auth.to_e164
@@ -111,6 +111,7 @@ def client(database_url, monkeypatch, tmp_path):
             " ('Garut','GKP', date_trunc('month', now())::date, 6900, 'tes'), ('Cianjur','GKP', date_trunc('month', now())::date, 6950, 'tes')"
         )
     db.close_pool()
+    cache.clear()
     with TestClient(main.app) as c:
         yield c
     db.close_pool()

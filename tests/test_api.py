@@ -632,3 +632,66 @@ def test_ai_reference_falls_back_when_forecast_stale(client, login, sql):
     P = login("petani")
     _insert_forecast(sql, "Garut", 10, [8000] * 8)
     assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 6900}
+
+
+def test_prices_and_ai_reference_are_cached(client, login, sql):
+    """Prakiraan dibaca ulang paling lambat tiap TEMUTANI_CACHE_TTL detik (pipeline hanya menulis sekali sehari)."""
+    from backend import cache
+
+    P = login("petani")
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 6900}
+    _insert_forecast(sql, "Garut", 0, [7300, 7200, 7210, 7220, 7230, 7240, 7250, 7260])
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 6900}  # masih dari cache
+    cache.clear()
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 7230}
+    first = client.get("/api/prices", headers=P).json()
+    assert first["lockedArea"] == "Garut"
+    assert client.get("/api/prices", headers=P).json() == first
+
+
+def test_cache_can_be_disabled(client, login, sql, monkeypatch):
+    monkeypatch.setenv("TEMUTANI_CACHE_TTL", "0")
+    P = login("petani")
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 6900}
+    _insert_forecast(sql, "Garut", 0, [7300, 7200, 7210, 7220, 7230, 7240, 7250, 7260])
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 7230}
+
+
+def test_password_change_revokes_cached_session(client, login):
+    """Cache data akun dibuang saat password diganti: token lama langsung ditolak."""
+    H = login("petani")
+    assert client.get("/api/auth/me", headers=H).status_code == 200  # baris user masuk cache
+    r = client.post("/api/auth/password/change", headers=H, json={"currentPassword": PASSWORD, "password": "PasswordBaru123"})
+    assert r.status_code == 200, r.text
+    assert client.get("/api/auth/me", headers=H).status_code == 401
+
+
+def test_read_connections_return_to_pool_in_transaction_mode(client):
+    from backend import db
+
+    with db.read() as cur:
+        cur.execute("select 1")
+    with db.get_pool().connection() as conn:
+        assert conn.autocommit is False
+
+
+def test_cors_preflight_is_cacheable(database_url, monkeypatch):
+    """Preflight CORS boleh disimpan browser 2 jam (header Access-Control-Max-Age)."""
+    import importlib
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("TEMUTANI_CORS_ORIGINS", "https://contoh.vercel.app")
+    from backend import main
+
+    try:
+        m = importlib.reload(main)
+        r = TestClient(m.app).options("/api/prices", headers={
+            "Origin": "https://contoh.vercel.app", "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization"})
+        assert r.status_code == 200
+        assert r.headers["access-control-max-age"] == "7200"
+    finally:
+        monkeypatch.delenv("TEMUTANI_CORS_ORIGINS")
+        importlib.reload(main)

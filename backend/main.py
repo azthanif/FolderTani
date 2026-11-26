@@ -27,8 +27,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, pricing, wa, xlsx
-from .db import DatabaseNotConfigured, set_log_context, tx
+from . import auth, cache, pricing, wa, xlsx
+from .db import DatabaseNotConfigured, read, set_log_context, tx
 from .news import load_news, load_news_supabase
 from .store import BlobStore
 
@@ -66,6 +66,7 @@ if _origins:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
         expose_headers=["Content-Disposition"],
+        max_age=7200,  # browser menyimpan hasil preflight 2 jam (batas maksimum Chrome) -> OPTIONS tidak diulang tiap request
     )
 
 
@@ -169,14 +170,18 @@ def _bearer_user(authorization: str) -> Optional[dict]:
     data = auth.read_token(authorization[7:].strip())
     if not data or data.get("k"):  # token halaman tunggu pendaftaran bukan sesi login
         err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
-    with tx() as cur:
-        cur.execute(f"select {USER_COLS} from users where id = %s", (data["u"],))
-        u = cur.fetchone()
+    u = cache.get_or_set(f"user:{data['u']}", cache.auth_ttl(), lambda: _user_row(data["u"]))
     if not u or u["role"] != data.get("r") or not u["password_hash"] or auth.password_fingerprint(u["password_hash"]) != data.get("pv"):
         err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
     if u["status"] != "approved":
         err(401, "Akun belum aktif. Silakan masuk kembali setelah diverifikasi admin.")
     return u
+
+
+def _user_row(user_id: str) -> Optional[dict]:
+    with read() as cur:
+        cur.execute(f"select {USER_COLS} from users where id = %s", (user_id,))
+        return cur.fetchone()
 
 
 def get_actor(authorization: str = Header(default="", alias="Authorization")) -> Actor:
@@ -211,6 +216,14 @@ def _session(u: dict) -> dict:
 # Query bersama
 # ---------------------------------------------------------------------------
 def ai_reference(cur, kabupaten: Optional[str]) -> dict[str, int]:
+    """Versi ber-cache dari _ai_reference (data prakiraan hanya berubah sekali sehari)."""
+    if not kabupaten:
+        return {}
+    return dict(cache.get_or_set(f"ai_ref:{pricing.today_wib()}:{kabupaten}", cache.data_ttl(),
+                                 lambda: _ai_reference(cur, kabupaten)))
+
+
+def _ai_reference(cur, kabupaten: Optional[str]) -> dict[str, int]:
     """Harga wajar AI (Rp/kg GKP) untuk satu kabupaten.
 
     Urutan sumber:
@@ -436,7 +449,7 @@ def snapshot(cur, actor: Actor) -> dict:
 
 
 def result(actor: Actor, message: str, **extra) -> dict:
-    with tx() as cur:
+    with read() as cur:
         return {"state": snapshot(cur, actor), "message": message, **extra}
 
 
@@ -626,7 +639,7 @@ def _inactive_message(u: dict) -> str:
 @app.get("/api/health", tags=["umum"])
 def health():
     try:
-        with tx() as cur:
+        with read() as cur:
             cur.execute("select 1")
         database = "ok"
     except Exception:  # noqa: BLE001
@@ -668,6 +681,7 @@ def register(body: RegisterIn):
                 err(409, "Nomor ini sudah terdaftar melalui WhatsApp. Gunakan menu Lupa Password untuk membuat password.")
             err(409, "Nomor HP sudah terdaftar. Silakan masuk.")
         if existing:  # pernah ditolak: ajukan ulang dengan data baru
+            cache.invalidate("user:")  # sesi aktif membaca ulang data akun
             cur.execute(
                 """update users set name = %s, display_name = %s, kabupaten = %s, kecamatan = %s, kelurahan = %s,
                        password_hash = %s, status = 'pending', registered_via = 'web',
@@ -693,7 +707,7 @@ def register_status(token: str = Query(min_length=10, max_length=600)):
     data = auth.read_token(token)
     if not data or data.get("k") != "signup":
         err(401, "Tautan status pendaftaran tidak berlaku. Silakan coba masuk atau daftar ulang.")
-    with tx() as cur:
+    with read() as cur:
         cur.execute("select name, status, review_note, password_hash from users where id = %s", (data["u"],))
         u = cur.fetchone()
     if not u or not u["password_hash"] or auth.password_fingerprint(u["password_hash"]) != data.get("pv"):
@@ -721,7 +735,7 @@ def login(body: LoginIn):
 
 @app.get("/api/auth/me", tags=["akun"])
 def me(actor: Actor = Depends(get_actor)):
-    with tx() as cur:
+    with read() as cur:
         cur.execute(f"select {USER_COLS} from users where id = %s", (actor.user,))
         return _session(cur.fetchone())["user"]
 
@@ -734,6 +748,7 @@ def update_profile(body: ProfileIn, actor: Actor = Depends(get_actor)):
     elif actor.role == "tengkulak" and (body.region or body.district or body.village):
         kab, kec, kel = _valid_address(body.region, body.district, body.village)
     with tx() as cur:
+        cache.invalidate("user:")  # sesi aktif membaca ulang data akun
         cur.execute(
             f"""update users set
                    display_name = case when display_name = name then %s else display_name end,
@@ -827,6 +842,7 @@ def _consume_otp(phone: str, purpose: str, code: str) -> None:
 
 def _set_password(user_id: str, password: str) -> dict:
     with tx() as cur:
+        cache.invalidate("user:")  # sesi aktif membaca ulang data akun
         cur.execute(f"update users set password_hash = %s where id = %s returning {USER_COLS}", (auth.hash_password(password), user_id))
         return cur.fetchone()
 
@@ -876,10 +892,13 @@ def get_prices(wilayah: Optional[str] = Query(default=None), actor: Actor = Depe
         if wilayah and wilayah not in REGIONS:
             err(404, "Wilayah tidak tersedia.")
         regions = [wilayah] if wilayah else list(REGIONS)
-    with tx() as cur:
-        current = {r: ai_reference(cur, r).get(GRAIN) for r in REGIONS}
-        forecasts = pricing.load_forecasts(cur, regions)
-    payload = pricing.price_payload(regions, current, forecasts)
+    def build() -> dict:
+        with read() as cur:
+            current = {r: ai_reference(cur, r).get(GRAIN) for r in REGIONS}
+            forecasts = pricing.load_forecasts(cur, regions)
+        return pricing.price_payload(regions, current, forecasts)
+
+    payload = dict(cache.get_or_set(f"prices:{pricing.today_wib()}:{','.join(regions)}", cache.data_ttl(), build))
     payload["lockedArea"] = actor.kabupaten if actor.role == "petani" else None
     return payload
 
@@ -899,7 +918,9 @@ def get_news(
         if not url or not key:
             err(503, "Sumber berita Supabase belum dikonfigurasi di server.")
         try:
-            items = load_news_supabase(url, key, dari, sampai, [w.title() for w in want_list])
+            items = cache.get_or_set(f"news:{dari}:{sampai}:{','.join(sorted(w.title() for w in want_list))}",
+                                     cache.data_ttl(),
+                                     lambda: load_news_supabase(url, key, dari, sampai, [w.title() for w in want_list]))
         except Exception:  # noqa: BLE001 - jangan bocorkan detail koneksi ke klien
             log.exception("Gagal membaca berita dari Supabase")
             err(503, "Berita belum dapat dimuat dari database.")
@@ -952,7 +973,7 @@ def admin_list_users(
     if status:
         where.append("u.status = %s")
         params.append(status)
-    with tx() as cur:
+    with read() as cur:
         cur.execute(
             f"{ACCOUNT_SELECT} where {' and '.join(where)}"
             " order by (u.status = 'pending') desc, u.created_at desc",
@@ -1027,7 +1048,7 @@ def admin_export_users(
     if status:
         where.append("u.status = %s")
         params.append(status)
-    with tx() as cur:
+    with read() as cur:
         cur.execute(f"{ACCOUNT_SELECT} where {' and '.join(where)} order by u.role, u.name", tuple(params))
         rows = cur.fetchall()
     needle = q.strip().casefold()
@@ -1076,6 +1097,7 @@ def admin_verify_user(user_id: UUID, body: VerifyAccountIn, actor: Actor = Depen
         if u["status"] == target:
             err(409, "Status akun sudah " + ("aktif." if target == "approved" else "ditolak."))
         # reviewed_by bertipe teks di database: simpan nama admin (skema yang juga dipakai chatbot).
+        cache.invalidate("user:")  # sesi aktif membaca ulang data akun
         cur.execute(
             """update users set status = %s, review_note = %s, reviewed_at = now(), reviewed_by = %s
                where id = %s""",
@@ -1114,6 +1136,7 @@ def admin_delete_user(user_id: UUID, actor: Actor = Depends(get_actor)):
             err(409, f"{u['name']} punya riwayat penawaran/kesepakatan, jadi akunnya tidak bisa dihapus agar riwayat transaksi tetap utuh."
                      + (" Tolak akunnya saja bila tidak ingin ia masuk lagi." if u["role"] == "tengkulak" else ""))
         cur.execute("delete from otp_codes where phone = %s", (u["phone"],))
+        cache.invalidate("user:")  # sesi aktif membaca ulang data akun
         cur.execute("delete from users where id = %s", (u["id"],))
     log.info("Akun %s (%s) dihapus oleh admin %s", u["id"], u["role"], actor.user)
     return {"message": f"Akun {u['name']} berhasil dihapus."}
@@ -1125,7 +1148,7 @@ def admin_delete_user(user_id: UUID, actor: Actor = Depends(get_actor)):
 @app.get("/api/admin/dashboard", tags=["admin"])
 def get_admin_dashboard(actor: Actor = Depends(get_actor)):
     require(actor, "admin")
-    with tx() as cur:
+    with read() as cur:
         stocks = stock_rows(cur, "true", ())
         offers, events = offer_rows(cur, "true", ())
         tk = tengkulak_by_phone(cur, {o["buyer_phone"] for o in offers})
@@ -1196,14 +1219,14 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
 # ---------------------------------------------------------------------------
 @app.get("/api/state", tags=["peran"])
 def get_state(actor: Actor = Depends(get_actor)):
-    with tx() as cur:
+    with read() as cur:
         return snapshot(cur, actor)
 
 
 @app.get("/api/state/version", tags=["peran"])
 def get_state_version():
     """Endpoint ringan untuk polling sinkronisasi (perubahan dari web maupun chatbot WA)."""
-    with tx() as cur:
+    with read() as cur:
         return {"version": state_version(cur)}
 
 
