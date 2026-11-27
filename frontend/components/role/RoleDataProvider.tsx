@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { clearSession, getSession, type Session } from "@/lib/auth";
 import { useUI } from "@/components/UIProvider";
+import type { SortMode } from "@/lib/sort";
 import type { MutationResult, RoleKind, RoleState } from "./types";
 
 export interface UiFilters {
@@ -13,6 +14,8 @@ export interface UiFilters {
   area: string;
   type: string;
   status: string;
+  /** Urutan tabel penawaran & transaksi. */
+  sort: SortMode;
 }
 
 export interface MutateOptions {
@@ -82,6 +85,7 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
     area: "Semua Wilayah",
     type: "Semua Jenis",
     status: "Semua Status",
+    sort: "prioritas",
   });
 
   const setDb = useCallback((next: RoleState) => {

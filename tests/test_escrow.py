@@ -118,6 +118,7 @@ def test_deal_creates_escrow_and_invoice(client, login, sql, gw):
     P, T, oid, trx = deal(client, login)
     assert trx["escrowStatus"] == "MENUNGGU_BAYAR" and trx["escrowLabel"] == "Menunggu Pembayaran"
     eid = trx["escrowId"]
+    assert trx["escrowUpdated"]  # dipakai web untuk mengurutkan dari tanggal terbaru
     inv = list(gw.invoices.values())[0]
     # tagihan = nilai gabah + fee 0,5% (ambil sendiri, tanpa logistik)
     assert inv["external_id"] == eid and inv["amount"] == 13_065_000 and inv["duration"] == 24 * 3600

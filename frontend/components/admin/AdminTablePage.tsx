@@ -2,8 +2,10 @@
 /* Halaman tabel admin: stok, penawaran, transaksi, aktivitas (port tablePage/renderRows/exportCSV). */
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { SortSelect } from "@/components/SortSelect";
 import { useUI } from "@/components/UIProvider";
 import { fmtNum, formatRupiah } from "@/lib/format";
+import { adminOfferRank, adminTrxRank, sortRows, timeOfId, type SortMode } from "@/lib/sort";
 import { useAdmin } from "./AdminData";
 import { useDetail } from "./useDetail";
 import { ALL_AREAS, type AdminEvent, type AdminOffer, type AdminStock, type AdminTransaction, type TableKind } from "./types";
@@ -16,6 +18,13 @@ const STATUSES: Record<TableKind, string[]> = {
   penawaran: ["Semua Status", "Menunggu", "Penawaran Balik", "Disetujui", "Ditolak", "Dibatalkan"],
   transaksi: ["Semua Status", "Disepakati", "Selesai"],
   aktivitas: ["Semua Status", "Berhasil", "Perlu Tinjauan"],
+};
+
+/** "dd Mmm yyyy · HH:MM" aktivitas terakhir penawaran (langkah tawar terakhir, atau saat dibuat). */
+const offerLast = (o: AdminOffer) => o.history.at(-1)?.[1] || `${o.date} · ${o.time}`;
+const offerTime = (o: AdminOffer) => {
+  const [d, t] = offerLast(o).split(" · ");
+  return timeOfId(d, t) || timeOfId(o.date, o.time);
 };
 
 const PLACEHOLDER: Record<TableKind, string> = {
@@ -38,6 +47,8 @@ export function AdminTablePage({ kind }: { kind: TableKind }) {
   const detail = useDetail();
   const [area, setArea] = useState(ALL_AREAS);
   const [status, setStatus] = useState("Semua Status");
+  const [sort, setSort] = useState<SortMode>("prioritas");
+  const sortable = kind === "penawaran" || kind === "transaksi";
 
   const source: Row[] = kind === "stok" ? stocks : kind === "penawaran" ? offers : kind === "transaksi" ? transactions : events;
 
@@ -50,7 +61,14 @@ export function AdminTablePage({ kind }: { kind: TableKind }) {
       return matchArea && matchStatus && matchQuery;
     });
   }
-  const rows = rowFilter(source);
+  const filteredRows = rowFilter(source);
+  // Urutan asal dari backend sudah terbaru dulu; sortRows stabil sehingga data bertanggal sama tetap pada urutan itu.
+  const rows =
+    kind === "penawaran"
+      ? sortRows(filteredRows as AdminOffer[], sort, (o) => adminOfferRank(o.status), offerTime)
+      : kind === "transaksi"
+        ? sortRows(filteredRows as AdminTransaction[], sort, (t) => adminTrxRank(t.status), (t) => timeOfId(t.date))
+        : filteredRows;
 
   function exportCSV() {
     if (!source.length) return;
@@ -112,6 +130,7 @@ export function AdminTablePage({ kind }: { kind: TableKind }) {
         <select className="select" aria-label="Filter status" value={status} onChange={(e) => setStatus(e.target.value)}>
           <Options values={STATUSES[kind]} />
         </select>
+        {sortable ? <SortSelect value={sort} onChange={setSort} /> : null}
         <button type="button" className="btn" onClick={exportCSV}>
           <Icon name="download" size={15} /> Ekspor CSV
         </button>
@@ -189,8 +208,8 @@ function TableRow({ kind, row, onDetail }: { kind: TableKind; row: Row; onDetail
       <tr>
         <td>
           <strong>{o.id}</strong>
-          <small className="small-muted" style={{ display: "block", marginTop: 3 }}>
-            {o.date}
+          <small className="small-muted" style={{ display: "block", marginTop: 3 }} title="Aktivitas terakhir">
+            {offerLast(o)}
           </small>
         </td>
         <td>

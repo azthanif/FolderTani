@@ -7,6 +7,8 @@ import { useUI } from "@/components/UIProvider";
 import { api, ApiError } from "@/lib/api";
 import type { Escrow, EscrowStatus } from "@/lib/escrow";
 import { fmtNum, formatRupiah } from "@/lib/format";
+import { adminEscrowRank, sortRows, timeOf, type SortMode } from "@/lib/sort";
+import { SortSelect } from "@/components/SortSelect";
 import { Heading, Kpi } from "./ui";
 
 const FILTERS: { value: string; label: string }[] = [
@@ -20,6 +22,10 @@ const FILTERS: { value: string; label: string }[] = [
   { value: "KEDALUWARSA", label: "Kedaluwarsa" },
 ];
 
+/** Waktu perubahan terakhir escrow (diperbarui_pada; fallback ke cap waktu status terakhir). */
+const lastAt = (e: Escrow) => e.diperbarui_pada || e.selesai_pada || e.diterima_pada || e.dikirim_pada || e.dibayar_pada || e.dibuat_pada;
+const logistikGagal = (e: Escrow) => !!e.termin_petani?.some((t) => t.jenis === "logistik" && t.status === "GAGAL");
+
 const when = (v?: string | null) =>
   v ? new Date(v).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" }) : "—";
 
@@ -30,6 +36,7 @@ export function AdminEscrow() {
   const [counts, setCounts] = useState<Partial<Record<EscrowStatus, number>>>({});
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortMode>("prioritas");
 
   const load = useCallback(async () => {
     try {
@@ -53,7 +60,12 @@ export function AdminEscrow() {
   const c = (s: EscrowStatus) => counts[s] || 0;
   const held = items.filter((e) => ["DIBAYAR", "DIKIRIM", "DITERIMA", "SENGKETA", "PENCAIRAN_GAGAL"].includes(e.status)).reduce((n, e) => n + (e.total_tagihan ?? e.nilai), 0);
   const q = query.trim().toLowerCase();
-  const rows = items.filter((e) => !q || [e.kode, e.offerId, e.petani, e.tengkulak, e.kabupaten].join(" ").toLowerCase().includes(q));
+  const rows = sortRows(
+    items.filter((e) => !q || [e.kode, e.offerId, e.petani, e.tengkulak, e.kabupaten].join(" ").toLowerCase().includes(q)),
+    sort,
+    (e) => adminEscrowRank(e.status, logistikGagal(e)),
+    (e) => timeOf(lastAt(e)),
+  );
 
   function open(e: Escrow) {
     openModal(`Escrow ${e.kode}`, `${e.offerId} • ${e.kabupaten} • GKP`, <EscrowDetail key={e.id} id={e.id} role="admin" onToast={toast} onChanged={load} />);
@@ -78,6 +90,7 @@ export function AdminEscrow() {
             <option key={f.value} value={f.value}>{f.label}</option>
           ))}
         </select>
+        <SortSelect value={sort} onChange={setSort} />
         <button type="button" className="btn" onClick={load}>
           <Icon name="refresh" size={15} /> Muat ulang
         </button>
@@ -111,11 +124,11 @@ export function AdminEscrow() {
                     <td>
                       <strong>{formatRupiah(e.total_tagihan ?? e.nilai)}</strong>
                       <small className="small-muted" style={{ display: "block", marginTop: 3 }}>
-                        {e.pengambilanLabel ? `${e.pengambilanLabel}${e.termin_petani?.some((t) => t.jenis === "logistik" && t.status === "GAGAL") ? " · logistik tertunda" : ""}` : "Belum pilih pengambilan"}
+                        {e.pengambilanLabel ? `${e.pengambilanLabel}${logistikGagal(e) ? " · logistik tertunda" : ""}` : "Belum pilih pengambilan"}
                       </small>
                     </td>
                     <td><EscrowPill status={e.status} label={e.statusLabel} /></td>
-                    <td>{when(e.selesai_pada || e.diterima_pada || e.dikirim_pada || e.dibayar_pada || e.dibuat_pada)}</td>
+                    <td>{when(lastAt(e))}</td>
                     <td>
                       <button type="button" className="link-btn" onClick={() => open(e)}>
                         {e.aksi_tersedia.some((a) => a === "cairkan-ulang" || a === "selesaikan-sengketa") ? "Tindak lanjut" : "Detail"}

@@ -245,7 +245,8 @@ def view(row: dict, peran: Optional[str], riwayat: Optional[list[dict]] = None) 
         "invoice_kedaluwarsa_pada": m.iso(row["invoice_kedaluwarsa_pada"]),
         "dibuat_pada": m.iso(row["dibuat_pada"]), "dibayar_pada": m.iso(row["dibayar_pada"]),
         "dikirim_pada": m.iso(row["dikirim_pada"]), "diterima_pada": m.iso(row["diterima_pada"]),
-        "selesai_pada": m.iso(row["selesai_pada"]), "catatan_masalah": row["catatan_masalah"],
+        "selesai_pada": m.iso(row["selesai_pada"]), "diperbarui_pada": m.iso(row.get("diperbarui_pada")),
+        "catatan_masalah": row["catatan_masalah"],
         "aksi_tersedia": aksi_tersedia(row, peran),
     }
     out.update(rincian_view(row))

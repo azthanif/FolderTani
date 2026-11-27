@@ -358,10 +358,11 @@ def trx_view(o: dict, buyer_id: str, contact: Optional[str], esc: Optional[dict]
         "id": f"TRX-{o['id']}", "offerId": o["code"], "buyerId": buyer_id, "farmerId": str(o["farmer_id"]),
         "stockId": f"STK-{o['stock_id']}", "volume": o["qty_kg"], "price": o["agreed_price"],
         "date": o["agreed_at"].astimezone(WIB).date().isoformat(), "contact": contact,
-        "escrowId": None, "escrowStatus": None, "escrowLabel": None,
+        "escrowId": None, "escrowStatus": None, "escrowLabel": None, "escrowUpdated": None,
     }
     if esc:
-        view.update({"escrowId": str(esc["id"]), "escrowStatus": esc["status"], "escrowLabel": escrow.STATUS_LABEL[esc["status"]]})
+        view.update({"escrowId": str(esc["id"]), "escrowStatus": esc["status"], "escrowLabel": escrow.STATUS_LABEL[esc["status"]],
+                     "escrowUpdated": iso(esc.get("diperbarui_pada"))})
     return view
 
 
@@ -369,7 +370,7 @@ def escrow_by_offer(cur, offers: list[dict]) -> dict[int, dict]:
     ids = [o["id"] for o in offers if o["status"] == "AGREED"]
     if not ids:
         return {}
-    cur.execute("select id, offer_id, status::text as status from escrow_transaksi where offer_id = any(%s)", (ids,))
+    cur.execute("select id, offer_id, status::text as status, diperbarui_pada from escrow_transaksi where offer_id = any(%s)", (ids,))
     return {r["offer_id"]: r for r in cur.fetchall()}
 
 

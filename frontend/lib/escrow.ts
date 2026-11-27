@@ -31,6 +31,8 @@ export interface Escrow {
   petani: string; tengkulak: string; kabupaten: string;
   invoice_url?: string | null; invoice_kedaluwarsa_pada?: string | null;
   dibuat_pada: string; dibayar_pada?: string | null; dikirim_pada?: string | null; diterima_pada?: string | null; selesai_pada?: string | null;
+  /** Waktu baris escrow terakhir berubah (status, termin logistik, sengketa). */
+  diperbarui_pada?: string | null;
   catatan_masalah?: string | null; kontak?: string;
   aksi_tersedia: EscrowAction[];
   riwayat?: EscrowEvent[];

@@ -5,13 +5,15 @@ import { EscrowPill } from "@/components/escrow/EscrowDetail";
 import { showAlert } from "@/lib/dialog";
 import { markSeen, unseenDone } from "@/lib/escrowSeen";
 import { Icon } from "@/components/Icon";
+import { SortSelect } from "@/components/SortSelect";
+import { escrowNeedsAction, offerRank, sortRows, timeOf, trxRank } from "@/lib/sort";
 import { useRoleActions } from "./actions";
 import { useRole } from "./RoleDataProvider";
 import {
-  ActivityCard, availability, Badge, Btn, DataTable, kg, Kpi, number, PageHeader, Person, prettyDate, rupiah, selectors, totalPrice,
+  ActivityCard, availability, Badge, Btn, DataTable, fmtTime, kg, Kpi, number, PageHeader, Person, prettyDate, rupiah, selectors, totalPrice,
   type Selectors,
 } from "./common";
-import type { Offer, RoleState } from "./types";
+import type { Offer, RoleState, Transaction } from "./types";
 
 function useData() {
   const r = useRole();
@@ -46,9 +48,15 @@ function Filters({ page }: { page: "stok" | "penawaran" | "transaksi" }) {
           ))}
         </select>
       ) : null}
+      {page !== "stok" ? <SortSelect value={ui.sort} onChange={(sort) => setUi({ sort })} /> : null}
     </div>
   );
 }
+
+/** Waktu aktivitas terakhir penawaran (langkah tawar terakhir, atau saat dibuat). */
+const offerTime = (o: Offer) => Math.max(timeOf(o.created), ...o.history.map((h) => timeOf(h.at)));
+/** Waktu perubahan terakhir kesepakatan: status escrow terakhir berubah, atau tanggal sepakat. */
+const trxTime = (t: Transaction) => Math.max(timeOf(t.date), timeOf(t.escrowUpdated));
 
 function useFiltered() {
   const { ui } = useRole();
@@ -62,8 +70,8 @@ function useFiltered() {
 /* ---------- Tabel penawaran ---------- */
 function OfferTable({ rows, S, isFarmer, onDetail }: { rows: Offer[]; S: Selectors; isFarmer: boolean; onDetail: (id: string) => void }) {
   const cols = isFarmer
-    ? ["Penawaran / Pembeli", "Gabah", "Penawaran Awal", "Harga Balik", "Status", "Aksi"]
-    : ["Penawaran / Petani", "Gabah", "Penawaran Saya", "Harga Balik", "Status", "Aksi"];
+    ? ["Penawaran / Pembeli", "Gabah", "Penawaran Awal", "Harga Balik", "Status", "Aktivitas Terakhir", "Aksi"]
+    : ["Penawaran / Petani", "Gabah", "Penawaran Saya", "Harga Balik", "Status", "Aktivitas Terakhir", "Aksi"];
   return (
     <div className="table-wrap">
       <table>
@@ -87,13 +95,14 @@ function OfferTable({ rows, S, isFarmer, onDetail }: { rows: Offer[]; S: Selecto
                   <td>{rupiah(o.initialBid)}/kg</td>
                   <td>{o.counter ? rupiah(o.counter) + "/kg" : "—"}</td>
                   <td><Badge s={o.status} /></td>
+                  <td style={{ whiteSpace: "nowrap" }}>{offerTime(o) ? fmtTime(new Date(offerTime(o)).toISOString()) : "—"}</td>
                   <td>{action}</td>
                 </tr>
               );
             })
           ) : (
             <tr>
-              <td colSpan={6}>
+              <td colSpan={7}>
                 <div className="empty-state">
                   <div><strong>Belum ada penawaran</strong>Penawaran akan tampil di sini.</div>
                 </div>
@@ -455,10 +464,15 @@ function BuyerStockPage() {
 
 /* ---------- Penawaran ---------- */
 export function OffersPage() {
-  const { S, A, isFarmer } = useData();
+  const { S, A, isFarmer, ui } = useData();
   const filtered = useFiltered();
   const mine = S.myOffers();
-  const a = filtered(mine, (o) => [o.id, o.status, S.farmer(o.farmerId)?.name, S.buyer(o.buyerId)?.label, S.stock(o.stockId)?.type].join(" "));
+  const a = sortRows(
+    filtered(mine, (o) => [o.id, o.status, S.farmer(o.farmerId)?.name, S.buyer(o.buyerId)?.label, S.stock(o.stockId)?.type].join(" ")),
+    ui.sort,
+    (o) => offerRank(o.status, isFarmer),
+    offerTime,
+  );
   return (
     <>
       <PageHeader
@@ -484,7 +498,11 @@ export function OffersPage() {
         <div className="section-header">
           <div>
             <h3 className="section-title">Daftar Penawaran</h3>
-            <div className="section-subtitle">Setiap petani mempunyai penawaran dan negosiasi terpisah</div>
+            <div className="section-subtitle">
+              {ui.sort === "prioritas"
+                ? "Yang menunggu respons Anda di atas, lalu aktivitas terbaru"
+                : "Diurutkan dari aktivitas terbaru"}
+            </div>
           </div>
         </div>
         <OfferTable rows={a} S={S} isFarmer={isFarmer} onDetail={A.offerDetail} />
@@ -496,7 +514,7 @@ export function OffersPage() {
 
 /* ---------- Kesepakatan + escrow pembayaran ---------- */
 export function TransactionsPage() {
-  const { S, A, isFarmer, db } = useData();
+  const { S, A, isFarmer, db, ui } = useData();
   // Kembali dari halaman bayar Xendit (?escrow=<id>): buka detail transaksi terkait.
   const [autoOpened, setAutoOpened] = useState(false);
   useEffect(() => {
@@ -534,10 +552,15 @@ export function TransactionsPage() {
   }, [S, celebrating, db, isFarmer]);
   const filtered = useFiltered();
   const tx = S.myTransactions();
-  const list = filtered(tx, (t) => [t.id, S.buyer(t.buyerId)?.label, S.farmer(t.farmerId)?.name, S.stock(t.stockId)?.region].join(" "));
+  const list = sortRows(
+    filtered(tx, (t) => [t.id, S.buyer(t.buyerId)?.label, S.farmer(t.farmerId)?.name, S.stock(t.stockId)?.region].join(" ")),
+    ui.sort,
+    (t) => trxRank(t.escrowStatus, isFarmer),
+    trxTime,
+  );
   const volume = tx.reduce((n, t) => n + t.volume, 0);
   const value = tx.reduce((n, t) => n + t.volume * t.price, 0);
-  const needAction = tx.filter((t) => (isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || ""))).length;
+  const needAction = tx.filter((t) => escrowNeedsAction(t.escrowStatus, isFarmer)).length;
   return (
     <>
       <PageHeader
@@ -559,7 +582,7 @@ export function TransactionsPage() {
       </div>
       <Filters page="transaksi" />
       <DataTable
-        columns={["ID Kesepakatan", isFarmer ? "Pembeli" : "Petani", "Lokasi", "Volume", "Harga Sepakat", "Nilai Kesepakatan", "Status Pembayaran", "Tanggal", "Aksi"]}
+        columns={["ID Kesepakatan", isFarmer ? "Pembeli" : "Petani", "Lokasi", "Volume", "Harga Sepakat", "Nilai Kesepakatan", "Status Pembayaran", "Tanggal Sepakat", "Aksi"]}
         rows={list.map((t) => (
           <tr key={t.id}>
             <td><strong>{t.id}</strong></td>
@@ -570,12 +593,15 @@ export function TransactionsPage() {
             <td><strong>{totalPrice(t.volume, t.price)}</strong></td>
             <td>
               <EscrowPill status={t.escrowStatus} label={t.escrowLabel} />
-              {(isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || "")) ? (
+              {escrowNeedsAction(t.escrowStatus, isFarmer) ? (
                 <small className="escrow-todo">Perlu tindakan Anda</small>
               ) : null}
             </td>
-            <td>{prettyDate(t.date)}</td>
-            <td><Btn cl={(isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || "")) ? "primary" : ""} onClick={() => A.trxDetail(t.id)}>{(isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || "")) ? "Tindak Lanjuti" : "Lihat Detail"}</Btn></td>
+            <td>
+              {prettyDate(t.date)}
+              {t.escrowUpdated ? <small className="small-muted" style={{ display: "block", marginTop: 3 }}>Diperbarui {fmtTime(t.escrowUpdated)}</small> : null}
+            </td>
+            <td><Btn cl={escrowNeedsAction(t.escrowStatus, isFarmer) ? "primary" : ""} onClick={() => A.trxDetail(t.id)}>{escrowNeedsAction(t.escrowStatus, isFarmer) ? "Tindak Lanjuti" : "Lihat Detail"}</Btn></td>
           </tr>
         ))}
         footer="Pembayaran diproses lewat escrow (payment gateway mode uji). Status juga bisa dikonfirmasi lewat chatbot WhatsApp."
