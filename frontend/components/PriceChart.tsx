@@ -7,20 +7,20 @@ import { Icon } from "./Icon";
 
 interface PlotProps {
   actual: number[];
-  predicted: number[];
+  forecast: number[];
   dates: Date[];
 }
 
-/** actual: harga pasar s.d. hari ini; predicted: estimasi AI untuk rentang sama + prakiraan. */
-function PricePlot({ actual, predicted, dates }: PlotProps) {
+/** actual: harga pasar s.d. hari ini; forecast: prakiraan AI h+1 s.d. h+7 (hanya di zona prakiraan). */
+function PricePlot({ actual, forecast, dates }: PlotProps) {
   const gradId = "priceFill" + useId().replace(/:/g, "");
-  const arr = [...actual, ...predicted];
+  const arr = [...actual, ...forecast];
   const min = Math.floor(Math.min(...arr) / 100) * 100 - 100;
   const max = Math.ceil(Math.max(...arr) / 100) * 100 + 100;
   const W = 650, H = 220;
   const pad = { t: 13, l: 43, r: 10, b: 29 };
   const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
-  const n = predicted.length, today = actual.length - 1;
+  const n = actual.length + forecast.length, today = actual.length - 1;
   const xy = (i: number, v: number): [number, number] => [pad.l + (i * pw) / (n - 1), pad.t + ((max - v) * ph) / (max - min)];
   const pts = (a: number[]) => a.map((v, i) => xy(i, v).map((c) => c.toFixed(1)).join(",")).join(" ");
 
@@ -31,6 +31,10 @@ function PricePlot({ actual, predicted, dates }: PlotProps) {
   const tx = xy(today, min)[0];
   const fill = pts(actual) + ` ${tx},${pad.t + ph} ${pad.l},${pad.t + ph}`;
   const step = actual.length > 7 ? 5 : 3;
+  // Garis prakiraan disambung dari titik harga pasar hari ini agar tidak terputus, lalu h+1 s.d. h+7.
+  const forecastPts = [actual[today], ...forecast]
+    .map((v, k) => xy(today + k, v).map((c) => c.toFixed(1)).join(","))
+    .join(" ");
 
   return (
     <svg
@@ -64,7 +68,7 @@ function PricePlot({ actual, predicted, dates }: PlotProps) {
       </text>
       <polygon points={fill} fill={`url(#${gradId})`} />
       <polyline className="curve" points={pts(actual)} stroke="#2c8a61" />
-      <polyline className="curve" points={pts(predicted)} stroke="#e7b363" strokeDasharray="6 7" />
+      <polyline className="curve" points={forecastPts} stroke="#e7b363" strokeDasharray="6 7" />
       {actual.map((v, i) =>
         i % step === 0 || i === today ? (
           <circle key={i} className="dot" cx={xy(i, v)[0]} cy={xy(i, v)[1]} r={4.7} fill="#2c8a61">
@@ -72,6 +76,11 @@ function PricePlot({ actual, predicted, dates }: PlotProps) {
           </circle>
         ) : null,
       )}
+      {forecast.map((v, k) => (
+        <circle key={"f" + k} className="dot" cx={xy(today + 1 + k, v)[0]} cy={xy(today + 1 + k, v)[1]} r={3.6} fill="#e7b363">
+          <title>{`H+${k + 1} · ${fmtDay(dates[today + 1 + k], { day: "numeric", month: "short" })} · ${fmtNum(v)} rupiah/kg`}</title>
+        </circle>
+      ))}
       {ticks.map((i) => (
         <text key={"t" + i} x={xy(i, min)[0]} y={H - 2} textAnchor="middle">
           {fmtDay(dates[i], { day: "2-digit", month: "short" })}
@@ -115,13 +124,13 @@ export function PriceChart({ prices, area = "Garut" }: { prices: PricesResponse;
         </span>
         <span className="hint">/kg · {area}</span>
       </div>
-      <PricePlot actual={d.actualDaily.slice(-days)} predicted={[...d.predictedDaily.slice(-days), ...d.forecast]} dates={dates} />
+      <PricePlot actual={d.actualDaily.slice(-days)} forecast={d.forecast.slice(0, prices.forecastDays)} dates={dates} />
       <div className="legend">
         <span className="legend-item">
           <i className="legend-line" style={{ background: "#2c8a61" }} /> Harga pasar
         </span>
         <span className="legend-item">
-          <i className="legend-line" style={{ background: "#e7b363" }} /> Estimasi AI
+          <i className="legend-line" style={{ background: "#e7b363" }} /> Prediksi AI (H+1 s.d. H+{prices.forecastDays})
         </span>
         <span className="legend-item">
           <i className="legend-zone" /> Prakiraan {prices.forecastDays} hari

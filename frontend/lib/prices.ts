@@ -20,8 +20,16 @@ export interface RegionPrice {
   meta?: PriceMeta;
 }
 
+export interface RegionComparison {
+  kabupaten: string;
+  current: number;
+  simulated: boolean;
+}
+
 export interface PricesResponse {
   regions: Record<string, RegionPrice>;
+  /** Semua kabupaten layanan (juga untuk petani yang grafiknya dikunci ke kabupatennya). */
+  comparison?: RegionComparison[];
   asOf: string | null;
   hpp: number;
   historyDays: number;
@@ -31,5 +39,10 @@ export interface PricesResponse {
 
 export async function loadPrices(role: Role): Promise<PricesResponse> {
   const res = await api<PricesResponse>("/prices", { role });
-  return { ...res, regions: res.regions || {} };
+  const regions = res.regions || {};
+  const comparison =
+    res.comparison && res.comparison.length
+      ? res.comparison
+      : Object.entries(regions).map(([kabupaten, v]) => ({ kabupaten, current: v.current, simulated: v.meta?.simulated ?? true }));
+  return { ...res, regions, comparison };
 }

@@ -57,7 +57,8 @@ export function HargaView({ role }: { role: Role }) {
     );
 
   const meta = d.meta;
-  const anySimulated = Object.values(prices.regions).some((v) => v.meta?.simulated ?? true);
+  const comparison = prices.comparison ?? [];
+  const anySimulated = comparison.some((c) => c.simulated);
 
   return (
     <div className="page-harga">
@@ -126,22 +127,12 @@ export function HargaView({ role }: { role: Role }) {
               ["JENIS GABAH", "GKP"],
               ["TANGGAL PREDIKSI", fmtDay(todayWIB(meta?.runDate ?? prices.asOf), { day: "numeric", month: "short", year: "numeric" })],
               ["SUMBER", meta?.source ?? "Model AI Temu Tani"],
-              ["AKURASI (MAPE)", meta?.mape != null ? `${meta.mape.toLocaleString("id-ID", { maximumFractionDigits: 2 })}% (uji 12 minggu)` : "Belum dievaluasi"],
-              ["VERSI MODEL", meta?.modelVersion ?? "Belum tersedia"],
             ].map(([k, v]) => (
               <div className="modal-item" key={k}>
                 <label>{k}</label>
                 <strong>{v}</strong>
               </div>
             ))}
-          </div>
-          <div className="divider" />
-          <div className="info-strip" style={{ margin: 0 }}>
-            <Icon name="info" size={16} />
-            <span>
-              Harga wajar adalah <strong>referensi negosiasi</strong>, bukan harga transaksi yang dijamin.
-              {meta?.simulated ? " Sebagian harga input belum berasal dari observasi pasar (simulasi atau isi maju)." : ""}
-            </span>
           </div>
         </section>
       </div>
@@ -167,26 +158,24 @@ export function HargaView({ role }: { role: Role }) {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(prices.regions)
-                .filter(([city]) => !locked || city === locked)
-                .map(([city, v]) => (
-                  <tr key={city}>
-                    <td>
-                      <strong>{city}</strong>
-                    </td>
-                    <td>GKP</td>
-                    <td>
-                      <strong>{formatRupiah(v.current)}/kg</strong>
-                    </td>
-                    <td>{formatRupiah(prices.hpp)}/kg</td>
-                    <td>
-                      <span style={{ color: v.current >= prices.hpp ? "#29825c" : "#c0392b", fontWeight: 800 }}>
-                        {v.current >= prices.hpp ? "+" : "−"}
-                        {formatRupiah(Math.abs(v.current - prices.hpp))}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+              {comparison.map(({ kabupaten: city, current }) => (
+                <tr key={city}>
+                  <td>
+                    <strong>{city}</strong>
+                  </td>
+                  <td>GKP</td>
+                  <td>
+                    <strong>{formatRupiah(current)}/kg</strong>
+                  </td>
+                  <td>{formatRupiah(prices.hpp)}/kg</td>
+                  <td>
+                    <span style={{ color: current >= prices.hpp ? "#29825c" : "#c0392b", fontWeight: 800 }}>
+                      {current >= prices.hpp ? "+" : "−"}
+                      {formatRupiah(Math.abs(current - prices.hpp))}
+                    </span>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

@@ -963,10 +963,17 @@ def get_prices(wilayah: Optional[str] = Query(default=None), actor: Actor = Depe
     def build() -> dict:
         with read() as cur:
             current = {r: ai_reference(cur, r).get(GRAIN) for r in REGIONS}
-            forecasts = pricing.load_forecasts(cur, regions)
-        return pricing.price_payload(regions, current, forecasts)
+            forecasts = pricing.load_forecasts(cur, list(REGIONS))
+        return pricing.price_payload(list(REGIONS), current, forecasts)
 
-    payload = dict(cache.get_or_set(f"prices:{pricing.today_wib()}:{','.join(regions)}", cache.data_ttl(), build))
+    full = cache.get_or_set(f"prices:{pricing.today_wib()}:all", cache.data_ttl(), build)
+    payload = dict(full)
+    payload["regions"] = {r: full["regions"][r] for r in regions if r in full["regions"]}
+    # Tabel perbandingan memuat semua kabupaten layanan, juga untuk petani yang grafiknya dikunci.
+    payload["comparison"] = [
+        {"kabupaten": r, "current": v["current"], "simulated": bool(v.get("meta", {}).get("simulated", True))}
+        for r, v in full["regions"].items()
+    ]
     payload["lockedArea"] = actor.kabupaten if actor.role == "petani" else None
     return payload
 

@@ -347,7 +347,7 @@ export function BeritaView() {
         </div>
       </section>
 
-      <div className="layout">
+      <div className={`layout${longText && expanded ? " article-expanded" : ""}`}>
         <div className="maincol">
           <section className="panel latest" ref={latestRef}>
             <div className="latest-top">

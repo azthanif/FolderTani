@@ -458,6 +458,7 @@ def test_accept_fails_when_stock_reduced(client, login):
 def test_prices_locked_to_farmer_region_and_follow_database(client, login):
     r = client.get("/api/prices", headers=login("petani_cianjur")).json()
     assert r["lockedArea"] == "Cianjur" and list(r["regions"]) == ["Cianjur"]
+    assert [c["kabupaten"] for c in r["comparison"]] == ["Garut", "Cianjur"]
     assert r["regions"]["Cianjur"]["current"] == 6950
 
 
