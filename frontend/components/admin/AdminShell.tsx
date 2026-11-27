@@ -1,6 +1,7 @@
 "use client";
 /* Sidebar/topbar admin + pencarian global + notifikasi. */
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { api } from "@/lib/api";
 import { usePathname, useRouter } from "next/navigation";
 import { ApiErrorCard, DashboardShell, type NavItem } from "@/components/DashboardShell";
 import { Icon } from "@/components/Icon";
@@ -17,6 +18,21 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const active = countOffers(offers, ALL_AREAS);
+  // Escrow yang perlu tindak lanjut admin (sengketa & pencairan gagal), diperbarui berkala.
+  const [escrowTodo, setEscrowTodo] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      api<{ items: unknown[] }>("/escrow?status=SENGKETA,PENCAIRAN_GAGAL")
+        .then((r) => alive && setEscrowTodo(r.items.length))
+        .catch(() => undefined);
+    load();
+    const t = setInterval(() => !document.hidden && load(), 15_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
 
   const nav: NavItem[] = [
     { href: "/admin", icon: "layout-dashboard", label: "Overview" },
@@ -24,7 +40,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     { href: "/admin/penawaran", icon: "handshake", label: "Penawaran & Negosiasi", count: active },
     { href: "/admin/harga", icon: "chart-no-axes-combined", label: "Prediksi Harga AI" },
     { href: "/admin/transaksi", icon: "receipt-text", label: "Riwayat Kesepakatan" },
-    { href: "/admin/escrow", icon: "wallet", label: "Escrow & Pembayaran" },
+    { href: "/admin/escrow", icon: "wallet", label: "Escrow & Pembayaran", count: escrowTodo || undefined },
     { href: "/admin/aktivitas", icon: "messages-square", label: "Aktivitas Chatbot" },
     { href: "/admin/berita", icon: "newspaper", label: "Berita & Analisis" },
     { href: "/admin/akun", icon: "users", label: "Kelola Akun", count: pendingAccounts },

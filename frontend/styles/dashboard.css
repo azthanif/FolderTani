@@ -1611,3 +1611,14 @@
 .dash .stock-edit-row input{width:100%;text-align:right;font:inherit;font-size:15px;font-weight:600;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
 .dash .stock-edit-row input:focus{outline:none;border-color:#2f7d4f;box-shadow:0 0 0 3px #e3f1e7}
 @media(max-width:620px){.dash .stock-edit-head{display:none}.dash .stock-edit-row{grid-template-columns:1fr;gap:8px}.dash .stock-edit-row input{text-align:left}}
+
+/* ---------- Detail escrow: gaya mandiri agar sama di dashboard admin & peran ---------- */
+.dash .escrow-detail .metric-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.dash .escrow-detail .metric-small{padding:16px;background:#f7faf7;border-radius:12px;min-width:0}
+.dash .escrow-detail .metric-small small{display:block;color:#8c9e91;font-size:11px}
+.dash .escrow-detail .metric-small strong{display:block;font-family:var(--font-jakarta),system-ui,sans-serif;font-size:18px;letter-spacing:-.5px;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dash .escrow-detail .notice-card{padding:14px;background:#f5f9f4;border:1px solid #e8efe5;border-radius:12px;font-size:12px;color:#587061;line-height:1.6}
+.dash .escrow-detail .escrow-exception.red{background:#fff4f2;border-color:#ffdcd8;color:#8e3b3c}
+.dash .escrow-detail .escrow-exception.gray{background:#f5f6f5;border-color:#e6e9e6;color:#5d6a61}
+.dash .escrow-detail .divider{height:1px;background:var(--line);margin:18px 0}
+@media(max-width:620px){.dash .escrow-detail .metric-row{grid-template-columns:1fr}}

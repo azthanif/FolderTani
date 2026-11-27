@@ -101,7 +101,7 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
   const other = role === "petani" ? "tengkulak" : "petani";
 
   return (
-    <>
+    <div className="escrow-detail">
       <div className="metric-row">
         <div className="metric-small"><small>Nilai escrow</small><strong>{formatRupiah(e.nilai)}</strong></div>
         <div className="metric-small"><small>Harga</small><strong>{formatRupiah(e.harga_per_kg)}/kg</strong></div>
@@ -214,10 +214,15 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
         {role === "petani" && e.status === "DIKIRIM" && "Menunggu tengkulak mengonfirmasi penerimaan gabah. Dana dicairkan otomatis setelah dikonfirmasi."}
         {e.status === "DITERIMA" && "Gabah sudah diterima. Dana sedang dicairkan ke petani."}
         {e.status === "SELESAI" && "Transaksi selesai. Dana sudah diteruskan ke petani."}
-        {role === "admin" && ["MENUNGGU_BAYAR", "DIBAYAR", "DIKIRIM"].includes(e.status) && " Status bergerak dari webhook Xendit dan konfirmasi kedua pihak."}
-        {["KEDALUWARSA", "SENGKETA", "PENCAIRAN_GAGAL"].includes(e.status) && "Konfirmasi yang sama juga bisa dilakukan lewat chatbot WhatsApp Temu Tani."}
+        {role === "admin" && ["MENUNGGU_BAYAR", "DIBAYAR", "DIKIRIM"].includes(e.status) && "Status bergerak dari webhook Xendit dan konfirmasi kedua pihak."}
+        {role === "admin" && e.status === "SENGKETA" && "Tinjau laporan tengkulak dan hubungi kedua pihak. Bila masalah selesai dan dana tetap dibayarkan, klik \u201cTeruskan dana ke petani\u201d."}
+        {role === "admin" && e.status === "PENCAIRAN_GAGAL" && "Periksa kode gagal dan akun pencairan petani, lalu klik \u201cCairkan ulang\u201d."}
+        {role === "admin" && e.status === "KEDALUWARSA" && "Tagihan kedaluwarsa. Kesepakatan ini tidak dilanjutkan."}
+        {role !== "admin" && e.status === "SENGKETA" && "Admin Temu Tani sedang meninjau laporan. Anda akan dihubungi lewat WhatsApp."}
+        {role !== "admin" && e.status === "PENCAIRAN_GAGAL" && "Pencairan sedang ditangani admin. Dana tetap aman."}
+        {role !== "admin" && e.status === "KEDALUWARSA" && "Tagihan kedaluwarsa karena tidak dibayar sampai batas waktu."}
       </div>
 
-    </>
+    </div>
   );
 }
