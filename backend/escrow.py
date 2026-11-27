@@ -549,7 +549,7 @@ def terapkan_disbursement(row: dict, status: str, payload: dict, kanal: str = "w
                           disbursement_id: Optional[str] = None) -> bool:
     """Hanya untuk disbursement aktif (guard: disbursement_id saat ini). FAILED -> PENCAIRAN_GAGAL membuka percobaan baru."""
     status = (status or "").upper()
-    ke = "SELESAI" if status in ("COMPLETED", "SUCCEEDED") else "PENCAIRAN_GAGAL" if status == "FAILED" else None
+    ke = "SELESAI" if status in ("COMPLETED", "SUCCEEDED") else "PENCAIRAN_GAGAL" if status in ("FAILED", "REVERSED", "CANCELLED") else None
     if not ke or row["status"] != "DITERIMA" or not row["disbursement_id"]:
         return False
     extra = {"disbursement_id": disbursement_id or row["disbursement_id"]} if ke == "SELESAI" else \
@@ -818,8 +818,12 @@ async def webhook_invoice(request: Request, x_callback_token: str = Header(defau
 
 @router.post("/api/webhooks/xendit/disbursement", tags=["webhook"])
 async def webhook_disbursement(request: Request, x_callback_token: str = Header(default="", alias="x-callback-token")):
-    body = await _callback_body(request, x_callback_token)
-    ext, disb_id = str(body.get("external_id") or ""), str(body.get("id") or "")
+    raw = await _callback_body(request, x_callback_token)
+    # Payouts v2: {"event": "payout.succeeded", "data": {id, reference_id, status, failure_code}};
+    # Disbursement lama: {id, external_id, status, failure_code} di level atas.
+    body = raw.get("data") if isinstance(raw.get("data"), dict) else raw
+    ext = str(body.get("reference_id") or body.get("external_id") or "")
+    disb_id = str(body.get("id") or "")
     row = _get_row(ext.rsplit("-", 1)[0]) if ext.count("-") >= 5 else None  # '<uuid>-<percobaan>'
     if not row or not disb_id or not _aktif_cocok(row, disb_id, ext):
         log.warning("Callback disbursement tidak dikenali/kedaluwarsa: external_id=%s id=%s", ext, disb_id)
@@ -830,12 +834,12 @@ async def webhook_disbursement(request: Request, x_callback_token: str = Header(
             d = xendit.get_disbursement(disb_id)
         except xendit.XenditError:
             _m().err(503, "Status pencairan belum bisa diverifikasi.")
-        if str(d.get("external_id") or ext) != ext:
+        if str(d.get("reference_id") or d.get("external_id") or ext) != ext:
             log.warning("Callback disbursement %s: external_id tidak cocok dengan API", disb_id)
             return {"ok": False, "ignored": "external_id_mismatch"}
         status = str(d.get("status") or "")
         body.setdefault("failure_code", d.get("failure_code"))
-    changed = terapkan_disbursement(row, status, {"callback": body, "status_terverifikasi": status,
+    changed = terapkan_disbursement(row, status, {"callback": raw, "status_terverifikasi": status,
                                                   "failure_code": body.get("failure_code")}, disbursement_id=disb_id)
     return {"ok": True, "changed": changed}
 

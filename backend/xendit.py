@@ -3,8 +3,8 @@
 Pustaka standar saja (urllib), sama seperti wa.py. Dokumentasi yang dipakai:
   POST /v2/invoices              buat invoice (external_id, amount, invoice_duration detik)
   GET  /v2/invoices/{id}         cek ulang status invoice (dipakai setelah callback)
-  POST /disbursements            buat disbursement (header X-IDEMPOTENCY-KEY)
-  GET  /disbursements/{id}       cek ulang status disbursement
+  POST /v2/payouts               buat payout ke petani (header Idempotency-key)
+  GET  /v2/payouts/{id}          cek ulang status payout
 Callback Xendit tidak ditandatangani HMAC: keaslian dicek dengan header x-callback-token.
 
 Env:
@@ -115,33 +115,48 @@ def get_invoice(invoice_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Disbursement
+# Pencairan: Payouts v2 (POST /v2/payouts). Akun Xendit baru tidak lagi punya API Disbursement lama.
+# Nama fungsi tetap *_disbursement agar pemanggil tidak berubah; respons dinormalkan: external_id = reference_id.
 # ---------------------------------------------------------------------------
+def channel_code(kode_bank: str) -> str:
+    """'BCA' -> 'ID_BCA', 'DANA' -> 'ID_DANA'; kode yang sudah berawalan 'ID_' dibiarkan."""
+    k = (kode_bank or "").strip().upper()
+    return k if k.startswith("ID_") else f"ID_{k}"
+
+
+def _norm_payout(d: dict) -> dict:
+    out = dict(d)
+    out.setdefault("external_id", d.get("reference_id"))
+    return out
+
+
 def create_disbursement(external_id: str, amount: int, bank_code: str, account_holder_name: str,
                         account_number: str, description: str) -> dict:
-    """-> {'id', 'status': 'PENDING', ...}. external_id dipakai juga sebagai idempotency key."""
+    """-> {'id', 'status': 'ACCEPTED', 'external_id'}. reference_id juga dipakai sebagai Idempotency-key."""
     if mock_mode():
-        return {"id": "mock-disb-" + secrets.token_hex(8), "status": "PENDING", "external_id": external_id}
-    body = {"external_id": external_id, "amount": int(amount), "bank_code": bank_code,
-            "account_holder_name": account_holder_name, "account_number": account_number, "description": description}
-    return _request("POST", "/disbursements", body, headers={"X-IDEMPOTENCY-KEY": external_id})
+        return {"id": "mock-disb-" + secrets.token_hex(8), "status": "ACCEPTED", "external_id": external_id}
+    body = {"reference_id": external_id, "channel_code": channel_code(bank_code),
+            "channel_properties": {"account_holder_name": account_holder_name, "account_number": account_number},
+            "amount": int(amount), "currency": "IDR", "description": description[:100]}
+    return _norm_payout(_request("POST", "/v2/payouts", body, headers={"Idempotency-key": external_id}))
 
 
 def get_disbursement(disbursement_id: str) -> dict:
     if mock_mode():
         raise XenditError("Mode simulasi tidak bisa cek ulang ke Xendit.", "MOCK")
-    return _request("GET", f"/disbursements/{disbursement_id}")
+    return _norm_payout(_request("GET", f"/v2/payouts/{disbursement_id}"))
 
 
 def find_disbursements(external_id: str) -> list[dict]:
-    """GET /disbursements?external_id=... : dipakai rekonsiliasi saat hasil pembuatan disbursement tidak pasti."""
+    """GET /v2/payouts?reference_id=... : dipakai rekonsiliasi saat hasil pembuatan payout tidak pasti."""
     if mock_mode():
         raise XenditError("Mode simulasi tidak bisa cek ulang ke Xendit.", "MOCK")
     from urllib.parse import quote
     try:
-        out = _request("GET", f"/disbursements?external_id={quote(external_id)}")
+        out = _request("GET", f"/v2/payouts?reference_id={quote(external_id)}")
     except XenditError as e:
-        if e.status == 404:  # Xendit membalas 404 bila tidak ada disbursement dengan external_id tersebut
+        if e.status == 404:
             return []
         raise
-    return [d for d in (out if isinstance(out, list) else [out]) if isinstance(d, dict) and d.get("id")]
+    items = out if isinstance(out, list) else (out.get("data") if isinstance(out.get("data"), list) else [out])
+    return [_norm_payout(d) for d in items if isinstance(d, dict) and d.get("id")]

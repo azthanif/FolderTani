@@ -490,3 +490,32 @@ def test_n8n_payload_carries_waha_session(client, login, gw, monkeypatch):
     monkeypatch.setattr(escrow, "_deliver_n8n", lambda url, body: sent.append(body) or True)
     deal(client, login)
     assert sent[-1]["session"] == "session_abc"
+
+
+def test_payouts_v2_webhook_envelope(client, login, gw):
+    """Akun Xendit baru memakai Payouts v2: callback {event, data: {id, reference_id, status}}."""
+    P, T, eid = _to_diterima(client, login, gw)
+    client.post(f"/api/escrow/{eid}/konfirmasi-terima", headers=T)
+    d = list(gw.disb.values())[-1]
+    d["status"] = "SUCCEEDED"
+    body = {"event": "payout.succeeded", "business_id": "x", "data": {"id": d["id"], "reference_id": d["external_id"], "status": "SUCCEEDED"}}
+    assert callback(client, "disbursement", body).json() == {"ok": True, "changed": True}
+    assert client.get(f"/api/escrow/{eid}", headers=P).json()["status"] == "SELESAI"
+
+
+def test_xendit_test_and_save_dummy_payload_is_acknowledged(client, gw):
+    """Tombol 'Test and save' di dashboard Xendit mengirim contoh payload: dibalas 200 tanpa mengubah apa pun."""
+    assert callback(client, "invoice", {"id": "579c8d61f23fa4ca35e52da4", "external_id": "invoice_123124123", "status": "PAID"}).status_code == 200
+    assert callback(client, "disbursement", {"event": "payout.succeeded", "data": {"id": "disb-1", "reference_id": "myref-1", "status": "SUCCEEDED"}}).status_code == 200
+
+
+def test_payout_request_shape(monkeypatch):
+    from backend import xendit
+    seen = {}
+    monkeypatch.delenv("TEMUTANI_PAYMENT_MOCK", raising=False)
+    monkeypatch.setattr(xendit, "_request", lambda method, path, payload=None, headers=None, timeout=15.0:
+                        seen.update(method=method, path=path, payload=payload, headers=headers) or {"id": "disb-9", "reference_id": payload["reference_id"], "status": "ACCEPTED"})
+    out = xendit.create_disbursement("abc-1", 6000, "BCA", "Asep", "123", "Pencairan escrow")
+    assert seen["path"] == "/v2/payouts" and seen["headers"] == {"Idempotency-key": "abc-1"}
+    assert seen["payload"]["channel_code"] == "ID_BCA" and seen["payload"]["channel_properties"] == {"account_holder_name": "Asep", "account_number": "123"}
+    assert out["external_id"] == "abc-1" and xendit.channel_code("ID_DANA") == "ID_DANA"
