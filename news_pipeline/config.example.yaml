@@ -51,9 +51,11 @@ digest:
   max_national: 3
   max_chars: 3500
   llm:
-    enabled: false          # true = tambah paragraf "Sorotan" via Ollama (lokal)
-    ollama_url: http://localhost:11434
-    model: qwen2.5:7b       # Qwen2.5-7B-Instruct, Apache-2.0
+    method: auto            # auto = aktif bila api_key_env tersedia; false = nonaktif; true = wajib
+    model: openai/gpt-oss-20b
+    base_url: https://api.groq.com/openai/v1   # endpoint kompatibel OpenAI (Groq default)
+    api_key_env: GROQ_API_KEY
+    timeout_sec: 30
 
 notify:
   enabled: false            # false = dry-run. Ubah ke true hanya setelah uji ke nomor sendiri

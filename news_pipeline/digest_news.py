@@ -90,21 +90,30 @@ def build_items(ctx) -> list[dict]:
 
 
 def _llm_sorotan(items: list[dict], kab: str, lc: dict) -> str | None:
-    if not lc.get("enabled") or not items:
+    import os
+    enabled = lc.get("enabled") or lc.get("method") == "auto"
+    if not enabled or not items:
+        return None
+    api_key = os.getenv(lc.get("api_key_env", "GROQ_API_KEY"), "").strip()
+    if not api_key:
+        log.info("Sorotan dilewati: %s kosong", lc.get("api_key_env", "GROQ_API_KEY"))
         return None
     bahan = "\n".join(f"- {it['title']}: {it['summary']}" for it in items)
     prompt = (f"Berikut ringkasan berita pertanian untuk petani di Kabupaten {kab}.\n{bahan}\n\n"
               "Tulis 2-3 kalimat 'Sorotan hari ini' dalam bahasa Indonesia sederhana untuk petani. "
               "Hanya gunakan fakta dari ringkasan di atas. Jangan menambah angka, nama, atau saran yang tidak ada. "
               "Tanpa salam, tanpa emoji, tanpa tautan.")
+    base_url = lc.get("base_url", "https://api.groq.com/openai/v1").rstrip("/")
     try:
-        r = requests.post(lc["ollama_url"].rstrip("/") + "/api/chat", timeout=int(lc["timeout_sec"]),
-                          json={"model": lc["model"], "stream": False, "options": {"temperature": 0.2},
+        r = requests.post(f"{base_url}/chat/completions",
+                          headers={"Authorization": f"Bearer {api_key}"},
+                          timeout=int(lc.get("timeout_sec", 30)),
+                          json={"model": lc["model"], "temperature": 0.2, "max_tokens": 200,
                                 "messages": [{"role": "user", "content": prompt}]})
         r.raise_for_status()
-        text = r.json()["message"]["content"].strip()
+        text = r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:  # noqa: BLE001
-        log.warning("LLM tidak tersedia (%s): digest tanpa sorotan", e)
+        log.warning("LLM sorotan tidak tersedia (%s): digest tanpa sorotan", e)
         return None
     src_nums = set(RX_NUM.findall(bahan))
     bad = [n for n in RX_NUM.findall(text) if n not in src_nums]

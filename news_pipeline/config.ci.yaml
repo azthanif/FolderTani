@@ -30,7 +30,11 @@ digest:
   max_total: 2
   website_url: https://temutani-web.vercel.app/petani/berita
   llm:
-    enabled: false          # tidak ada Ollama di runner
+    method: auto            # auto = aktif bila GROQ_API_KEY tersedia (tidak perlu Ollama)
+    model: openai/gpt-oss-20b
+    base_url: https://api.groq.com/openai/v1
+    api_key_env: GROQ_API_KEY
+    timeout_sec: 30
 
 notify:
   enabled: true            # pipeline hanya simpan ke DB; pengiriman WA dilakukan morning-broadcast.yml (07:00 WIB)
