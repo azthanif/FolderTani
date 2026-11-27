@@ -1,15 +1,134 @@
 "use client";
 /* Halaman Overview admin (port overview() dari initAdmin). */
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { EscrowDetail, EscrowPill } from "@/components/escrow/EscrowDetail";
 import { Icon } from "@/components/Icon";
 import { PriceChart } from "@/components/PriceChart";
 import { useUI } from "@/components/UIProvider";
+import { api } from "@/lib/api";
+import type { Escrow } from "@/lib/escrow";
 import { fmtNum, formatRupiah } from "@/lib/format";
+import { adminEscrowRank, sortRows, timeOf } from "@/lib/sort";
+import { lastAt, logistikGagal, when } from "./AdminEscrow";
 import { useAdmin } from "./AdminData";
 import { useDetail } from "./useDetail";
 import { ALL_AREAS } from "./types";
 import { AreaSelect, Badge, countFarmers, countOffers, countStocks, countTrx, Heading, Kpi, Person } from "./ui";
+
+/** Status escrow yang masih berjalan (belum Selesai/Kedaluwarsa). */
+const RUNNING = "MENUNGGU_BAYAR,DIBAYAR,DIKIRIM,DITERIMA,SENGKETA,PENCAIRAN_GAGAL";
+
+/** Kartu Overview admin: transaksi escrow berjalan, yang perlu tindak lanjut admin paling atas. */
+function RunningEscrowCard({ area }: { area: string }) {
+  const { openModal, toast } = useUI();
+  const router = useRouter();
+  const [items, setItems] = useState<Escrow[] | null>(null);
+  const [error, setError] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await api<{ items: Escrow[] }>(`/escrow?status=${RUNNING}`);
+      setItems(r.items);
+      setError(false);
+    } catch {
+      setError(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const t = setInterval(() => {
+      if (!document.hidden) load();
+    }, 30_000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const rows = sortRows(
+    (items || []).filter((e) => area === ALL_AREAS || e.kabupaten === area),
+    "prioritas",
+    (e) => adminEscrowRank(e.status, logistikGagal(e)),
+    (e) => timeOf(lastAt(e)),
+  );
+  const todo = rows.filter((e) => adminEscrowRank(e.status, logistikGagal(e)) === 0).length;
+  const held = rows
+    .filter((e) => e.status !== "MENUNGGU_BAYAR")
+    .reduce((n, e) => n + (e.total_tagihan ?? e.nilai), 0);
+
+  function open(e: Escrow) {
+    openModal(`Escrow ${e.kode}`, `${e.offerId} • ${e.kabupaten} • GKP`, <EscrowDetail key={e.id} id={e.id} role="admin" onToast={toast} onChanged={load} />);
+  }
+
+  return (
+    <section className="card table-card running-escrow">
+      <div className="section-header">
+        <div>
+          <h3 className="section-title">Transaksi Berjalan</h3>
+          <div className="section-subtitle">
+            {error
+              ? "Data escrow belum dapat dimuat."
+              : items === null
+                ? "Memuat transaksi escrow…"
+                : `${fmtNum(rows.length)} transaksi diproses · dana ditahan ${formatRupiah(held)}${todo ? ` · ${todo} perlu tindak lanjut admin` : ""}`}
+          </div>
+        </div>
+        <button type="button" className="link-btn" onClick={() => router.push("/admin/escrow")}>
+          Lihat semua <Icon name="chevron" size={12} />
+        </button>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>KODE</th>
+              <th>PETANI → TENGKULAK</th>
+              <th>TAGIHAN</th>
+              <th>STATUS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? (
+              rows.slice(0, 5).map((e) => {
+                const need = adminEscrowRank(e.status, logistikGagal(e)) === 0;
+                return (
+                  <tr key={e.id}>
+                    <td>
+                      <strong>{e.kode}</strong>
+                      <small className="small-muted" style={{ display: "block", marginTop: 3 }}>{when(lastAt(e))}</small>
+                    </td>
+                    <td>
+                      {e.petani} → {e.tengkulak}
+                      <small className="small-muted" style={{ display: "block", marginTop: 3 }}>
+                        {e.kabupaten} · {fmtNum(e.berat_kg)} kg
+                      </small>
+                    </td>
+                    <td>
+                      <strong>{formatRupiah(e.total_tagihan ?? e.nilai)}</strong>
+                    </td>
+                    <td>
+                      <EscrowPill status={e.status} label={e.statusLabel} />
+                      {need ? <small className="escrow-todo">{logistikGagal(e) ? "Logistik tertunda" : "Perlu tindak lanjut"}</small> : null}
+                      <button type="button" className="link-btn running-escrow-open" onClick={() => open(e)}>
+                        {need ? "Tindak lanjut" : "Detail"} <Icon name="chevron" size={11} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan={4} className="empty-state">
+                  {items === null && !error ? "Memuat…" : "Tidak ada transaksi yang sedang berjalan pada wilayah ini."}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > 5 ? <div className="table-foot-note">+{rows.length - 5} transaksi berjalan lainnya di menu Escrow &amp; Pembayaran.</div> : null}
+    </section>
+  );
+}
 
 export function AdminOverview() {
   const { stocks, offers, transactions, events, prices, refresh } = useAdmin();
@@ -94,7 +213,7 @@ export function AdminOverview() {
           </div>
         </section>
       </div>
-      <div className="section-grid bottom">
+      <div className="section-grid bottom half">
         <section className="card table-card">
           <div className="section-header">
             <div>
@@ -149,7 +268,9 @@ export function AdminOverview() {
             </table>
           </div>
         </section>
-        <section className="card section-card">
+        <RunningEscrowCard area={area} />
+      </div>
+      <section className="card section-card activity-wide">
           <div className="section-header">
             <div>
               <h3 className="section-title">Aktivitas WhatsApp</h3>
@@ -172,8 +293,7 @@ export function AdminOverview() {
           <button type="button" className="link-btn" onClick={() => router.push("/admin/aktivitas")} style={{ marginTop: 10 }}>
             Lihat aktivitas <Icon name="chevron" size={12} />
           </button>
-        </section>
-      </div>
+      </section>
     </>
   );
 }

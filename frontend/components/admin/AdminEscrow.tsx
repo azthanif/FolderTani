@@ -23,10 +23,10 @@ const FILTERS: { value: string; label: string }[] = [
 ];
 
 /** Waktu perubahan terakhir escrow (diperbarui_pada; fallback ke cap waktu status terakhir). */
-const lastAt = (e: Escrow) => e.diperbarui_pada || e.selesai_pada || e.diterima_pada || e.dikirim_pada || e.dibayar_pada || e.dibuat_pada;
-const logistikGagal = (e: Escrow) => !!e.termin_petani?.some((t) => t.jenis === "logistik" && t.status === "GAGAL");
+export const lastAt = (e: Escrow) => e.diperbarui_pada || e.selesai_pada || e.diterima_pada || e.dikirim_pada || e.dibayar_pada || e.dibuat_pada;
+export const logistikGagal = (e: Escrow) => !!e.termin_petani?.some((t) => t.jenis === "logistik" && t.status === "GAGAL");
 
-const when = (v?: string | null) =>
+export const when = (v?: string | null) =>
   v ? new Date(v).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" }) : "—";
 
 export function AdminEscrow() {

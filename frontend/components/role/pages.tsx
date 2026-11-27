@@ -115,6 +115,66 @@ function OfferTable({ rows, S, isFarmer, onDetail }: { rows: Offer[]; S: Selecto
   );
 }
 
+/** Status escrow yang masih berjalan (belum Selesai/Kedaluwarsa); kesepakatan lama tanpa escrow tidak ikut. */
+const RUNNING_ESCROW = new Set(["MENUNGGU_BAYAR", "DIBAYAR", "DIKIRIM", "DITERIMA", "SENGKETA", "PENCAIRAN_GAGAL"]);
+
+/** Kartu Overview: transaksi escrow yang sedang berjalan, yang perlu tindakan pengguna paling atas. */
+function RunningTrxCard() {
+  const { S, A, isFarmer } = useData();
+  const running = sortRows(
+    S.myTransactions().filter((t) => t.escrowStatus && RUNNING_ESCROW.has(t.escrowStatus)),
+    "prioritas",
+    (t) => trxRank(t.escrowStatus, isFarmer),
+    trxTime,
+  );
+  const todo = running.filter((t) => escrowNeedsAction(t.escrowStatus, isFarmer)).length;
+  return (
+    <section className="card section-card running-trx">
+      <div className="section-header">
+        <div>
+          <h3 className="section-title">Transaksi Berjalan</h3>
+          <div className="section-subtitle">
+            {running.length
+              ? `${running.length} transaksi sedang diproses${todo ? ` · ${todo} perlu tindakan Anda` : ""}`
+              : "Pembayaran dan pengiriman yang sedang diproses lewat escrow"}
+          </div>
+        </div>
+        <Btn onClick={() => A.navigate("transaksi")}>Lihat Semua</Btn>
+      </div>
+      {running.length ? (
+        running.slice(0, 5).map((t) => {
+          const need = escrowNeedsAction(t.escrowStatus, isFarmer);
+          return (
+            <div className="stock-row" key={t.id}>
+              <div>
+                <strong>
+                  {t.id} • {isFarmer ? S.buyer(t.buyerId)?.label || "Pembeli" : S.farmer(t.farmerId)?.name || "Petani"}
+                </strong>
+                <p>
+                  {number(t.volume)} kg × {rupiah(t.price)}/kg = {totalPrice(t.volume, t.price)}
+                  {t.escrowUpdated ? ` · diperbarui ${fmtTime(t.escrowUpdated)}` : ""}
+                </p>
+              </div>
+              <div className="running-trx-side">
+                <span className="running-trx-status">
+                  <EscrowPill status={t.escrowStatus} label={t.escrowLabel} />
+                  {need ? <small className="escrow-todo">Perlu tindakan Anda</small> : null}
+                </span>
+                <Btn cl={need ? "primary" : ""} onClick={() => A.trxDetail(t.id)}>
+                  {need ? "Tindak Lanjuti" : "Detail"}
+                </Btn>
+              </div>
+            </div>
+          );
+        })
+      ) : (
+        <div className="empty-state">Tidak ada transaksi yang sedang berjalan.</div>
+      )}
+      {running.length > 5 ? <div className="table-foot-note">+{running.length - 5} transaksi berjalan lainnya di menu Riwayat Kesepakatan.</div> : null}
+    </section>
+  );
+}
+
 /* ---------- Overview ---------- */
 export function OverviewPage() {
   const { db, S, A, isFarmer } = useData();
@@ -154,6 +214,7 @@ export function OverviewPage() {
             <Btn cl="secondary" onClick={() => A.navigate("harga")}>Lihat Prediksi AI</Btn>
           </div>
         </div>
+        <RunningTrxCard />
         <div className="two-col">
           <section className="card section-card">
             <div className="section-header">
@@ -260,6 +321,7 @@ export function OverviewPage() {
           </Btn>
         </div>
       </div>
+      <RunningTrxCard />
       <div className="two-col">
         <section className="card section-card">
           <div className="section-header">

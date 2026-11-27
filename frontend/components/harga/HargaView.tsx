@@ -2,7 +2,7 @@
 /* Prediksi Harga AI (port initHarga + hargaPage dari app.js). Tidak lagi iframe. */
 import { useEffect, useState } from "react";
 import type { Role } from "@/lib/api";
-import { fmtDay, formatRupiah, todayWIB } from "@/lib/format";
+import { addDays, fmtDay, formatRupiah, todayWIB } from "@/lib/format";
 import { loadPrices, type PricesResponse } from "@/lib/prices";
 import { ApiErrorCard } from "@/components/DashboardShell";
 import { Icon } from "@/components/Icon";
@@ -57,6 +57,8 @@ export function HargaView({ role }: { role: Role }) {
     );
 
   const meta = d.meta;
+  const runDay = todayWIB(meta?.runDate ?? prices.asOf);
+  const forecast = d.forecast.slice(0, prices.forecastDays);
   const comparison = prices.comparison ?? [];
   const anySimulated = comparison.some((c) => c.simulated);
 
@@ -113,19 +115,19 @@ export function HargaView({ role }: { role: Role }) {
         <section className="card section-card">
           <PriceChart prices={prices} area={loc} />
         </section>
-        <section className="card section-card">
+        <section className="card section-card info-card">
           <div className="section-header">
             <div>
               <h3 className="section-title">Informasi Prediksi</h3>
-              <div className="section-subtitle">Metadata yang perlu tersedia saat integrasi</div>
+              <div className="section-subtitle">
+                {loc} · GKP · prakiraan harian {forecast.length} hari ke depan
+              </div>
             </div>
             <Icon name="database" size={19} />
           </div>
-          <div className="modal-grid">
+          <div className="modal-grid info-meta">
             {[
-              ["KABUPATEN", loc],
-              ["JENIS GABAH", "GKP"],
-              ["TANGGAL PREDIKSI", fmtDay(todayWIB(meta?.runDate ?? prices.asOf), { day: "numeric", month: "short", year: "numeric" })],
+              ["TANGGAL PREDIKSI", fmtDay(runDay, { day: "numeric", month: "short", year: "numeric" })],
               ["SUMBER", meta?.source ?? "Model AI Temu Tani"],
             ].map(([k, v]) => (
               <div className="modal-item" key={k}>
@@ -134,6 +136,38 @@ export function HargaView({ role }: { role: Role }) {
               </div>
             ))}
           </div>
+          {forecast.length ? (
+            <>
+              <div className="forecast-head" aria-hidden="true">
+                <span>HARI</span>
+                <span>PRAKIRAAN</span>
+                <span>VS HARI INI</span>
+              </div>
+              <ol className="forecast-list" aria-label="Prakiraan harga harian">
+                {forecast.map((v, k) => {
+                  const diff = v - d.previous;
+                  return (
+                    <li key={k}>
+                      <span className="fc-day">
+                        <b>H+{k + 1}</b> {fmtDay(addDays(runDay, k + 1), { weekday: "short", day: "numeric", month: "short" })}
+                      </span>
+                      <strong>{formatRupiah(v)}</strong>
+                      <span className={`fc-diff ${diff > 0 ? "up" : diff < 0 ? "down" : ""}`}>
+                        {diff > 0 ? "+" : diff < 0 ? "−" : "±"}
+                        {formatRupiah(Math.abs(diff))}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+              <div className="forecast-range">
+                <span>Rentang prakiraan</span>
+                <strong>
+                  {formatRupiah(Math.min(...forecast))} – {formatRupiah(Math.max(...forecast))}
+                </strong>
+              </div>
+            </>
+          ) : null}
         </section>
       </div>
 

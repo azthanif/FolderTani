@@ -1318,6 +1318,25 @@
 @media(max-width:620px){.dash .page-harga .section-grid { gap: 12px; }}
 @media(max-width:620px){.dash .page-harga .price-cards { grid-template-columns: 1fr; }}
 @media(max-width:620px){.dash .page-harga .modal-grid { gap: 11px; }}
+/* Kartu "Informasi Prediksi": metadata ringkas + daftar prakiraan H+1 s.d. H+7 mengisi tinggi kartu. */
+.dash .page-harga .info-card { display: flex; flex-direction: column; }
+.dash .page-harga .info-meta { gap: 8px 16px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.dash .page-harga .info-meta .modal-item label { margin-bottom: 2px; }
+.dash .page-harga .info-meta .modal-item strong { font-size: 12.5px; }
+.dash .page-harga .info-card .section-header { margin-bottom: 12px; }
+.dash .page-harga .forecast-list { list-style: none; margin: 2px 0 0; padding: 0; flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+.dash .page-harga .forecast-head { display: grid; grid-template-columns: minmax(0,1fr) auto 76px; gap: 10px; margin-top: 9px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; color: #9ba69e; }
+.dash .page-harga .forecast-head span:last-child { text-align: right; }
+.dash .page-harga .forecast-list li { display: grid; grid-template-columns: minmax(0,1fr) auto 76px; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px dashed #edf0ec; font-size: 11.5px; }
+.dash .page-harga .forecast-list li:last-child { border-bottom: 0; }
+.dash .page-harga .fc-day { color: #6d7d72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash .page-harga .fc-day b { display: inline-block; min-width: 30px; color: #c88a2e; font-weight: 800; }
+.dash .page-harga .forecast-list strong { font-size: 12.5px; color: #183a2b; }
+.dash .page-harga .fc-diff { text-align: right; font-size: 11px; font-weight: 700; color: #8a968e; }
+.dash .page-harga .fc-diff.up { color: #29825c; }
+.dash .page-harga .fc-diff.down { color: #c0392b; }
+.dash .page-harga .forecast-range { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 6px; padding: 7px 12px; border-radius: 10px; background: #f3f8f2; font-size: 11px; color: #6d7d72; }
+.dash .page-harga .forecast-range strong { font-size: 12.5px; color: #183a2b; }
 /* Wilayah terkunci (dashboard petani) */
 .dash .page-harga .select-locked { display: inline-flex; align-items: center; gap: 6px; background: #f7faf7; color: #5d7064; cursor: default; }
 
@@ -1656,3 +1675,18 @@
 .dash .bill-note{margin:8px 0 0;font-size:11.5px;color:#8a6200}
 .dash .delivery-picker .form-actions{margin-top:12px;justify-content:flex-end}
 @media(max-width:620px){.dash .delivery-options{grid-template-columns:1fr}.dash .bill-termin-row{flex-direction:column;align-items:flex-start}}
+
+/* ---------- Overview: Transaksi Berjalan ---------- */
+.dash .running-trx { margin-bottom: 18px; }
+.dash .running-trx .running-trx-side { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.dash .running-trx .running-trx-status { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.dash .running-trx .running-trx-status .escrow-todo { margin: 0; }
+@media (max-width: 620px) {
+  .dash .running-trx .stock-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .dash .running-trx .running-trx-side { justify-content: space-between; }
+  .dash .running-trx .running-trx-status { align-items: flex-start; }
+}
+.dash .section-grid.bottom.half { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+@media (max-width: 1000px) { .dash .section-grid.bottom.half { grid-template-columns: 1fr; } }
+.dash .running-escrow .table-foot-note { padding: 10px 22px 14px; }
+.dash .running-escrow .running-escrow-open { display: flex; align-items: center; gap: 3px; margin-top: 6px; font-size: 11px; }
