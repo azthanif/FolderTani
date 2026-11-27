@@ -2,6 +2,8 @@
 /* Halaman dashboard petani/tengkulak: overview, stok, penawaran, transaksi (port app.js bagian 5). */
 import { useEffect, useState } from "react";
 import { EscrowPill } from "@/components/escrow/EscrowDetail";
+import { showAlert } from "@/lib/dialog";
+import { markSeen, unseenDone } from "@/lib/escrowSeen";
 import { Icon } from "@/components/Icon";
 import { useRoleActions } from "./actions";
 import { useRole } from "./RoleDataProvider";
@@ -125,7 +127,7 @@ export function OverviewPage() {
           <Kpi icon="wheat" title="Stok Siap Dijual" val={<>{number(total)} <span className="kpi-unit">kg</span></>} foot={lots.length + " tanggal panen tercatat"} />
           <Kpi icon="handshake" title="Penawaran Masuk" val={waiting.length} foot="Menunggu keputusan Anda" theme="gold" />
           <Kpi icon="activity" title="Sedang Dinegosiasikan" val={o.filter((a) => a.status === "Penawaran Balik").length} foot="Harga balik yang diajukan" theme="blue" />
-          <Kpi icon="check" title="Kesepakatan" val={t.length} foot="Pembayaran langsung dengan pembeli" theme="lime" />
+          <Kpi icon="check" title="Kesepakatan" val={t.length} foot="Dibayar aman lewat escrow Temu Tani" theme="lime" />
         </div>
         <div className="page-banner card has-mascot">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -504,6 +506,32 @@ export function TransactionsPage() {
     if (t) A.trxDetail(t.id);
     setAutoOpened(true);
   }, [A, autoOpened, db]);
+
+  // Ucapan saat dana escrow cair (transaksi SELESAI yang belum dilihat). Satu popup per kunjungan, yang terbaru dulu.
+  // Backlog: bila banyak sekaligus, ringkas dalam satu popup (lihat claude/backlog-escrow.md).
+  const [celebrating, setCelebrating] = useState(false);
+  useEffect(() => {
+    if (!db || celebrating) return;
+    const mine = S.myTransactions();
+    const ids = unseenDone(db.actor.user, mine.filter((t) => t.escrowStatus === "SELESAI").map((t) => t.id));
+    const t = mine.filter((x) => ids.includes(x.id)).sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!t) return;
+    setCelebrating(true);
+    const kode = t.offerId.replace("OFF", "ESC");
+    const nilai = rupiah(t.volume * t.price);
+    showAlert({
+      tone: "success",
+      mascot: "senang",
+      title: isFarmer ? "Hore, dana sudah masuk!" : "Transaksi selesai!",
+      message: isFarmer
+        ? `${kode} (${t.id}) • ${number(t.volume)} kg • ${nilai} sudah diteruskan ke rekening Anda. Terima kasih sudah berjualan lewat Temu Tani.`
+        : `${kode} (${t.id}) • ${number(t.volume)} kg • ${nilai} sudah diteruskan ke petani. Terima kasih sudah bertransaksi lewat Temu Tani.`,
+      confirmLabel: "Mantap",
+    }).then(() => {
+      markSeen(db.actor.user, t.id);
+      setCelebrating(false);
+    });
+  }, [S, celebrating, db, isFarmer]);
   const filtered = useFiltered();
   const tx = S.myTransactions();
   const list = filtered(tx, (t) => [t.id, S.buyer(t.buyerId)?.label, S.farmer(t.farmerId)?.name, S.stock(t.stockId)?.region].join(" "));

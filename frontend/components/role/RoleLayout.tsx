@@ -1,6 +1,7 @@
 "use client";
 /* Layout bersama dashboard petani & tengkulak: DashboardRoot > RoleDataProvider > shell. */
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { onSeenChange, unseenDone } from "@/lib/escrowSeen";
 import { ApiErrorCard, DashboardRoot, DashboardShell, type NavItem } from "@/components/DashboardShell";
 import { SVG_PATHS } from "@/components/Icon";
 import { useRoleActions } from "./actions";
@@ -23,13 +24,16 @@ const PAGE_DEFS: Record<RoleKind, [string, string, string][]> = {
 function RoleShell({ children }: { children: ReactNode }) {
   const { role, isFarmer, db, base, logout } = useRole();
   const A = useRoleActions();
+  const [, setSeenTick] = useState(0); // render ulang badge saat transaksi selesai ditandai sudah dilihat
+  useEffect(() => onSeenChange(() => setSeenTick((n) => n + 1)), []);
   let nav: NavItem[] = [];
   let user = { name: "—", sub: "—", initials: "--" };
   if (db) {
     const S = selectors(db, isFarmer);
     const pending = S.myOffers().filter((o) => (isFarmer ? o.status === "Menunggu Petani" : o.status === "Penawaran Balik")).length;
     // Escrow yang menunggu tindakan pengguna: petani kirim gabah; tengkulak bayar atau konfirmasi terima.
-    const escrowTodo = S.myTransactions().filter((t) => (isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || ""))).length;
+    const escrowTodo = S.myTransactions().filter((t) => (isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || ""))).length
+      + unseenDone(db.actor.user, S.myTransactions().filter((t) => t.escrowStatus === "SELESAI").map((t) => t.id)).length;
     nav = PAGE_DEFS[role].map(([id, icon, label]) => ({
       href: id === "overview" ? base : `${base}/${id}`,
       icon,
