@@ -12,6 +12,7 @@ import { useUI } from "@/components/UIProvider";
 import { api, ApiError } from "@/lib/api";
 import { initials } from "@/lib/format";
 import { changePassword, getSession, isStrongPassword, setSession, updateProfile, type SessionUser } from "@/lib/auth";
+import { getPayoutAccount, PAYOUT_CHANNELS, savePayoutAccount, type PayoutAccount } from "@/lib/payout";
 import "@/styles/auth.css";
 import "@/styles/profile.css";
 
@@ -137,6 +138,8 @@ export function ProfileView() {
           </div>
         </form>
 
+        {isFarmer ? <PayoutSection defaultHolder={user.name} /> : null}
+
         <h2 className="pf-heading">Ubah Password</h2>
         <form className="pf-form" onSubmit={savePassword}>
           <div className="pf-field">
@@ -167,5 +170,83 @@ export function ProfileView() {
         </form>
       </section>
     </div>
+  );
+}
+
+/** Akun pencairan petani: tujuan dana escrow (termin logistik & nilai gabah). */
+function PayoutSection({ defaultHolder }: { defaultHolder: string }) {
+  const { toast } = useUI();
+  const [acc, setAcc] = useState<PayoutAccount | null>(null);
+  const [bank, setBank] = useState("BCA");
+  const [holder, setHolder] = useState(defaultHolder);
+  const [number, setNumber] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    getPayoutAccount()
+      .then((a) => {
+        setAcc(a);
+        if (a.bank) setBank(a.bank);
+        if (a.holder) setHolder(a.holder);
+      })
+      .catch(() => setAcc({ bank: null, bankLabel: null, holder: null, numberLast4: null, isEwallet: false, isDummy: false, updatedAt: null }));
+  }, []);
+
+  const channels = acc?.channels?.length ? acc.channels : PAYOUT_CHANNELS;
+  const ewallet = channels.find((c) => c.code === bank)?.ewallet;
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    setErr("");
+    setBusy(true);
+    try {
+      const r = await savePayoutAccount({ bank, holder: holder.trim(), number });
+      setAcc({ ...r, channels: acc?.channels });
+      setNumber("");
+      toast(r.message || "Akun pencairan disimpan.");
+    } catch (x) {
+      setErr(x instanceof ApiError ? x.message : "Akun pencairan gagal disimpan.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <h2 className="pf-heading">Akun Pencairan</h2>
+      <form className="pf-form" onSubmit={save}>
+        <small className="pf-hint">
+          {acc?.bank
+            ? `Dana escrow dikirim ke ${acc.bankLabel} ****${acc.numberLast4} a.n. ${acc.holder}.${acc.isDummy ? " (akun uji, belum rekening asli)" : ""}`
+            : "Belum ada akun pencairan. Isi agar biaya logistik dan nilai gabah bisa dicairkan ke Anda."}
+          {" "}Perubahan berlaku untuk pencairan berikutnya dan dikabarkan ke WhatsApp Anda.
+        </small>
+        <div className="pf-row pf-row-3">
+          <label className="pf-field">
+            <span>Bank / e-wallet</span>
+            <select className="pf-input" value={bank} onChange={(e) => setBank(e.target.value)}>
+              {channels.map((c) => (
+                <option key={c.code} value={c.code}>{c.label}{c.ewallet ? " (e-wallet)" : ""}</option>
+              ))}
+            </select>
+          </label>
+          <label className="pf-field">
+            <span>{ewallet ? "Nomor HP e-wallet" : "Nomor rekening"}</span>
+            <input className="pf-input" required inputMode="numeric" minLength={6} maxLength={25} value={number}
+              onChange={(e) => setNumber(e.target.value)} placeholder={acc?.numberLast4 ? `Saat ini ****${acc.numberLast4}` : "Hanya angka"} />
+          </label>
+          <label className="pf-field">
+            <span>Nama pemilik</span>
+            <input className="pf-input" required minLength={3} maxLength={80} value={holder} onChange={(e) => setHolder(e.target.value)} />
+          </label>
+        </div>
+        {ewallet ? <small className="pf-hint">Saldo e-wallet umumnya dibatasi (sekitar Rp10 juta); untuk nilai gabah besar gunakan rekening bank.</small> : null}
+        {err ? <div className="auth-error" role="alert">{err}</div> : null}
+        <div>
+          <button className="pf-btn" type="submit" disabled={busy}>{busy ? "Menyimpan…" : "Simpan akun pencairan"}</button>
+        </div>
+      </form>
+    </>
   );
 }

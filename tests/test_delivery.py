@@ -356,3 +356,32 @@ def test_farmer_changing_kecamatan_clears_desa(client, login, sql, lokasi):
     r = client.put("/api/auth/profile", headers=P, json={"name": "Pak Asep Hidayat", "region": "Garut", "district": "Tarogong Kidul", "village": "Sukagalih"})
     assert r.status_code == 200 and r.json()["user"]["villageCode"] == KODE_PETANI and r.json()["user"]["village"] == "Sukagalih"
     assert client.put("/api/auth/profile", headers=P, json={"name": "Pak Asep Hidayat", "region": "Garut", "district": "Leles", "village": "Sukagalih"}).status_code == 400
+
+
+def test_payout_account_profile_and_admin_default(client, login, sql):
+    """Petani melihat (4 digit terakhir) & mengganti akun pencairan; admin menambah petani -> akun uji otomatis."""
+    P = login("petani")
+    r = client.get("/api/auth/payout-account", headers=P)
+    assert r.status_code == 200 and any(c["code"] == "DANA" for c in r.json()["channels"])
+    assert "nomor_akun" not in r.text and "number\"" not in r.text.replace("numberLast4", "")
+    r = client.put("/api/auth/payout-account", headers=P, json={"bank": "dana", "holder": "Asep Hidayat", "number": "+62 812-3456-7890"})
+    assert r.status_code == 200, r.text
+    assert r.json()["bank"] == "DANA" and r.json()["numberLast4"] == "7890" and r.json()["isEwallet"] is True
+    assert sql("select nomor_akun from akun_pencairan_petani a join users u on u.id = a.petani_id where u.phone = %s",
+               (e164(PHONES["petani"]),))[0]["nomor_akun"] == "081234567890"
+    assert client.put("/api/auth/payout-account", headers=P, json={"bank": "XYZ", "holder": "Asep", "number": "123456"}).status_code == 422
+    assert client.put("/api/auth/payout-account", headers=P, json={"bank": "BCA", "holder": "Asep", "number": "12ab56"}).status_code == 422
+    assert client.get("/api/auth/payout-account", headers=login("tengkulak")).status_code == 403
+
+    A = login("admin")
+    base = {"name": "Pak Dadang", "region": "Cianjur", "district": "Ciranjang", "village": "Sindangjaya"}
+    r = client.post("/api/admin/users", headers=A, json={**base, "phone": "081277770011"})
+    assert r.status_code == 201, r.text
+    row = sql("select kode_bank, nomor_akun, nama_pemilik from akun_pencairan_petani a join users u on u.id = a.petani_id"
+              " where u.phone = %s", (e164("081277770011"),))[0]
+    assert row == {"kode_bank": "BCA", "nomor_akun": "1234567890", "nama_pemilik": "Pak Dadang"}
+    r = client.post("/api/admin/users", headers=A, json={**base, "phone": "081277770012",
+                                                         "payout": {"bank": "BRI", "holder": "Dadang S", "number": "0012345678"}})
+    assert r.status_code == 201
+    assert sql("select kode_bank from akun_pencairan_petani a join users u on u.id = a.petani_id where u.phone = %s",
+               (e164("081277770012"),))[0]["kode_bank"] == "BRI"

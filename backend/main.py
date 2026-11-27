@@ -560,14 +560,76 @@ class ChangePasswordIn(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+# Tujuan pencairan escrow yang didukung (kode = kode channel Xendit tanpa awalan "ID_").
+PAYOUT_CHANNELS = {
+    "BCA": "BCA", "BRI": "BRI", "BNI": "BNI", "MANDIRI": "Bank Mandiri", "BSI": "BSI", "CIMB": "CIMB Niaga",
+    "PERMATA": "Bank Permata", "DANA": "DANA", "OVO": "OVO", "GOPAY": "GoPay", "SHOPEEPAY": "ShopeePay",
+}
+EWALLET = {"DANA", "OVO", "GOPAY", "SHOPEEPAY"}
+# Akun uji Xendit Test Mode (payout ke nomor apa pun berstatus SUCCEEDED). Bukan rekening asli.
+DUMMY_PAYOUT = {"bank": "BCA", "number": "1234567890"}
+
+
+class PayoutAccountIn(BaseModel):
+    bank: str = Field(min_length=2, max_length=20)
+    holder: str = Field(min_length=3, max_length=80)
+    number: str = Field(min_length=6, max_length=25)
+
+    @field_validator("bank")
+    @classmethod
+    def _bank(cls, v: str) -> str:
+        v = v.strip().upper().removeprefix("ID_")
+        if v not in PAYOUT_CHANNELS:
+            raise ValueError("Bank/e-wallet tidak didukung.")
+        return v
+
+    @field_validator("holder")
+    @classmethod
+    def _holder(cls, v: str) -> str:
+        return _clean(v)
+
+    @field_validator("number")
+    @classmethod
+    def _number(cls, v: str) -> str:
+        v = re.sub(r"[\s.-]", "", v)
+        if v.startswith("+62"):
+            v = "0" + v[3:]
+        if not re.fullmatch(r"\d{6,20}", v):
+            raise ValueError("Nomor rekening/e-wallet hanya angka (6-20 digit).")
+        return v
+
+
+def _payout_out(r: Optional[dict]) -> dict:
+    if not r:
+        return {"bank": None, "bankLabel": None, "holder": None, "numberLast4": None, "isEwallet": False, "isDummy": False,
+                "updatedAt": None}
+    return {"bank": r["kode_bank"], "bankLabel": PAYOUT_CHANNELS.get(r["kode_bank"], r["kode_bank"]), "holder": r["nama_pemilik"],
+            "numberLast4": r["nomor_akun"][-4:], "isEwallet": r["kode_bank"] in EWALLET,
+            "isDummy": r["kode_bank"] == DUMMY_PAYOUT["bank"] and r["nomor_akun"] == DUMMY_PAYOUT["number"],
+            "updatedAt": iso(r["diperbarui_pada"])}
+
+
+def _upsert_payout(cur, petani_id, bank: str, holder: str, number: str) -> dict:
+    cur.execute(
+        "insert into akun_pencairan_petani (petani_id, kode_bank, nama_pemilik, nomor_akun) values (%s, %s, %s, %s)"
+        " on conflict (petani_id) do update set kode_bank = excluded.kode_bank, nama_pemilik = excluded.nama_pemilik,"
+        " nomor_akun = excluded.nomor_akun, diperbarui_pada = now()"
+        " returning kode_bank, nama_pemilik, nomor_akun, diperbarui_pada",
+        (petani_id, bank, holder, number),
+    )
+    return cur.fetchone()
+
+
 class AdminFarmerIn(BaseModel):
-    """Admin menambahkan akun petani. Password opsional: bila kosong, petani membuatnya lewat Lupa Password."""
+    """Admin menambahkan akun petani. Password opsional: bila kosong, petani membuatnya lewat Lupa Password.
+    Akun pencairan opsional: bila kosong diisi akun uji (DUMMY_PAYOUT) atas nama petani."""
     name: str = Field(min_length=3, max_length=80)
     phone: str = Field(min_length=9, max_length=20)
     region: str = Field(min_length=1, max_length=60)
     district: str = Field(min_length=1, max_length=60)
     village: str = Field(min_length=1, max_length=80)
     password: Optional[str] = Field(default=None, max_length=128)
+    payout: Optional[PayoutAccountIn] = None
 
     @field_validator("name", "region", "district", "village")
     @classmethod
@@ -833,6 +895,31 @@ def update_profile(body: ProfileIn, actor: Actor = Depends(get_actor)):
     return {**_session(user), "message": "Profil berhasil diperbarui."}
 
 
+# ---- Akun pencairan petani (tujuan dana escrow) ----------------------------------
+@app.get("/api/auth/payout-account", tags=["akun"])
+def get_payout_account(actor: Actor = Depends(get_actor)):
+    """Akun pencairan milik petani yang login. Nomor tidak pernah dikirim utuh (hanya 4 digit terakhir)."""
+    require(actor, "petani")
+    with read() as cur:
+        cur.execute("select kode_bank, nama_pemilik, nomor_akun, diperbarui_pada from akun_pencairan_petani where petani_id = %s",
+                    (actor.user,))
+        r = cur.fetchone()
+    return {**_payout_out(r), "channels": [{"code": k, "label": v, "ewallet": k in EWALLET} for k, v in PAYOUT_CHANNELS.items()]}
+
+
+@app.put("/api/auth/payout-account", tags=["akun"])
+def put_payout_account(body: PayoutAccountIn, actor: Actor = Depends(get_actor)):
+    """Petani mengganti tujuan pencairan. Berlaku untuk pencairan berikutnya; payout yang sudah dibuat tidak berubah."""
+    require(actor, "petani")
+    with tx() as cur:
+        r = _upsert_payout(cur, actor.user, body.bank, body.holder, body.number)
+    out = _payout_out(r)
+    # Pemberitahuan keamanan: perubahan tujuan dana selalu dikabarkan ke WhatsApp pemilik akun.
+    _notify(actor.phone, f"🔐 Akun pencairan Temu Tani Anda diubah ke {out['bankLabel']} ****{out['numberLast4']} a.n. {out['holder']}. "
+                         "Bila bukan Anda yang mengubah, segera hubungi admin Temu Tani.")
+    return {**out, "message": f"Akun pencairan disimpan: {out['bankLabel']} ****{out['numberLast4']}."}
+
+
 # ---- Kode verifikasi WhatsApp -------------------------------------------------
 @app.post("/api/auth/otp", tags=["akun"])
 def request_otp(body: OtpIn, actor: Optional[Actor] = Depends(optional_actor)):
@@ -1091,6 +1178,9 @@ def admin_create_farmer(body: AdminFarmerIn, actor: Actor = Depends(get_actor)):
         )
         uid = cur.fetchone()["id"]
         cur.execute("insert into stocks (farmer_id, grain_type, quantity_kg) values (%s, 'GKP', 0) on conflict do nothing", (uid,))
+        po = body.payout
+        _upsert_payout(cur, uid, po.bank if po else DUMMY_PAYOUT["bank"], po.holder if po else body.name,
+                       po.number if po else DUMMY_PAYOUT["number"])  # tanpa akun pencairan, termin escrow gagal cair
         cur.execute(f"{ACCOUNT_SELECT} where u.id = %s", (uid,))
         out = _account_out(cur.fetchone())
     how = ("Silakan masuk dengan nomor HP ini dan password dari admin." if body.password

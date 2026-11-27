@@ -7,6 +7,7 @@ import { useUI } from "@/components/UIProvider";
 import { AddressFields, type Address } from "@/components/auth/AddressFields";
 import { PasswordField } from "@/components/auth/AuthShell";
 import { ConfirmHint, PasswordRules } from "@/components/auth/PasswordRules";
+import { DUMMY_PAYOUT, PAYOUT_CHANNELS } from "@/lib/payout";
 import { api, ApiError, downloadFile } from "@/lib/api";
 import { isStrongPassword } from "@/lib/auth";
 import { useAdmin } from "./AdminData";
@@ -334,6 +335,10 @@ function AddFarmerForm({ onDone }: { onDone: (message: string) => Promise<void> 
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState<Address>({ region: "", district: "", village: "" });
   const [withPassword, setWithPassword] = useState(false);
+  // Akun pencairan: default akun uji Xendit Test Mode atas nama petani (bisa diganti sekarang atau oleh petani di profil).
+  const [payBank, setPayBank] = useState(DUMMY_PAYOUT.bank);
+  const [payNumber, setPayNumber] = useState(DUMMY_PAYOUT.number);
+  const [payHolder, setPayHolder] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -350,7 +355,10 @@ function AddFarmerForm({ onDone }: { onDone: (message: string) => Promise<void> 
     try {
       const r = await api<{ message: string }>("/admin/users", {
         method: "POST",
-        body: { name: name.trim(), phone, ...address, password: withPassword ? password : null },
+        body: {
+          name: name.trim(), phone, ...address, password: withPassword ? password : null,
+          payout: { bank: payBank, number: payNumber, holder: (payHolder || name).trim() },
+        },
       });
       await onDone(r.message);
     } catch (err) {
@@ -373,6 +381,26 @@ function AddFarmerForm({ onDone }: { onDone: (message: string) => Promise<void> 
           <small>Dipakai petani untuk masuk web dan chatbot WhatsApp.</small>
         </div>
         <AddressFields value={address} onChange={setAddress} fieldClass="admin-field" idPrefix="af" />
+      </div>
+
+      <div className="admin-form-grid">
+        <div className="admin-field">
+          <label htmlFor="af-bank">Akun pencairan</label>
+          <select id="af-bank" value={payBank} onChange={(e) => setPayBank(e.target.value)}>
+            {PAYOUT_CHANNELS.map((c) => (
+              <option key={c.code} value={c.code}>{c.label}{c.ewallet ? " (e-wallet)" : ""}</option>
+            ))}
+          </select>
+        </div>
+        <div className="admin-field">
+          <label htmlFor="af-paynum">Nomor rekening / HP e-wallet</label>
+          <input id="af-paynum" required inputMode="numeric" minLength={6} maxLength={25} value={payNumber} onChange={(e) => setPayNumber(e.target.value)} />
+        </div>
+        <div className="admin-field span-2">
+          <label htmlFor="af-payholder">Nama pemilik akun</label>
+          <input id="af-payholder" maxLength={80} value={payHolder} onChange={(e) => setPayHolder(e.target.value)} placeholder={name || "Sama dengan nama petani"} />
+          <small>Terisi akun uji Xendit ({DUMMY_PAYOUT.bank} {DUMMY_PAYOUT.number}). Petani bisa menggantinya sendiri di halaman Profil.</small>
+        </div>
       </div>
 
       <label className="admin-check">
