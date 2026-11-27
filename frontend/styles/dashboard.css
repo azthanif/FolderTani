@@ -975,8 +975,10 @@
     background: white;
     border-radius: 19px;
     width: min(560px,100%);
-    max-height: min(700px,90vh);
-    overflow: auto;
+    max-height: min(760px,90vh);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
     box-shadow: 0 24px 80px #0e291e30;
 }
 .dash .modal-top {
@@ -1275,7 +1277,8 @@
 .dash .role-app .toolbar .search-box { min-width:180px;max-width:100%; }
 .dash .role-app .detail-sub {font-size:11px;color:#90a094;line-height:1.5;}
 .dash .role-app .modal {width:min(620px,100%);}
-.dash .role-app .modal-body {max-height:65vh;overflow-y:auto;}
+/* satu scroll saja: bingkai .modal yang menggulung (max-height 90vh), isi tidak punya scroll sendiri */
+.dash .role-app .modal-body {max-height:none;overflow:visible;}
 .dash .role-app .modal-bottom {display:none;}
 .dash .role-app .kpi-name {font-size:12px;}
 .dash .role-app .kpi-top {gap:10px;}
