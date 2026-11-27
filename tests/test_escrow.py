@@ -323,7 +323,7 @@ def test_wa_notifications_and_chat_session(client, login, sql, gw, monkeypatch):
     assert "Menunggu tengkulak memilih cara pengambilan" in [t for p, t in texts if p == pt][-1]
     assert "Total tagihan: *Rp13.065.000*" in to_t[-1]
     pay(client, gw, eid)
-    assert polls[-1][0] == pt and polls[-1][2][0] == "1. Gabah sudah dikirim"
+    assert [x for x in polls if x[0] == pt][-1][2][0] == "1. Gabah sudah dikirim"
     row = sql("select step, context from chat_sessions where phone = %s", (pt,))[0]
     assert row["step"] == "escrow_action" and row["context"]["escrow_id"] == eid and row["context"]["actions"] == ["konfirmasi-kirim"]
     assert row["context"]["poll_id"] == "POLL1"
@@ -530,3 +530,26 @@ def test_payout_request_shape(monkeypatch):
     assert seen["path"] == "/v2/payouts" and seen["headers"] == {"Idempotency-key": "abc-1"}
     assert seen["payload"]["channel_code"] == "ID_BCA" and seen["payload"]["channel_properties"] == {"account_holder_name": "Asep", "account_number": "123"}
     assert out["external_id"] == "abc-1" and xendit.channel_code("ID_DANA") == "ID_DANA"
+
+
+def test_final_notifications_return_chat_to_main_menu(client, login, sql, gw, monkeypatch):
+    """Pesan tanpa tindakan lanjutan (mis. transaksi selesai) mengembalikan sesi chat ke menu utama + poll menu."""
+    from backend import wa as wamod
+    polls = []
+    monkeypatch.setenv("WAHA_URL", "https://waha.example")
+    monkeypatch.setattr(wamod, "send_text", lambda phone, text: None)
+    monkeypatch.setattr(wamod, "send_poll", lambda phone, name, options: polls.append((phone, options)) or "POLL9")
+    P, T, _, trx = deal(client, login)
+    eid = trx["escrowId"]
+    pay(client, gw, eid)
+    tk, pt = e164(PHONES["tengkulak"]), e164(PHONES["petani"])
+    # tengkulak tidak punya tindakan saat DIBAYAR: sesinya kembali ke menu utama
+    assert sql("select step from chat_sessions where phone = %s", (tk,))[0]["step"] is None
+    assert polls[-1] == (tk, ["1. Lihat stok gabah", "2. Ajukan penawaran", "3. Status penawaran saya", "4. Transaksi saya"])
+    client.post(f"/api/escrow/{eid}/konfirmasi-kirim", headers=P)
+    client.post(f"/api/escrow/{eid}/konfirmasi-terima", headers=T)
+    finish_disb(client, gw)
+    for ph in (tk, pt):
+        row = sql("select step, context from chat_sessions where phone = %s", (ph,))[0]
+        assert row["step"] is None and set(row["context"]) <= {"poll_id"}  # hanya id poll menu, tanpa konteks escrow
+    assert polls[-1][1][0] in ("1. Update stok gabah", "1. Lihat stok gabah")

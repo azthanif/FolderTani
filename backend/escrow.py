@@ -674,6 +674,25 @@ def terapkan_logistik(row: dict, status: str, payload: dict, kanal: str = "webho
 # Notifikasi WhatsApp
 # ---------------------------------------------------------------------------
 HINT = "Ketuk pilihan di bawah, atau balas dengan angka."
+# Sama dengan menu utama workflow 1 (MENU_F / MENU_B) agar balasan angka berikutnya dikenali sebagai menu.
+MENU = {
+    "petani": {"name": "Pilih layanan Temu Tani:",
+               "options": ["1. Update stok gabah", "2. Lihat harga wajar gabah", "3. Penawaran masuk", "4. Transaksi saya"]},
+    "tengkulak": {"name": "Pilih layanan Temu Tani:",
+                  "options": ["1. Lihat stok gabah", "2. Ajukan penawaran", "3. Status penawaran saya", "4. Transaksi saya"]},
+}
+
+
+def dengan_menu(row: dict, msgs: list[dict]) -> list[dict]:
+    """Pesan tanpa tindakan lanjutan: sesi chat penerima dikembalikan ke menu utama dan poll menu ikut dikirim,
+    supaya balasan berikutnya (mis. "hoi" atau angka menu) tidak tersangkut di langkah escrow sebelumnya."""
+    out = []
+    for x in msgs:
+        if "step" not in x:
+            peran = "petani" if x["phone"] == row["petani_phone"] else "tengkulak"
+            x = {**x, "text": x["text"] + f"\n\n{HINT}", "poll": x.get("poll") or MENU[peran], "step": None, "context": {}}
+        out.append(x)
+    return out
 
 
 def pesan(row: dict) -> list[dict]:
@@ -743,7 +762,7 @@ def pesan(row: dict) -> list[dict]:
         out += [{"phone": P, "text": msg}, {"phone": T, "text": msg}]
     elif s == "PENCAIRAN_GAGAL":
         out.append({"phone": P, "text": f"⏳ Pencairan dana {nilai} untuk *{k}* *tertunda*. Admin Temu Tani sedang menanganinya; dana tetap aman."})
-    return out
+    return dengan_menu(row, out)
 
 
 def _km(row: dict) -> str:
@@ -770,11 +789,11 @@ def pesan_logistik(row: dict) -> list[dict]:
     m = _m()
     k, P = kode(row), row["petani_phone"]
     if row.get("logistik_status") == "CAIR":
-        return [{"phone": P, "text": f"🚚 *Biaya logistik {m.rupiah(int(row['biaya_logistik']))} (termin 1) sudah masuk ke rekening Anda* "
+        return dengan_menu(row, [{"phone": P, "text": f"🚚 *Biaya logistik {m.rupiah(int(row['biaya_logistik']))} (termin 1) sudah masuk ke rekening Anda* "
                                      f"untuk *{k}*.\nSilakan sewa truk ({armada_teks(row)}) dan kirim gabah ke tengkulak. "
-                                     "Nilai gabah cair setelah tengkulak mengonfirmasi penerimaan."}]
+                                     "Nilai gabah cair setelah tengkulak mengonfirmasi penerimaan."}])
     if row.get("logistik_status") == "GAGAL":
-        return [{"phone": P, "text": f"⏳ Pencairan biaya logistik *{k}* *tertunda*. Admin Temu Tani sedang menanganinya; dana tetap aman di escrow."}]
+        return dengan_menu(row, [{"phone": P, "text": f"⏳ Pencairan biaya logistik *{k}* *tertunda*. Admin Temu Tani sedang menanganinya; dana tetap aman di escrow."}])
     return []
 
 
