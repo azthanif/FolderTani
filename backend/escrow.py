@@ -472,8 +472,10 @@ def pesan(row: dict) -> list[dict]:
                     "poll": {"name": f"Konfirmasi {k}:", "options": ["1. Sudah diterima", "2. Ada masalah", "0. Kembali ke menu"]},
                     "step": "escrow_action", "context": {"escrow_id": str(row["id"]), "kode": k, "actions": ["konfirmasi-terima", "lapor-masalah"]}})
     elif s == "DITERIMA":
-        msg = f"📦 *Gabah diterima tengkulak.* Dana {nilai} sedang dicairkan ke petani.\n\n{info}"
-        out += [{"phone": P, "text": msg}, {"phone": T, "text": msg}]
+        tunggu = ("⏳ Pencairan diproses bank/Xendit, biasanya *beberapa menit* (bisa lebih lama di luar jam operasional bank). "
+                  "Kami kabari lagi begitu dana masuk.")
+        out.append({"phone": P, "text": f"📦 *Gabah sudah diterima tengkulak.* Dana {nilai} sedang dicairkan ke rekening Anda.\n\n{info}\n\n{tunggu}"})
+        out.append({"phone": T, "text": f"📦 Terima kasih, penerimaan gabah *{k}* sudah dikonfirmasi. Dana {nilai} sedang diteruskan ke petani.\n\n{info}"})
     elif s == "SELESAI":
         out.append({"phone": P, "text": f"🎉 *Dana {nilai} sudah masuk ke rekening Anda.*\n\n{info}\n\nTransaksi selesai. Terima kasih!"})
         out.append({"phone": T, "text": f"✅ Transaksi *{k}* selesai. Dana sudah diteruskan ke petani. Terima kasih!"})
