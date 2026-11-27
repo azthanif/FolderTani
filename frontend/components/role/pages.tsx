@@ -1,6 +1,7 @@
 "use client";
 /* Halaman dashboard petani/tengkulak: overview, stok, penawaran, transaksi (port app.js bagian 5). */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { EscrowPill } from "@/components/escrow/EscrowDetail";
 import { Icon } from "@/components/Icon";
 import { useRoleActions } from "./actions";
 import { useRole } from "./RoleDataProvider";
@@ -491,14 +492,24 @@ export function OffersPage() {
   );
 }
 
-/* ---------- Kesepakatan (pembayaran di luar sistem) ---------- */
+/* ---------- Kesepakatan + escrow pembayaran ---------- */
 export function TransactionsPage() {
-  const { S, A, isFarmer } = useData();
+  const { S, A, isFarmer, db } = useData();
+  // Kembali dari halaman bayar Xendit (?escrow=<id>): buka detail transaksi terkait.
+  const [autoOpened, setAutoOpened] = useState(false);
+  useEffect(() => {
+    if (autoOpened || !db) return;
+    const id = new URLSearchParams(window.location.search).get("escrow");
+    const t = id ? db.transactions.find((x) => x.escrowId === id) : null;
+    if (t) A.trxDetail(t.id);
+    setAutoOpened(true);
+  }, [A, autoOpened, db]);
   const filtered = useFiltered();
   const tx = S.myTransactions();
   const list = filtered(tx, (t) => [t.id, S.buyer(t.buyerId)?.label, S.farmer(t.farmerId)?.name, S.stock(t.stockId)?.region].join(" "));
   const volume = tx.reduce((n, t) => n + t.volume, 0);
   const value = tx.reduce((n, t) => n + t.volume * t.price, 0);
+  const needAction = tx.filter((t) => (isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || ""))).length;
   return (
     <>
       <PageHeader
@@ -509,16 +520,18 @@ export function TransactionsPage() {
       <div className="kpi-grid">
         <Kpi icon="check" title="Total Kesepakatan" val={tx.length} foot="Kesepakatan milik Anda" />
         <Kpi icon="package" title="Total Volume" val={<>{number(volume)} <span className="kpi-unit">kg</span></>} foot="Gabah yang disepakati" theme="lime" />
-        <Kpi icon="wallet" title="Nilai Kesepakatan" val={rupiah(value)} foot="Estimasi, dibayar di luar Temu Tani" theme="gold" />
-        <Kpi icon="chart" title="Rata-rata Harga" val={volume ? rupiah(Math.round(value / volume)) : "–"} foot="Rp/kg tertimbang volume" theme="blue" />
+        <Kpi icon="wallet" title="Nilai Kesepakatan" val={rupiah(value)} foot="Dibayar lewat escrow Temu Tani" theme="gold" />
+        <Kpi icon="clock" title="Perlu Tindakan Anda" val={needAction} foot={isFarmer ? "Dana masuk, gabah perlu dikirim" : "Perlu dibayar atau dikonfirmasi"} theme="blue" />
       </div>
       <div className="info-strip">
-        <Icon name="info" size={17} /> Pembayaran dan serah terima gabah dilakukan langsung antara petani dan pembeli di luar Temu Tani. Buka detail untuk
-        melihat kontak {isFarmer ? "pembeli" : "petani"}.
+        <Icon name="info" size={17} />{" "}
+        {isFarmer
+          ? "Tengkulak membayar ke escrow Temu Tani. Kirim gabah setelah status menjadi Dana di Escrow; dana cair setelah tengkulak mengonfirmasi penerimaan."
+          : "Bayar ke escrow lewat tombol Bayar di detail transaksi. Dana baru diteruskan ke petani setelah Anda mengonfirmasi gabah diterima."}
       </div>
       <Filters page="transaksi" />
       <DataTable
-        columns={["ID Kesepakatan", isFarmer ? "Pembeli" : "Petani", "Lokasi", "Volume", "Harga Sepakat", "Nilai Kesepakatan", "Tanggal", "Aksi"]}
+        columns={["ID Kesepakatan", isFarmer ? "Pembeli" : "Petani", "Lokasi", "Volume", "Harga Sepakat", "Nilai Kesepakatan", "Status Pembayaran", "Tanggal", "Aksi"]}
         rows={list.map((t) => (
           <tr key={t.id}>
             <td><strong>{t.id}</strong></td>
@@ -527,11 +540,12 @@ export function TransactionsPage() {
             <td>{number(t.volume)} kg</td>
             <td>{rupiah(t.price)}/kg</td>
             <td><strong>{totalPrice(t.volume, t.price)}</strong></td>
+            <td><EscrowPill status={t.escrowStatus} label={t.escrowLabel} /></td>
             <td>{prettyDate(t.date)}</td>
             <td><Btn onClick={() => A.trxDetail(t.id)}>Lihat Detail</Btn></td>
           </tr>
         ))}
-        footer="Temu Tani mencatat kesepakatan harga, bukan memproses pembayaran."
+        footer="Pembayaran diproses lewat escrow (payment gateway mode uji). Status juga bisa dikonfirmasi lewat chatbot WhatsApp."
       />
     </>
   );

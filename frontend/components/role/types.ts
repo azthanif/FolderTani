@@ -16,8 +16,12 @@ export interface Offer {
 export interface Transaction {
   id: string; offerId: string; buyerId: string; farmerId: string; stockId: string; volume: number;
   price: number; date: string;
-  /** Nomor HP lawan transaksi (bila terdaftar). Pembayaran dilakukan langsung di luar sistem. */
+  /** Nomor HP lawan transaksi (bila terdaftar). */
   contact?: string | null;
+  /** Escrow pembayaran (lihat /api/escrow). Null bila escrow belum dibuat (kesepakatan lama). */
+  escrowId?: string | null;
+  escrowStatus?: string | null;
+  escrowLabel?: string | null;
 }
 /** Riwayat perubahan total stok fisik petani (terbaru dulu). */
 export interface StockLog { id: string; farmerId: string; at: string; activity: string; harvest?: string | null; delta: number; total: number }

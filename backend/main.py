@@ -27,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, cache, pricing, wa, xlsx
+from . import auth, cache, escrow, pricing, wa, xlsx
 from .db import DatabaseNotConfigured, read, set_log_context, tx
 from .news import load_news, load_news_supabase
 from .store import BlobStore
@@ -349,12 +349,24 @@ def offer_view(o: dict, events: list[dict], buyer_id: str, ai_ref: Optional[int]
     return view
 
 
-def trx_view(o: dict, buyer_id: str, contact: Optional[str]) -> dict:
-    return {
+def trx_view(o: dict, buyer_id: str, contact: Optional[str], esc: Optional[dict] = None) -> dict:
+    view = {
         "id": f"TRX-{o['id']}", "offerId": o["code"], "buyerId": buyer_id, "farmerId": str(o["farmer_id"]),
         "stockId": f"STK-{o['stock_id']}", "volume": o["qty_kg"], "price": o["agreed_price"],
         "date": o["agreed_at"].astimezone(WIB).date().isoformat(), "contact": contact,
+        "escrowId": None, "escrowStatus": None, "escrowLabel": None,
     }
+    if esc:
+        view.update({"escrowId": str(esc["id"]), "escrowStatus": esc["status"], "escrowLabel": escrow.STATUS_LABEL[esc["status"]]})
+    return view
+
+
+def escrow_by_offer(cur, offers: list[dict]) -> dict[int, dict]:
+    ids = [o["id"] for o in offers if o["status"] == "AGREED"]
+    if not ids:
+        return {}
+    cur.execute("select id, offer_id, status::text as status from escrow_transaksi where offer_id = any(%s)", (ids,))
+    return {r["offer_id"]: r for r in cur.fetchall()}
 
 
 def activity_feed(offers: list[dict], events: dict[int, list[dict]], logs: list[dict]) -> list[dict]:
@@ -391,7 +403,8 @@ def state_version(cur) -> int:
         """select extract(epoch from greatest(
               (select max(updated_at) from offers), (select max(updated_at) from stocks),
               (select max(created_at) from stock_logs), (select max(updated_at) from users),
-              (select max(created_at) from offer_events), 'epoch'::timestamptz)) * 1000 as v"""
+              (select max(created_at) from offer_events), (select max(diperbarui_pada) from escrow_transaksi),
+              'epoch'::timestamptz)) * 1000 as v"""
     )
     return int(cur.fetchone()["v"])
 
@@ -412,6 +425,7 @@ def snapshot(cur, actor: Actor) -> dict:
         tk = tengkulak_by_phone(cur, {o["buyer_phone"] for o in offers})
         ref = ai_reference(cur, actor.kabupaten)
         buyers = {buyer_key(o["buyer_phone"], tk): buyer_label(o["buyer_phone"], tk) for o in offers}
+        esc = escrow_by_offer(cur, offers)
         return {
             **base,
             "farmers": [{"id": actor.user, "name": actor.name, "region": actor.kabupaten, "village": actor.kecamatan}],
@@ -422,7 +436,8 @@ def snapshot(cur, actor: Actor) -> dict:
                           "harvest": x["harvest_date"].isoformat() if x["harvest_date"] else None,
                           "delta": x["delta_kg"], "total": x["total_kg"]} for x in logs],
             "offers": [offer_view(o, events[o["id"]], buyer_key(o["buyer_phone"], tk), o.get("ai") or ref.get(GRAIN)) for o in offers],
-            "transactions": [trx_view(o, buyer_key(o["buyer_phone"], tk), auth.from_e164(o["buyer_phone"])) for o in offers if o["status"] == "AGREED"],
+            "transactions": [trx_view(o, buyer_key(o["buyer_phone"], tk), auth.from_e164(o["buyer_phone"]), esc.get(o["id"]))
+                             for o in offers if o["status"] == "AGREED"],
             "activities": activity_feed(offers, events, logs[:12]),
             "aiReference": ref,
         }
@@ -431,6 +446,7 @@ def snapshot(cur, actor: Actor) -> dict:
         offered_stock = list({o["stock_id"] for o in offers})
         stocks = stock_rows(cur, "(s.quantity_kg > 0 or s.id = any(%s))", (offered_stock,))
         farmers = {str(s["farmer_id"]): s for s in stocks}
+        esc = escrow_by_offer(cur, offers)
         for o in offers:  # petani yang stoknya sudah habis tetapi pernah ditawar
             farmers.setdefault(str(o["farmer_id"]), {"display_name": o["farmer_display"], "kabupaten": o["farmer_kab"], "kecamatan": None})
         return {
@@ -441,7 +457,7 @@ def snapshot(cur, actor: Actor) -> dict:
             "stocks": [stock_view(s) for s in stocks],
             # aiRef (harga wajar AI) privat untuk petani: tidak pernah dikirim ke pembeli.
             "offers": [offer_view(o, events[o["id"]], actor.user, None) for o in offers],
-            "transactions": [trx_view(o, actor.user, auth.from_e164(o["farmer_phone"]) if o["farmer_consent"] else None)
+            "transactions": [trx_view(o, actor.user, auth.from_e164(o["farmer_phone"]) if o["farmer_consent"] else None, esc.get(o["id"]))
                              for o in offers if o["status"] == "AGREED"],
             "activities": activity_feed(offers, events, []),
         }
@@ -1498,8 +1514,21 @@ def _accept(actor: Actor, code: str, who: str, message: str) -> dict:
         if res.get("reason") == "insufficient_stock":
             err(409, "Stok sudah berkurang. Penawaran tidak dapat disetujui.")
         err(409, "Status penawaran sudah berubah.")
-    _push_offer_notifications(o["id"], "agreed")
+    _start_escrow(o["id"])
     return result(actor, message, id=f"TRX-{o['id']}")
+
+
+def _start_escrow(offer_id: int) -> None:
+    """Deal tercapai di web: buat escrow + invoice, lalu kabari kedua pihak (tagihan ke tengkulak).
+    Bila escrow gagal dibuat, kirim notifikasi kesepakatan lama agar kedua pihak tetap tahu."""
+    try:
+        row, baru = escrow.buat_escrow(offer_id, "sistem", "web")
+        if baru:
+            escrow.kabari(str(row["id"]))
+        return
+    except Exception:  # noqa: BLE001
+        log.exception("Escrow untuk penawaran %s gagal dibuat", offer_id)
+    _push_offer_notifications(offer_id, "agreed")
 
 
 @app.post("/api/offers/{offer_id}/accept", tags=["petani"])
@@ -1598,6 +1627,9 @@ async def put_chatbot_state(request: Request):
 def delete_chatbot_state():
     chatbot_store.clear()
     return {"ok": True}
+
+
+app.include_router(escrow.router)  # sebelum catch-all di bawah
 
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)

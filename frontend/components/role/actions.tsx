@@ -6,12 +6,13 @@ import type { FormEvent } from "react";
 import { showAlert, showConfirm } from "@/lib/dialog";
 import { Icon } from "@/components/Icon";
 import { useUI } from "@/components/UIProvider";
+import { EscrowDetail } from "@/components/escrow/EscrowDetail";
 import { useRole } from "./RoleDataProvider";
 import { availability, Badge, Btn, fmtTime, number, prettyDate, rupiah, selectors, totalPrice } from "./common";
 import type { Offer, RoleState, Stock } from "./types";
 
 export function useRoleActions() {
-  const { isFarmer, getDb, mutate, navigate, base } = useRole();
+  const { isFarmer, getDb, mutate, navigate, base, reload } = useRole();
   const { openModal, closeModal, toast } = useUI();
   const sel = () => selectors(getDb() as RoleState, isFarmer);
   const me = () => (getDb() as RoleState).actor.user; // ID pengguna yang sedang login
@@ -435,6 +436,14 @@ export function useRoleActions() {
     const s = S.stock(t.stockId), far = S.farmer(t.farmerId), buy = S.buyer(t.buyerId);
     const other = isFarmer ? buy?.label : far?.name;
     const wa = t.contact ? "https://wa.me/62" + t.contact.replace(/^0/, "") : null;
+    if (t.escrowId) {
+      openModal(
+        "Transaksi " + t.id,
+        `${s?.type || "GKP"} • ${s?.region || ""} • Pembayaran lewat escrow Temu Tani`,
+        <EscrowDetail key={t.escrowId} id={t.escrowId} role={isFarmer ? "petani" : "tengkulak"} onToast={toast} onChanged={reload} />,
+      );
+      return;
+    }
     openModal(
       "Detail Kesepakatan " + t.id,
       `${s?.type} • ${s?.region} • Kesepakatan harga`,

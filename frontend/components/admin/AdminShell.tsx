@@ -24,6 +24,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     { href: "/admin/penawaran", icon: "handshake", label: "Penawaran & Negosiasi", count: active },
     { href: "/admin/harga", icon: "chart-no-axes-combined", label: "Prediksi Harga AI" },
     { href: "/admin/transaksi", icon: "receipt-text", label: "Riwayat Kesepakatan" },
+    { href: "/admin/escrow", icon: "wallet", label: "Escrow & Pembayaran" },
     { href: "/admin/aktivitas", icon: "messages-square", label: "Aktivitas Chatbot" },
     { href: "/admin/berita", icon: "newspaper", label: "Berita & Analisis" },
     { href: "/admin/akun", icon: "users", label: "Kelola Akun", count: pendingAccounts },

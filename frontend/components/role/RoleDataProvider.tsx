@@ -36,6 +36,8 @@ interface RoleContextValue {
   error: Error | null;
   getDb: () => RoleState | null;
   mutate: (path: string, opts?: MutateOptions) => Promise<MutationResult | null>;
+  /** Muat ulang snapshot (mis. setelah aksi escrow yang tidak mengembalikan state). */
+  reload: () => void;
   ui: UiFilters;
   setUi: (patch: Partial<UiFilters>) => void;
   navigate: (page: string) => void;
@@ -192,6 +194,10 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
     };
   }, [actor, setDb, session]);
 
-  const value: RoleContextValue = { role, isFarmer, me, session, logout, base, db, error, getDb, mutate, ui, setUi, navigate };
+  const reload = useCallback(() => {
+    load().catch(() => undefined);
+  }, [load]);
+
+  const value: RoleContextValue = { role, isFarmer, me, session, logout, base, db, error, getDb, mutate, reload, ui, setUi, navigate };
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;
 }

@@ -94,7 +94,11 @@ def client(database_url, monkeypatch, tmp_path):
     pw = auth.hash_password(PASSWORD)
     e = auth.to_e164
     with psycopg.connect(database_url, autocommit=True) as conn:
+        # escrow_event menolak TRUNCATE (append-only); mode replica mematikan trigger khusus untuk reset data tes.
+        conn.execute("set session_replication_role = replica")
+        conn.execute("truncate escrow_event, escrow_transaksi, akun_pencairan_petani")
         conn.execute("truncate otp_codes, stock_logs, stock_batches, offer_events, offers, requests, stocks, price_predictions, price_forecasts, price_observations, gee_features_daily, users restart identity cascade")
+        conn.execute("set session_replication_role = default")
         conn.execute(
             """insert into users (phone, role, name, display_name, kabupaten, kecamatan, password_hash, contact_sharing_consent, status) values
                (%s,'admin','Admin Temu Tani','Admin Temu Tani',null,null,%s,false,'approved'),
