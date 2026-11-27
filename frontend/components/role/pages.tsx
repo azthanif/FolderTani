@@ -540,9 +540,14 @@ export function TransactionsPage() {
             <td>{number(t.volume)} kg</td>
             <td>{rupiah(t.price)}/kg</td>
             <td><strong>{totalPrice(t.volume, t.price)}</strong></td>
-            <td><EscrowPill status={t.escrowStatus} label={t.escrowLabel} /></td>
+            <td>
+              <EscrowPill status={t.escrowStatus} label={t.escrowLabel} />
+              {(isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || "")) ? (
+                <small className="escrow-todo">Perlu tindakan Anda</small>
+              ) : null}
+            </td>
             <td>{prettyDate(t.date)}</td>
-            <td><Btn onClick={() => A.trxDetail(t.id)}>Lihat Detail</Btn></td>
+            <td><Btn cl={(isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || "")) ? "primary" : ""} onClick={() => A.trxDetail(t.id)}>{(isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || "")) ? "Tindak Lanjuti" : "Lihat Detail"}</Btn></td>
           </tr>
         ))}
         footer="Pembayaran diproses lewat escrow (payment gateway mode uji). Status juga bisa dikonfirmasi lewat chatbot WhatsApp."

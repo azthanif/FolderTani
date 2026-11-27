@@ -209,9 +209,9 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
         {role === "tengkulak" && e.status === "MENUNGGU_BAYAR" && "Dana Anda ditahan di escrow Temu Tani dan baru diteruskan ke petani setelah Anda mengonfirmasi gabah diterima."}
         {role === "petani" && e.status === "MENUNGGU_BAYAR" && "Menunggu tengkulak membayar ke escrow. Jangan kirim gabah sebelum status berubah menjadi Dana di Escrow."}
         {role === "petani" && e.status === "DIBAYAR" && "Dana sudah aman di escrow. Kirim atau serahkan gabah, lalu konfirmasi di sini atau lewat WhatsApp."}
-        {role === "tengkulak" && e.status === "DIBAYAR" && "Pembayaran diterima. Koordinasikan serah terima gabah dengan petani."}
+        {role === "tengkulak" && e.status === "DIBAYAR" && "Pembayaran diterima dan dana aman di escrow. Tunggu petani mengirim gabah; Anda akan diberi tahu lewat WhatsApp dan web, lalu konfirmasi penerimaan di sini setelah gabah sampai."}
         {role === "tengkulak" && e.status === "DIKIRIM" && "Petani sudah mengirim gabah. Cek berat dan mutu, lalu konfirmasi penerimaan atau laporkan masalah."}
-        {role === "petani" && e.status === "DIKIRIM" && "Menunggu tengkulak mengonfirmasi penerimaan gabah."}
+        {role === "petani" && e.status === "DIKIRIM" && "Menunggu tengkulak mengonfirmasi penerimaan gabah. Dana dicairkan otomatis setelah dikonfirmasi."}
         {e.status === "DITERIMA" && "Gabah sudah diterima. Dana sedang dicairkan ke petani."}
         {e.status === "SELESAI" && "Transaksi selesai. Dana sudah diteruskan ke petani."}
         {role === "admin" && ["MENUNGGU_BAYAR", "DIBAYAR", "DIKIRIM"].includes(e.status) && " Status bergerak dari webhook Xendit dan konfirmasi kedua pihak."}

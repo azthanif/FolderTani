@@ -1597,3 +1597,4 @@
 @media(max-width:620px){.dash .metric-row{grid-template-columns:1fr}.dash .escrow-step small{font-size:9.5px}}
 .dash .escrow-actions .form-actions{margin-top:14px;justify-content:flex-start;flex-wrap:wrap}
 .dash .escrow-actions .form-actions:empty{display:none}
+.dash .escrow-todo{display:block;margin-top:4px;font-size:10.5px;font-weight:700;color:#b07800}

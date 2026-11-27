@@ -6,7 +6,7 @@ import type { FormEvent } from "react";
 import { showAlert, showConfirm } from "@/lib/dialog";
 import { Icon } from "@/components/Icon";
 import { useUI } from "@/components/UIProvider";
-import { EscrowDetail } from "@/components/escrow/EscrowDetail";
+import { EscrowDetail, EscrowPill } from "@/components/escrow/EscrowDetail";
 import { useRole } from "./RoleDataProvider";
 import { availability, Badge, Btn, fmtTime, number, prettyDate, rupiah, selectors, totalPrice } from "./common";
 import type { Offer, RoleState, Stock } from "./types";
@@ -382,6 +382,22 @@ export function useRoleActions() {
           </div>
         </>
       );
+    const trx = o.status === "Disepakati" ? (getDb() as RoleState).transactions.find((t) => t.offerId === o.id) : undefined;
+    if (trx?.escrowId) {
+      const todo = isFarmer ? trx.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(trx.escrowStatus || "");
+      actions = (
+        <>
+          <div className="divider" />
+          <div className={todo ? "notice-positive" : "notice-card"}>
+            Status pembayaran: <EscrowPill status={trx.escrowStatus} label={trx.escrowLabel} />{" "}
+            {todo ? (isFarmer ? "Dana sudah di escrow, silakan kirim gabah lalu konfirmasi." : trx.escrowStatus === "MENUNGGU_BAYAR" ? "Silakan bayar ke escrow." : "Gabah sudah dikirim, silakan konfirmasi penerimaan.") : ""}
+          </div>
+          <div className="form-actions">
+            <Btn cl="primary" onClick={() => trxDetail(trx.id)}>{todo ? "Lanjutkan pembayaran & konfirmasi" : "Lihat transaksi & pembayaran"}</Btn>
+          </div>
+        </>
+      );
+    }
     if (!isFarmer && o.status === "Menunggu Petani")
       actions = (
         <>
