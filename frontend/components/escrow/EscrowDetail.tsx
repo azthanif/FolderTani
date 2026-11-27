@@ -8,6 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { showConfirm } from "@/lib/dialog";
 import { formatRupiah } from "@/lib/format";
 import { ESCROW_STEPS, ESCROW_TONE, KANAL_LABEL, PELAKU_LABEL, type Escrow, type EscrowAction } from "@/lib/escrow";
+import { PengambilanPicker, RincianTagihan } from "./DeliveryPanel";
 
 const POLL_MS = 10_000;
 const num = (n: number) => Number(n || 0).toLocaleString("id-ID", { maximumFractionDigits: 2 });
@@ -33,6 +34,10 @@ const CONFIRM: Partial<Record<EscrowAction, { title: string; message: string; la
     label: "Ya, sudah diterima", tone: "warning",
   },
   "cairkan-ulang": { title: "Coba cairkan ulang?", message: "Pencairan baru akan dibuat ke akun pencairan petani.", label: "Cairkan ulang" },
+  "cairkan-ulang-logistik": {
+    title: "Coba cairkan ulang biaya logistik?", message: "Pencairan termin 1 (biaya logistik) baru akan dibuat ke akun pencairan petani.",
+    label: "Cairkan ulang logistik",
+  },
   "selesaikan-sengketa": {
     title: "Teruskan dana ke petani?",
     message: "Gunakan setelah laporan tengkulak selesai ditinjau dan diputuskan dana tetap dibayarkan. Refund tidak diproses otomatis.",
@@ -103,7 +108,14 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
   return (
     <div className="escrow-detail">
       <div className="metric-row">
-        <div className="metric-small"><small>Nilai escrow</small><strong>{formatRupiah(e.nilai)}</strong></div>
+        {role === "petani" ? (
+          <div className="metric-small"><small>Nilai gabah</small><strong>{formatRupiah(e.nilai)}</strong></div>
+        ) : (
+          <div className="metric-small">
+            <small>{e.dikunci ? "Total tagihan" : "Nilai gabah (tagihan belum final)"}</small>
+            <strong>{formatRupiah(e.total_tagihan ?? e.nilai)}</strong>
+          </div>
+        )}
         <div className="metric-small"><small>Harga</small><strong>{formatRupiah(e.harga_per_kg)}/kg</strong></div>
         <div className="metric-small"><small>Berat sepakat</small><strong>{num(e.berat_kg)} kg</strong></div>
       </div>
@@ -123,6 +135,10 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
           {e.status === "SENGKETA" && <>Tengkulak melaporkan masalah; dana tetap ditahan sampai admin selesai meninjau.{e.catatan_masalah ? <><br />Catatan: <em>{e.catatan_masalah}</em></> : null}</>}
           {e.status === "PENCAIRAN_GAGAL" && <>Pencairan ke petani tertunda{e.pencairan_gagal_kode && role === "admin" ? ` (${e.pencairan_gagal_kode})` : ""}. Admin akan mencoba ulang; dana tetap aman.</>}
         </div>
+      ) : null}
+
+      {e.aksi_tersedia.includes("pilih-diantar") ? (
+        <PengambilanPicker e={e} onToast={onToast} onLocked={(d) => { setE(d); last.current = d.status; onChanged?.(); }} />
       ) : null}
 
       {/* Aksi ditaruh di atas agar langsung terlihat tanpa scroll */}
@@ -152,11 +168,13 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
               <a className="btn" href={contactWa} target="_blank" rel="noopener noreferrer"><Icon name="phone" size={15} /> Hubungi {other}</a>
             ) : null}
             {e.aksi_tersedia.map((a) => {
+              if (a === "pilih-ambil-sendiri" || a === "pilih-diantar") return null; // ditangani PengambilanPicker
               if (a === "lapor-masalah") return <button key={a} type="button" className="btn" disabled={busy} onClick={() => setReport("")}>Laporkan masalah</button>;
               const label: Record<EscrowAction, string> = {
                 bayar: "Bayar sekarang", "konfirmasi-kirim": "Konfirmasi gabah dikirim", "konfirmasi-terima": "Konfirmasi gabah diterima",
                 "lapor-masalah": "Laporkan masalah", "cairkan-ulang": "Cairkan ulang", "selesaikan-sengketa": "Teruskan dana ke petani",
                 rekonsiliasi: "Tarik status dari Xendit", "buat-invoice": "Buat tautan pembayaran",
+                "pilih-ambil-sendiri": "Ambil sendiri", "pilih-diantar": "Diantar", "cairkan-ulang-logistik": "Cairkan ulang biaya logistik",
               };
               const primary = !["rekonsiliasi"].includes(a);
               return (
@@ -168,6 +186,8 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
           </div>
         )}
       </div>
+
+      <RincianTagihan e={e} role={role} />
 
       <div className="divider" />
       <div className="modal-grid">
@@ -196,7 +216,7 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
           <div className="timeline">
             {e.riwayat.map((r, i) => (
               <div className="timeline-item" key={i}>
-                <strong>{r.dari_status === r.ke_status ? "Pencairan diproses" : r.label}</strong>
+                <strong>{r.label}</strong>
                 <small>{when(r.dibuat_pada)} · {PELAKU_LABEL[r.pelaku] || r.pelaku} via {KANAL_LABEL[r.kanal] || r.kanal}</small>
               </div>
             ))}
@@ -206,9 +226,15 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
 
       <div className="divider" />
       <div className="notice-card">
-        {role === "tengkulak" && e.status === "MENUNGGU_BAYAR" && "Dana Anda ditahan di escrow Temu Tani dan baru diteruskan ke petani setelah Anda mengonfirmasi gabah diterima."}
-        {role === "petani" && e.status === "MENUNGGU_BAYAR" && "Menunggu tengkulak membayar ke escrow. Jangan kirim gabah sebelum status berubah menjadi Dana di Escrow."}
-        {role === "petani" && e.status === "DIBAYAR" && "Dana sudah aman di escrow. Kirim atau serahkan gabah, lalu konfirmasi di sini atau lewat WhatsApp."}
+        {role === "tengkulak" && e.status === "MENUNGGU_BAYAR" && (e.dikunci
+          ? "Dana Anda ditahan di escrow Temu Tani dan baru diteruskan ke petani setelah Anda mengonfirmasi gabah diterima."
+          : "Pilih cara pengambilan dulu. Tagihan (nilai gabah, biaya logistik bila diantar, dan fee 0,5%) dibuat setelah Anda memilih.")}
+        {role === "petani" && e.status === "MENUNGGU_BAYAR" && (e.dikunci
+          ? "Menunggu tengkulak membayar ke escrow. Jangan kirim gabah sebelum status berubah menjadi Dana di Escrow."
+          : "Menunggu tengkulak memilih cara pengambilan (ambil sendiri atau diantar) dan membayar ke escrow.")}
+        {role === "petani" && e.status === "DIBAYAR" && (e.pengambilan === "diantar"
+          ? "Dana sudah aman di escrow. Biaya logistik (termin 1) dicairkan ke rekening Anda untuk menyewa truk. Kirim gabah, lalu konfirmasi di sini atau lewat WhatsApp."
+          : "Dana sudah aman di escrow. Tengkulak akan menjemput gabah; setelah diserahkan, konfirmasi di sini atau lewat WhatsApp.")}
         {role === "tengkulak" && e.status === "DIBAYAR" && "Pembayaran diterima dan dana aman di escrow. Tunggu petani mengirim gabah; Anda akan diberi tahu lewat WhatsApp dan web, lalu konfirmasi penerimaan di sini setelah gabah sampai."}
         {role === "tengkulak" && e.status === "DIKIRIM" && "Petani sudah mengirim gabah. Cek berat dan mutu, lalu konfirmasi penerimaan atau laporkan masalah."}
         {role === "petani" && e.status === "DIKIRIM" && "Menunggu tengkulak mengonfirmasi penerimaan gabah. Dana dicairkan otomatis setelah dikonfirmasi."}

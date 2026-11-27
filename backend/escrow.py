@@ -30,14 +30,15 @@ import os
 import urllib.error
 import urllib.request
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, wa, xendit
+from . import auth, delivery, wa, xendit
 from .db import read, tx
 
 log = logging.getLogger("temutani.escrow")
@@ -72,9 +73,18 @@ AKSI = {  # aksi -> (dari, ke, peran)
 }
 
 COLS = """e.*, o.code as offer_code, p.name as petani_name, p.display_name as petani_display, p.phone as petani_phone,
-          p.kabupaten, coalesce(t.name, 'Pembeli WhatsApp') as tengkulak_name"""
+          p.kabupaten, coalesce(t.name, 'Pembeli WhatsApp') as tengkulak_name,
+          p.kode_desa as petani_kode_desa, p.kecamatan as petani_kecamatan, p.kelurahan as petani_kelurahan,
+          t.kode_desa as tengkulak_kode_desa, t.kabupaten as tengkulak_kabupaten, t.kecamatan as tengkulak_kecamatan,
+          t.kelurahan as tengkulak_kelurahan,
+          ma.nama_desa as asal_nama, ma.kecamatan as asal_kecamatan, ma.kabupaten as asal_kabupaten, ma.jenis as asal_jenis,
+          ma.sumber_koordinat as asal_sumber,
+          mt.nama_desa as tujuan_nama, mt.kecamatan as tujuan_kecamatan, mt.kabupaten as tujuan_kabupaten, mt.jenis as tujuan_jenis,
+          mt.sumber_koordinat as tujuan_sumber"""
 FROM = """from escrow_transaksi e join offers o on o.id = e.offer_id join users p on p.id = e.petani_id
-          left join users t on t.phone = e.tengkulak_phone and t.role = 'tengkulak'"""
+          left join users t on t.phone = e.tengkulak_phone and t.role = 'tengkulak'
+          left join master_desa ma on ma.kode_desa = e.kode_desa_asal
+          left join master_desa mt on mt.kode_desa = e.kode_desa_tujuan"""
 
 
 def _m():
@@ -106,6 +116,8 @@ def checkout_url(escrow_id) -> str:
 def invoice_url(row: dict) -> Optional[str]:
     """Tautan bayar. Mode simulasi: halaman checkout backend (tanpa login, dilindungi token)."""
     if not row["invoice_url"] and not row["invoice_id"]:
+        return None
+    if row.get("total_tagihan") is None:  # pengambilan belum dipilih: tagihan belum final
         return None
     if xendit.mock_mode() and str(row["invoice_id"] or "").startswith("mock-"):
         return checkout_url(row["id"])
@@ -174,7 +186,10 @@ def _pihak(row: dict, p: Pelaku) -> Optional[str]:
 def aksi_tersedia(row: dict, peran: Optional[str]) -> list[str]:
     s = row["status"]
     out: list[str] = []
+    belum_pilih = s == "MENUNGGU_BAYAR" and row.get("pengambilan") is None
     if peran == "tengkulak":
+        if belum_pilih:
+            out += ["pilih-ambil-sendiri", "pilih-diantar"]
         if s == "MENUNGGU_BAYAR" and invoice_url(row):
             out.append("bayar")
         if s == "DIKIRIM":
@@ -187,9 +202,11 @@ def aksi_tersedia(row: dict, peran: Optional[str]) -> list[str]:
             out.append("cairkan-ulang")
         if s == "SENGKETA":
             out.append("selesaikan-sengketa")
-        if s in ("MENUNGGU_BAYAR", "DITERIMA"):
+        if row.get("logistik_status") == "GAGAL":
+            out.append("cairkan-ulang-logistik")
+        if s in ("MENUNGGU_BAYAR", "DITERIMA") or row.get("logistik_status") == "DIPROSES":
             out.append("rekonsiliasi")
-    if peran in ("tengkulak", "admin") and s == "MENUNGGU_BAYAR" and not invoice_url(row):
+    if peran in ("tengkulak", "admin") and s == "MENUNGGU_BAYAR" and not belum_pilih and not invoice_url(row):
         out.append("buat-invoice")
     return out
 
@@ -231,6 +248,7 @@ def view(row: dict, peran: Optional[str], riwayat: Optional[list[dict]] = None) 
         "selesai_pada": m.iso(row["selesai_pada"]), "catatan_masalah": row["catatan_masalah"],
         "aksi_tersedia": aksi_tersedia(row, peran),
     }
+    out.update(rincian_view(row))
     if peran in ("tengkulak", "admin"):
         out["invoice_url"] = invoice_url(row)
     if peran == "admin":
@@ -241,13 +259,67 @@ def view(row: dict, peran: Optional[str], riwayat: Optional[list[dict]] = None) 
     if peran in ("petani", "tengkulak") and row["status"] not in ("MENUNGGU_BAYAR", "KEDALUWARSA"):
         out["kontak"] = auth.from_e164(row["tengkulak_phone"] if peran == "petani" else row["petani_phone"])
     if riwayat is not None:
-        out["riwayat"] = [{"dari_status": r["dari_status"], "ke_status": r["ke_status"], "label": STATUS_LABEL[r["ke_status"]],
+        out["riwayat"] = [{"dari_status": r["dari_status"], "ke_status": r["ke_status"], "label": _label_event(r),
                            "pelaku": r["pelaku"], "kanal": r["kanal"], "dibuat_pada": m.iso(r["dibuat_pada"])} for r in riwayat]
     return out
 
 
+def _desa_label(row: dict, k: str) -> Optional[str]:
+    if not row.get(f"{k}_nama"):
+        return None
+    return delivery.label_desa({"nama_desa": row[f"{k}_nama"], "kecamatan": row[f"{k}_kecamatan"],
+                                "kabupaten": row[f"{k}_kabupaten"], "jenis": row[f"{k}_jenis"]})
+
+
+def tagihan(row: dict) -> int:
+    """Jumlah yang dibayar tengkulak. Sebelum dikunci = nilai gabah (perkiraan minimum)."""
+    return int(row["total_tagihan"] if row.get("total_tagihan") is not None else row["nilai"])
+
+
+def termin_view(row: dict) -> list[dict]:
+    gabah_status = ("CAIR" if row["status"] == "SELESAI" else "DIPROSES" if row["status"] == "DITERIMA"
+                    else "GAGAL" if row["status"] == "PENCAIRAN_GAGAL" else "MENUNGGU")
+    gabah = {"jenis": "gabah", "nilai": int(row["nilai"]), "status": gabah_status, "cair_pada": None}
+    if row.get("pengambilan") == "diantar" and int(row.get("biaya_logistik") or 0) > 0:
+        logistik = {"ke": 1, "jenis": "logistik", "nilai": int(row["biaya_logistik"]),
+                    "status": row.get("logistik_status") or "MENUNGGU", "cair_pada": _m().iso(row.get("logistik_cair_pada"))}
+        return [logistik, {"ke": 2, **gabah}]
+    return [{"ke": 1, **gabah}]
+
+
+def rincian_view(row: dict) -> dict:
+    """Rincian delivery & tagihan (PRD delivery: kontrak respons quote, versi terkunci)."""
+    pg = row.get("pengambilan")
+    peringatan = [f"koordinat_{k}_centroid" for k in ("asal", "tujuan") if pg == "diantar" and row.get(f"{k}_sumber") == "centroid"]
+    return {
+        "pengambilan": pg, "pengambilanLabel": delivery.PENGAMBILAN_LABEL.get(pg) if pg else None,
+        "dikunci": row.get("total_tagihan") is not None,
+        "jarak_km": float(row["jarak_km"]) if row.get("jarak_km") is not None else None,
+        "armada": [{"kode": a.get("kode"), "nama": a.get("nama"), "jumlah": a.get("jumlah"), "kapasitas_ton": a.get("kapasitas_ton"),
+                    "tarif_harian": a.get("tarif_harian"), "tarif_per_km": a.get("tarif_per_km"), "biaya": a.get("biaya")}
+                   for a in (row.get("rincian_armada") or [])],
+        "desa_asal": _desa_label(row, "asal"), "desa_tujuan": _desa_label(row, "tujuan"),
+        "rincian": {"nilai_gabah": int(row["nilai"]), "biaya_logistik": int(row.get("biaya_logistik") or 0), "fee": int(row.get("fee") or 0)},
+        "total_tagihan": int(row["total_tagihan"]) if row.get("total_tagihan") is not None else None,
+        "termin_petani": termin_view(row), "peringatan": peringatan,
+    }
+
+
+def _label_event(r: dict) -> str:
+    if r["dari_status"] != r["ke_status"]:
+        return STATUS_LABEL[r["ke_status"]]
+    p = r.get("payload") or {}
+    if p.get("aksi") == "pilih-pengambilan":
+        return f"Pengambilan dipilih: {delivery.PENGAMBILAN_LABEL.get(p.get('pengambilan'), '-')} (tagihan dikunci)"
+    if p.get("jenis") == "logistik":
+        if p.get("disbursement_id"):
+            return "Termin 1 logistik dikirim ke payment gateway"
+        return {"cair": "Termin 1 logistik cair", "gagal": "Termin 1 logistik tertunda"}.get(p.get("logistik"), "Termin 1 logistik diproses")
+    return "Pencairan diproses"
+
+
 def _riwayat(cur, escrow_id) -> list[dict]:
-    cur.execute("select dari_status, ke_status, pelaku, kanal, dibuat_pada from escrow_event where escrow_id = %s order by dibuat_pada, id",
+    cur.execute("select dari_status, ke_status, pelaku, kanal, payload, dibuat_pada from escrow_event where escrow_id = %s order by dibuat_pada, id",
                 (escrow_id,))
     return cur.fetchall()
 
@@ -296,8 +368,11 @@ def transisi(cur, escrow_id, dari: str, ke: str, pelaku: str, kanal: str, payloa
 # ---------------------------------------------------------------------------
 # Pembuatan escrow + invoice
 # ---------------------------------------------------------------------------
-def buat_escrow(offer_id: int, pelaku: str = "sistem", kanal: str = "sistem") -> tuple[dict, bool]:
-    """Buat escrow untuk kesepakatan (idempoten per offer). -> (row, baru_dibuat). Invoice dibuat setelah commit."""
+def buat_escrow(offer_id: int, pelaku: str = "sistem", kanal: str = "sistem", pengambilan: Optional[str] = None,
+                kode_desa_tujuan: Optional[str] = None) -> tuple[dict, bool]:
+    """Buat escrow untuk kesepakatan (idempoten per offer). -> (row, baru_dibuat).
+    Tagihan baru final setelah tengkulak memilih pengambilan (ambil sendiri / diantar); invoice dibuat sesudahnya.
+    Bila `pengambilan` dikirim, biaya langsung dihitung ulang & dikunci di sini (PRD delivery: POST /api/escrow)."""
     m = _m()
     with tx() as cur:
         cur.execute(
@@ -323,21 +398,79 @@ def buat_escrow(offer_id: int, pelaku: str = "sistem", kanal: str = "sistem") ->
             _event(cur, created["id"], None, "MENUNGGU_BAYAR", pelaku if pelaku in ("petani", "tengkulak", "admin") else "sistem",
                    kanal, {"offer_id": o["id"]})
     row = _get_row(f"ESC-{offer_id}")
-    if not row["invoice_id"] and row["status"] == "MENUNGGU_BAYAR":
+    if pengambilan and row["pengambilan"] is None and row["status"] == "MENUNGGU_BAYAR":
+        row, _ = kunci(str(row["id"]), pengambilan, kode_desa_tujuan, pelaku, kanal)
+    if not row["invoice_id"] and row["status"] == "MENUNGGU_BAYAR" and row["total_tagihan"] is not None:
         row = buat_invoice(row)
     return row, bool(created)
+
+
+def _kode_petani(cur, row: dict) -> Optional[str]:
+    return row["petani_kode_desa"] or delivery.kode_desa_dari_nama(cur, row["kabupaten"], row["petani_kecamatan"], row["petani_kelurahan"])
+
+
+def _kode_tengkulak(cur, row: dict) -> Optional[str]:
+    return row["tengkulak_kode_desa"] or delivery.kode_desa_dari_nama(
+        cur, row["tengkulak_kabupaten"], row["tengkulak_kecamatan"], row["tengkulak_kelurahan"])
+
+
+def quote_escrow(cur, row: dict, pengambilan: str, kode_desa_tujuan: Optional[str] = None) -> dict:
+    """Quote untuk escrow ini dari snapshot kesepakatan. Asal = desa petani, tujuan = isian atau desa profil tengkulak."""
+    asal = tujuan = None
+    if pengambilan == "diantar":
+        asal = _kode_petani(cur, row)
+        tujuan = kode_desa_tujuan or _kode_tengkulak(cur, row)
+        if not asal:
+            raise delivery.DeliveryError(422, "Desa/kelurahan petani belum tercatat, jadi jarak belum bisa dihitung. "
+                                              "Hubungi admin Temu Tani atau pilih Ambil sendiri.")
+        if not tujuan:
+            raise delivery.DeliveryError(422, "Desa/kelurahan tujuan belum diisi. Lengkapi desa di profil web Temu Tani, "
+                                              "atau pilih Ambil sendiri.")
+    return delivery.quote(cur, pengambilan, Decimal(str(row["berat_kg"])), int(row["harga_per_kg"]), asal, tujuan)
+
+
+def kunci(ref: str, pengambilan: str, kode_desa_tujuan: Optional[str], pelaku: str, kanal: str) -> tuple[dict, bool]:
+    """Hitung ulang biaya di server lalu simpan snapshot (biaya terkunci). Idempoten untuk pilihan yang sama.
+    -> (row, berubah). DeliveryError bila data jarak tidak lengkap; ValueError bila tidak bisa dikunci lagi."""
+    with tx() as cur:
+        row = _lookup(cur, ref, lock=True)
+        if not row:
+            raise LookupError(ref)
+        if row["pengambilan"] is not None:
+            if row["pengambilan"] == pengambilan:
+                return row, False
+            raise ValueError(f"Pengambilan sudah dipilih: {delivery.PENGAMBILAN_LABEL[row['pengambilan']]}.")
+        if row["status"] != "MENUNGGU_BAYAR" or row["invoice_id"]:
+            raise ValueError(f"Status transaksi sudah berubah ({STATUS_LABEL[row['status']]}).")
+        q = quote_escrow(cur, row, pengambilan, kode_desa_tujuan)
+        r = q["rincian"]
+        cur.execute(
+            """update escrow_transaksi set pengambilan = %s, kode_desa_asal = %s, kode_desa_tujuan = %s, jarak_km = %s,
+                   rincian_armada = %s::jsonb, biaya_logistik = %s, fee = %s, total_tagihan = %s, dikunci_pada = now()
+               where id = %s and pengambilan is null and status = 'MENUNGGU_BAYAR' and invoice_id is null""",
+            (pengambilan, q["kode_desa_asal"], q["kode_desa_tujuan"], q["jarak_km"], json.dumps(q["armada"]),
+             r["biaya_logistik"], r["fee"], q["total_tagihan"], row["id"]),
+        )
+        _event(cur, row["id"], "MENUNGGU_BAYAR", "MENUNGGU_BAYAR", pelaku if pelaku in ("petani", "tengkulak", "admin") else "sistem",
+               kanal, {"aksi": "pilih-pengambilan", "pengambilan": pengambilan, "jarak_km": q["jarak_km"],
+                       "rincian": r, "total_tagihan": q["total_tagihan"], "armada": q["armada"], "peringatan": q["peringatan"]})
+    return _get_row(str(row["id"])), True
 
 
 def buat_invoice(row: dict) -> dict:
     """Buat invoice Xendit bila belum ada. Gagal -> escrow tetap MENUNGGU_BAYAR tanpa tautan (bisa dicoba ulang)."""
     m = _m()
+    if row["total_tagihan"] is None:
+        return row  # pengambilan belum dipilih: tagihan belum final
     if not xendit.configured():
         log.warning("Xendit belum dikonfigurasi; escrow %s dibuat tanpa invoice", row["id"])
         return row
+    logistik = f" + logistik {m.rupiah(int(row['biaya_logistik']))}" if int(row["biaya_logistik"] or 0) else ""
     try:
         inv = xendit.create_invoice(
-            external_id=str(row["id"]), amount=int(row["nilai"]),
-            description=f"Escrow Temu Tani {kode(row)} ({row['offer_code']}): {m.fmt_number(float(row['berat_kg']))} kg GKP x {m.rupiah(row['harga_per_kg'])}/kg",
+            external_id=str(row["id"]), amount=tagihan(row),
+            description=(f"Escrow Temu Tani {kode(row)} ({row['offer_code']}): {m.fmt_number(float(row['berat_kg']))} kg GKP x "
+                         f"{m.rupiah(row['harga_per_kg'])}/kg{logistik} + fee {m.rupiah(int(row['fee'] or 0))}"),
             duration_seconds=invoice_hours() * 3600,
             success_redirect_url=f"{m.WEB_URL}/tengkulak/transaksi?escrow={row['id']}",
         )
@@ -432,6 +565,111 @@ def _kirim_disbursement(escrow_id, percobaan: int) -> None:
             terapkan_disbursement(row, "COMPLETED", {"sumber": "simulasi", "status": "COMPLETED"}, "webhook", "xendit")
 
 
+# ---- Termin 1: biaya logistik (pilihan Diantar), cair saat dana masuk escrow -----------
+def ext_id_logistik(escrow_id, percobaan: int) -> str:
+    """external_id disbursement termin logistik: '<uuid escrow>-L<percobaan>' (beda dari termin gabah)."""
+    return f"{escrow_id}-L{percobaan}"
+
+
+def cairkan_logistik(escrow_id) -> None:
+    """Klaim atomik seperti cairkan(): hanya satu disbursement logistik aktif, tidak pernah dua kali cair."""
+    with tx() as cur:
+        cur.execute(
+            "update escrow_transaksi set logistik_percobaan = logistik_percobaan + 1, logistik_status = 'DIPROSES',"
+            " logistik_gagal_kode = null, logistik_disbursement_id = %s || id::text || '-L' || (logistik_percobaan + 1)"
+            " where id = %s and pengambilan = 'diantar' and biaya_logistik > 0 and logistik_disbursement_id is null"
+            " and coalesce(logistik_status, '') <> 'CAIR'"
+            " and status in ('DIBAYAR', 'DIKIRIM', 'DITERIMA', 'SENGKETA', 'PENCAIRAN_GAGAL', 'SELESAI')"
+            " returning logistik_percobaan, status::text as status",
+            (PENDING, escrow_id),
+        )
+        claim = cur.fetchone()
+        if claim:
+            _event(cur, escrow_id, claim["status"], claim["status"], "sistem", "sistem",
+                   {"termin": 1, "jenis": "logistik", "logistik": "diproses", "percobaan": claim["logistik_percobaan"]})
+    if claim:
+        _kirim_logistik(escrow_id, claim["logistik_percobaan"])
+
+
+def _kirim_logistik(escrow_id, percobaan: int) -> None:
+    ext = ext_id_logistik(escrow_id, percobaan)
+    marker = PENDING + ext
+    with read() as cur:
+        cur.execute("select e.biaya_logistik, e.offer_id, a.kode_bank, a.nama_pemilik, a.nomor_akun from escrow_transaksi e"
+                    " left join akun_pencairan_petani a on a.petani_id = e.petani_id where e.id = %s", (escrow_id,))
+        info = cur.fetchone()
+    gagal_kode, disb, tidak_pasti = None, None, False
+    if not info["kode_bank"] and xendit.mock_mode():
+        info = {**info, "kode_bank": "BCA", "nama_pemilik": "Petani (simulasi)", "nomor_akun": "0000000000"}
+    if not info["kode_bank"]:
+        gagal_kode = "AKUN_PENCAIRAN_BELUM_ADA"
+    elif not xendit.configured():
+        gagal_kode = "XENDIT_BELUM_DIKONFIGURASI"
+    else:
+        try:
+            disb = xendit.create_disbursement(
+                external_id=ext, amount=int(info["biaya_logistik"]), bank_code=info["kode_bank"],
+                account_holder_name=info["nama_pemilik"], account_number=info["nomor_akun"],
+                description=f"Termin 1 biaya logistik escrow Temu Tani ESC-{info['offer_id']}",
+            )
+        except xendit.XenditError as e:
+            if e.uncertain:
+                tidak_pasti = True
+            else:
+                gagal_kode = e.code
+    gagal = False
+    with tx() as cur:
+        cur.execute("select status::text as status from escrow_transaksi where id = %s", (escrow_id,))
+        st = cur.fetchone()["status"]
+        if disb and disb.get("id"):
+            cur.execute("update escrow_transaksi set logistik_disbursement_id = %s where id = %s and logistik_disbursement_id = %s returning id",
+                        (disb["id"], escrow_id, marker))
+            if cur.fetchone():
+                _event(cur, escrow_id, st, st, "sistem", "sistem",
+                       {"termin": 1, "jenis": "logistik", "disbursement_id": disb["id"], "external_id": ext, "percobaan": percobaan})
+        elif tidak_pasti or disb is not None:
+            _event(cur, escrow_id, st, st, "sistem", "sistem",
+                   {"termin": 1, "jenis": "logistik", "disbursement": "status_belum_pasti", "external_id": ext, "percobaan": percobaan})
+        else:
+            cur.execute("update escrow_transaksi set logistik_status = 'GAGAL', logistik_gagal_kode = %s, logistik_disbursement_id = null"
+                        " where id = %s and logistik_disbursement_id = %s returning id", (gagal_kode, escrow_id, marker))
+            if cur.fetchone():
+                gagal = True
+                _event(cur, escrow_id, st, st, "sistem", "sistem",
+                       {"termin": 1, "jenis": "logistik", "logistik": "gagal", "kode": gagal_kode, "external_id": ext})
+    if gagal:
+        kabari_logistik(str(escrow_id))
+    elif disb and disb.get("id") and xendit.mock_mode():
+        row = _get_row(str(escrow_id))
+        if row and row["logistik_disbursement_id"] == disb["id"]:
+            terapkan_logistik(row, "COMPLETED", {"sumber": "simulasi", "status": "COMPLETED"}, "webhook", "xendit")
+
+
+def terapkan_logistik(row: dict, status: str, payload: dict, kanal: str = "webhook", pelaku: str = "xendit",
+                      disbursement_id: Optional[str] = None) -> bool:
+    """Hasil disbursement termin logistik. Tidak mengubah status utama escrow (alur gabah tetap berjalan)."""
+    status = (status or "").upper()
+    hasil = "CAIR" if status in ("COMPLETED", "SUCCEEDED") else "GAGAL" if status in ("FAILED", "REVERSED", "CANCELLED") else None
+    if not hasil or row.get("logistik_status") != "DIPROSES" or not row.get("logistik_disbursement_id"):
+        return False
+    with tx() as cur:
+        if hasil == "CAIR":
+            cur.execute("update escrow_transaksi set logistik_status = 'CAIR', logistik_cair_pada = now(), logistik_disbursement_id = %s"
+                        " where id = %s and logistik_status = 'DIPROSES' and logistik_disbursement_id = %s returning status::text as status",
+                        (disbursement_id or row["logistik_disbursement_id"], row["id"], row["logistik_disbursement_id"]))
+        else:
+            cur.execute("update escrow_transaksi set logistik_status = 'GAGAL', logistik_gagal_kode = %s, logistik_disbursement_id = null"
+                        " where id = %s and logistik_status = 'DIPROSES' and logistik_disbursement_id = %s returning status::text as status",
+                        (payload.get("failure_code") or "FAILED", row["id"], row["logistik_disbursement_id"]))
+        r = cur.fetchone()
+        if r:
+            _event(cur, row["id"], r["status"], r["status"], pelaku, kanal,
+                   {"termin": 1, "jenis": "logistik", "logistik": hasil.lower(), **payload})
+    if r:
+        kabari_logistik(str(row["id"]))
+    return bool(r)
+
+
 # ---------------------------------------------------------------------------
 # Notifikasi WhatsApp
 # ---------------------------------------------------------------------------
@@ -443,27 +681,44 @@ def pesan(row: dict) -> list[dict]:
     m = _m()
     k, nilai = kode(row), m.rupiah(int(row["nilai"]))
     info = (f"*{k}* ({row['offer_code']}) • {row['kabupaten']} • GKP • {m.fmt_number(float(row['berat_kg']))} kg\n"
-            f"Harga: *{m.rupiah(row['harga_per_kg'])}/kg* • Nilai: *{nilai}*")
+            f"Harga: *{m.rupiah(row['harga_per_kg'])}/kg* • Nilai gabah: *{nilai}*")
+    diantar = row.get("pengambilan") == "diantar"
+    logistik = int(row.get("biaya_logistik") or 0)
+    info_t = info + ("\n" + rincian_teks(row) if row.get("total_tagihan") is not None else "")  # versi tengkulak: + tagihan
     web_t, web_p = f"{m.WEB_URL}/tengkulak/transaksi", f"{m.WEB_URL}/petani/transaksi"
     P, T = row["petani_phone"], row["tengkulak_phone"]
     s = row["status"]
     out: list[dict] = []
-    if s == "MENUNGGU_BAYAR":
+    if s == "MENUNGGU_BAYAR" and row.get("pengambilan") is None:
+        out.append({"phone": T, "text": f"✅ *Harga disepakati dengan {row['petani_display']}!*\n\n{info}\n\n"
+                                        "🚚 *Pilih cara pengambilan gabah* sebelum tagihan dibuat:\n"
+                                        "1. *Ambil sendiri*: Anda menjemput dengan truk sendiri, tanpa biaya logistik.\n"
+                                        "2. *Diantar*: petani menyewa truk; biaya logistik dihitung dari jarak antar desa.\n\n"
+                                        f"Bisa juga di web: {web_t}\n{HINT}",
+                    "poll": {"name": f"Pengambilan {k}:", "options": ["1. Ambil sendiri", "2. Diantar", "0. Kembali ke menu"]},
+                    "step": "escrow_action", "context": {"escrow_id": str(row["id"]), "kode": k,
+                                                         "actions": ["pilih-ambil-sendiri", "pilih-diantar"]}})
+        out.append({"phone": P, "text": f"✅ *Harga sudah disepakati!*\n\n{info}\n\n⏳ Menunggu tengkulak memilih cara pengambilan "
+                                        "dan membayar ke escrow.\nKami kabari begitu dana aman di escrow. *Jangan kirim gabah sebelum ada kabar tersebut.*"})
+    elif s == "MENUNGGU_BAYAR":
         exp = f"\nBatas bayar: *{m.id_date(row['invoice_kedaluwarsa_pada'])} {m.id_time(row['invoice_kedaluwarsa_pada'])} WIB*" if row["invoice_kedaluwarsa_pada"] else ""
         bayar = (f"💳 Bayar ke escrow lewat tautan ini:\n{invoice_url(row)}{exp}" if invoice_url(row)
                  else f"Tautan pembayaran sedang disiapkan. Cek di web: {web_t}")
-        out.append({"phone": T, "text": f"✅ *Harga disepakati dengan {row['petani_display']}!*\n\n{info}\n\n{bayar}\n\n"
+        out.append({"phone": T, "text": f"✅ *Harga disepakati dengan {row['petani_display']}!*\n\n{info_t}\n\n{bayar}\n\n"
                                         "Dana Anda ditahan aman di escrow Temu Tani dan baru diteruskan ke petani setelah Anda "
                                         "mengonfirmasi gabah diterima."})
         out.append({"phone": P, "text": f"✅ *Harga sudah disepakati!*\n\n{info}\n\n⏳ Menunggu pembayaran tengkulak ke escrow.\n"
                                         "Kami kabari begitu dana aman di escrow. *Jangan kirim gabah sebelum ada kabar tersebut.*"})
     elif s == "DIBAYAR":
-        out.append({"phone": P, "text": f"💰 *Dana {nilai} sudah aman di escrow.*\n\n{info}\n\nSilakan kirim/serahkan gabah ke tengkulak.\n"
+        termin1 = (f"\n🚚 *Diantar*: biaya logistik *{m.rupiah(logistik)}* (termin 1) sedang dicairkan ke rekening Anda untuk sewa truk"
+                   f"{' (' + armada_teks(row) + ')' if row.get('rincian_armada') else ''}. Nilai gabah cair setelah tengkulak menerima gabah.\n"
+                   if diantar and logistik else "\n🚜 *Ambil sendiri*: tengkulak menjemput gabah dengan truknya.\n")
+        out.append({"phone": P, "text": f"💰 *Dana {nilai} sudah aman di escrow.*\n\n{info}\n{termin1}\nSilakan kirim/serahkan gabah ke tengkulak.\n"
                                         f"📱 Kontak tengkulak: {m._wa_contact(T)}\n\n"
                                         f"Setelah gabah diserahkan, konfirmasi lewat pilihan di bawah atau di web: {web_p}\n{HINT}",
                     "poll": {"name": f"Konfirmasi {k}:", "options": ["1. Gabah sudah dikirim", "0. Kembali ke menu"]},
                     "step": "escrow_action", "context": {"escrow_id": str(row["id"]), "kode": k, "actions": ["konfirmasi-kirim"]}})
-        out.append({"phone": T, "text": f"🧾 *Pembayaran diterima.* Dana {nilai} ditahan di escrow.\n\n{info}\n\n"
+        out.append({"phone": T, "text": f"🧾 *Pembayaran diterima.* Dana {m.rupiah(tagihan(row))} ditahan di escrow.\n\n{info_t}\n\n"
                                         f"📱 Kontak petani: {m._wa_contact(P)}\nKoordinasikan waktu & lokasi serah terima gabah."})
     elif s == "DIKIRIM":
         out.append({"phone": T, "text": f"🚚 *{row['petani_display']} sudah mengirim gabah.*\n\n{info}\n\n"
@@ -491,6 +746,38 @@ def pesan(row: dict) -> list[dict]:
     return out
 
 
+def _km(row: dict) -> str:
+    return f"{float(row.get('jarak_km') or 0):.1f}".replace(".", ",")
+
+
+def armada_teks(row: dict) -> str:
+    return " + ".join(f"{a.get('jumlah')} {a.get('nama')}" for a in (row.get("rincian_armada") or []))
+
+
+def rincian_teks(row: dict) -> str:
+    """Ringkasan tagihan untuk WhatsApp/checkout (tanpa markdown tabel)."""
+    m = _m()
+    baris = [f"Pengambilan: *{delivery.PENGAMBILAN_LABEL.get(row.get('pengambilan'), '-')}*"]
+    if row.get("pengambilan") == "diantar":
+        baris.append(f"Jarak garis lurus: *{_km(row)} km* • Armada: *{armada_teks(row)}*")
+        baris.append(f"Biaya logistik (perkiraan): *{m.rupiah(int(row['biaya_logistik']))}*")
+    baris.append(f"Fee aplikasi: *{m.rupiah(int(row.get('fee') or 0))}*")
+    baris.append(f"Total tagihan: *{m.rupiah(tagihan(row))}*")
+    return "\n".join(baris)
+
+
+def pesan_logistik(row: dict) -> list[dict]:
+    m = _m()
+    k, P = kode(row), row["petani_phone"]
+    if row.get("logistik_status") == "CAIR":
+        return [{"phone": P, "text": f"🚚 *Biaya logistik {m.rupiah(int(row['biaya_logistik']))} (termin 1) sudah masuk ke rekening Anda* "
+                                     f"untuk *{k}*.\nSilakan sewa truk ({armada_teks(row)}) dan kirim gabah ke tengkulak. "
+                                     "Nilai gabah cair setelah tengkulak mengonfirmasi penerimaan."}]
+    if row.get("logistik_status") == "GAGAL":
+        return [{"phone": P, "text": f"⏳ Pencairan biaya logistik *{k}* *tertunda*. Admin Temu Tani sedang menanganinya; dana tetap aman di escrow."}]
+    return []
+
+
 def _deliver_n8n(url: str, body: dict) -> bool:
     # Rahasia keluar terpisah dari token layanan masuk: bocornya token ini tidak memberi akses ke API escrow.
     headers = {"Content-Type": "application/json", "X-Temutani-Token": os.getenv("N8N_ESCROW_WEBHOOK_TOKEN", "")}
@@ -503,33 +790,47 @@ def _deliver_n8n(url: str, body: dict) -> bool:
         return False
 
 
-def kabari(ref: str, kecuali: Optional[str] = None) -> None:
-    """Kirim notifikasi status terbaru. `kecuali` = nomor yang sudah dibalas langsung (pelaku dari WA)."""
-    m = _m()
+def kabari_logistik(ref: str) -> None:
+    try:
+        row = _get_row(ref)
+        if row:
+            _kirim(row, pesan_logistik(row), f"LOGISTIK_{row.get('logistik_status')}")
+    except Exception:  # noqa: BLE001
+        log.exception("Notifikasi logistik escrow %s gagal", ref)
+
+
+def kabari(ref: str, kecuali: Optional[str] = None, hanya: Optional[str] = None) -> None:
+    """Kirim notifikasi status terbaru. `kecuali` = nomor yang sudah dibalas langsung (pelaku dari WA);
+    `hanya` = kirim ke satu nomor saja (mis. tagihan setelah tengkulak memilih pengambilan)."""
     try:
         row = _get_row(ref)
         if not row:
             return
-        msgs = [x for x in pesan(row) if x["phone"] != kecuali]
-        if not msgs:
-            return
-        with tx() as cur:  # sesi chatbot penerima: balasan angka/vote langsung masuk ke alur escrow
-            for x in msgs:
-                if "step" in x:
-                    m._set_chat_step(cur, x["phone"], x["step"], x.get("context") or {})
-        url = os.getenv("N8N_ESCROW_WEBHOOK_URL", "").strip()
-        body = {"event": row["status"], "escrow_id": str(row["id"]), "kode": kode(row),
-                "session": os.getenv("WAHA_SESSION", "").strip(),  # nama sesi WAHA yang sama dengan backend
-                "messages": [{"phone": x["phone"], "chatId": wa.chat_id(x["phone"]), "text": x["text"], "poll": x.get("poll")} for x in msgs]}
-        if url and os.getenv("N8N_ESCROW_WEBHOOK_TOKEN", "").strip() and _deliver_n8n(url, body):
-            return
-        for x in msgs:  # cadangan: langsung ke WAHA
-            if x.get("poll"):
-                m._notify_poll(x["phone"], x["text"], x["poll"])
-            else:
-                m._notify(x["phone"], x["text"])
+        msgs = [x for x in pesan(row) if x["phone"] != kecuali and (hanya is None or x["phone"] == hanya)]
+        _kirim(row, msgs, row["status"])
     except Exception:  # noqa: BLE001 - notifikasi tidak boleh membatalkan perubahan status
         log.exception("Notifikasi escrow %s gagal", ref)
+
+
+def _kirim(row: dict, msgs: list[dict], event: str) -> None:
+    m = _m()
+    if not msgs:
+        return
+    with tx() as cur:  # sesi chatbot penerima: balasan angka/vote langsung masuk ke alur escrow
+        for x in msgs:
+            if "step" in x:
+                m._set_chat_step(cur, x["phone"], x["step"], x.get("context") or {})
+    url = os.getenv("N8N_ESCROW_WEBHOOK_URL", "").strip()
+    body = {"event": event, "escrow_id": str(row["id"]), "kode": kode(row),
+            "session": os.getenv("WAHA_SESSION", "").strip(),  # nama sesi WAHA yang sama dengan backend
+            "messages": [{"phone": x["phone"], "chatId": wa.chat_id(x["phone"]), "text": x["text"], "poll": x.get("poll")} for x in msgs]}
+    if url and os.getenv("N8N_ESCROW_WEBHOOK_TOKEN", "").strip() and _deliver_n8n(url, body):
+        return
+    for x in msgs:  # cadangan: langsung ke WAHA
+        if x.get("poll"):
+            m._notify_poll(x["phone"], x["text"], x["poll"])
+        else:
+            m._notify(x["phone"], x["text"])
 
 
 # ---------------------------------------------------------------------------
@@ -540,10 +841,15 @@ def terapkan_invoice(row: dict, status: str, payload: dict, kanal: str = "webhoo
     ke = "DIBAYAR" if status in ("PAID", "SETTLED") else "KEDALUWARSA" if status == "EXPIRED" else None
     if not ke or row["status"] != "MENUNGGU_BAYAR":
         return False
+    if ke == "DIBAYAR" and row.get("total_tagihan") is None:
+        log.warning("Pembayaran escrow %s diabaikan: pengambilan belum dipilih (tagihan belum final)", row["id"])
+        return False
     with tx() as cur:
         ok = transisi(cur, row["id"], "MENUNGGU_BAYAR", ke, pelaku, kanal, payload)
     if ok:
         kabari(str(row["id"]))
+        if ke == "DIBAYAR" and row.get("pengambilan") == "diantar":
+            cairkan_logistik(row["id"])  # termin 1 ke petani untuk sewa truk (PRD delivery)
     return ok
 
 
@@ -575,6 +881,13 @@ def _aktif_cocok(row: dict, disb_id: str, ext: str) -> bool:
 class BuatEscrowIn(BaseModel):
     offer_id: str = Field(min_length=1, max_length=30)   # 'OFF-12' atau '12'
     notify: bool = True                                   # n8n mengirim balasan sendiri -> false
+    pengambilan: Optional[Literal["ambil_sendiri", "diantar"]] = None  # opsional: langsung kunci tagihan
+    kode_desa_tujuan: Optional[str] = Field(default=None, pattern=r"^\d{10}$")
+
+    @field_validator("kode_desa_tujuan", mode="before")
+    @classmethod
+    def _bersih(cls, v):
+        return delivery._kode(v)
 
 
 class LaporIn(BaseModel):
@@ -619,10 +932,106 @@ def create_escrow(body: BuatEscrowIn, p: Pelaku = Depends(get_pelaku)):
     if not o or not (p.role == "admin" or (p.role == "petani" and str(o["farmer_id"]) == p.user)
                      or (p.role == "tengkulak" and o["buyer_phone"] == p.phone)):
         m.err(404, "Penawaran tidak ditemukan.")
-    row, baru = buat_escrow(oid, p.role, p.kanal)
+    if body.pengambilan and p.role not in ("tengkulak", "admin"):
+        m.err(403, "Cara pengambilan dipilih oleh tengkulak.")
+    try:
+        row, baru = buat_escrow(oid, p.role, p.kanal, body.pengambilan, body.kode_desa_tujuan)
+    except delivery.DeliveryError as e:
+        m.err(e.status, e.message)
+    except ValueError as e:
+        m.err(409, str(e))
     if baru and body.notify:
         kabari(str(row["id"]))
     return {**detail(str(row["id"]), _pihak(row, p)), "baru": baru}
+
+
+@router.post("/api/delivery/quote", tags=["delivery"])
+def delivery_quote(body: delivery.QuoteIn, p: Pelaku = Depends(get_pelaku)):
+    """Estimasi tagihan (belum dikunci). Biaya dihitung ulang di server saat escrow dikunci."""
+    with read() as cur:
+        try:
+            return delivery.quote(cur, body.pengambilan, body.berat_kg, body.harga_per_kg,
+                                  body.kode_desa_asal, body.kode_desa_tujuan)
+        except delivery.DeliveryError as e:
+            _m().err(e.status, e.message)
+
+
+@router.get("/api/desa", tags=["umum"])
+def list_desa(kabupaten: Optional[str] = Query(default=None, max_length=30),
+              kecamatan: Optional[str] = Query(default=None, max_length=60),
+              q: Optional[str] = Query(default=None, max_length=60),
+              limit: int = Query(default=50, ge=1, le=900)):
+    """Daftar desa/kelurahan layanan untuk dropdown. Data rujukan publik (Kepmendagri), tanpa data pengguna,
+    sehingga juga bisa dipakai form daftar tengkulak yang belum login."""
+    where, params = [], []
+    if kabupaten:
+        where.append("lower(kabupaten) = lower(%s)")
+        params.append(kabupaten.strip())
+    if kecamatan:
+        where.append("lower(kecamatan) = lower(%s)")
+        params.append(kecamatan.strip())
+    if q and q.strip():
+        like = "%" + q.strip().replace("\\", "").replace("%", "").replace("_", "") + "%"
+        where.append("(nama_desa ilike %s or kecamatan ilike %s)")
+        params += [like, like]
+    with read() as cur:
+        cur.execute("select kode_desa, nama_desa, kecamatan, kabupaten, jenis, sumber_koordinat,"
+                    " (lat is not null and lon is not null) as ada_koordinat from master_desa"
+                    f" where {' and '.join(where) or 'true'} order by kabupaten, kecamatan, nama_desa limit %s", (*params, limit))
+        rows = cur.fetchall()
+    return {"items": [{**r, "label": delivery.label_desa(r)} for r in rows]}
+
+
+@router.post("/api/escrow/{ref}/quote", tags=["escrow", "delivery"])
+def escrow_quote(ref: str, body: delivery.PilihIn, p: Pelaku = Depends(get_pelaku)):
+    """Pratinjau tagihan untuk pilihan pengambilan (belum dikunci): dipakai web & WhatsApp sebelum konfirmasi."""
+    m = _m()
+    row, peran = _row_for(ref, p)
+    if peran not in ("tengkulak", "admin"):
+        m.err(403, "Cara pengambilan dipilih oleh tengkulak.")
+    with read() as cur:
+        try:
+            q = quote_escrow(cur, row, body.pengambilan, body.kode_desa_tujuan)
+        except delivery.DeliveryError as e:
+            m.err(e.status, e.message)
+    return {**q, "escrow_id": str(row["id"]), "kode": kode(row), "status": row["status"],
+            "sudah_dipilih": row["pengambilan"], "berat_kg": view(row, peran)["berat_kg"]}
+
+
+@router.post("/api/escrow/{ref}/pengambilan", tags=["escrow", "delivery"])
+def pilih_pengambilan(ref: str, body: delivery.PilihIn, p: Pelaku = Depends(get_pelaku)):
+    """Tengkulak memilih Ambil sendiri / Diantar: biaya dihitung ulang di server, dikunci, lalu invoice dibuat."""
+    m = _m()
+    row, peran = _row_for(ref, p)
+    if peran not in ("tengkulak", "admin"):
+        m.err(403, "Cara pengambilan dipilih oleh tengkulak.")
+    try:
+        row, berubah = kunci(str(row["id"]), body.pengambilan, body.kode_desa_tujuan, peran, p.kanal)
+    except delivery.DeliveryError as e:
+        m.err(e.status, e.message)
+    except ValueError as e:
+        m.err(409, str(e))
+    if row["status"] == "MENUNGGU_BAYAR" and not row["invoice_id"]:
+        row = buat_invoice(row)
+    if berubah and p.kanal == "web":  # lewat WA, n8n membalas langsung dengan tautan bayar dari respons ini
+        kabari(str(row["id"]), hanya=row["tengkulak_phone"])
+    label = delivery.PENGAMBILAN_LABEL[body.pengambilan]
+    msg = (f"Pengambilan: {label}. Tagihan {m.rupiah(tagihan(row))} siap dibayar." if invoice_url(row)
+           else f"Pengambilan: {label}. Tautan pembayaran sedang disiapkan.")
+    return {**detail(str(row["id"]), peran), "berubah": berubah, "message": msg if berubah else f"Pengambilan sudah dipilih: {label}."}
+
+
+@router.post("/api/escrow/{ref}/cairkan-ulang-logistik", tags=["escrow"])
+def cairkan_ulang_logistik(ref: str, p: Pelaku = Depends(get_pelaku)):
+    """Admin: coba lagi pencairan termin 1 (biaya logistik) yang gagal."""
+    m = _m()
+    row, peran = _row_for(ref, p)
+    if peran != "admin":
+        m.err(403, "Aksi ini tidak diizinkan untuk peran Anda.")
+    if row["logistik_status"] != "GAGAL":
+        m.err(409, "Pencairan biaya logistik tidak sedang gagal.")
+    cairkan_logistik(row["id"])
+    return detail(str(row["id"]), peran)
 
 
 @router.get("/api/escrow", tags=["escrow"])
@@ -721,6 +1130,29 @@ def buat_invoice_ulang(ref: str, p: Pelaku = Depends(get_pelaku)):
     return detail(str(row["id"]), peran)
 
 
+def _rekonsiliasi_logistik(row: dict) -> None:
+    """Termin 1 yang hasilnya belum pasti / callback terlewat: tarik status dari Xendit."""
+    lid = row.get("logistik_disbursement_id") or ""
+    if row.get("logistik_status") != "DIPROSES" or not lid:
+        return
+    if lid.startswith(PENDING):
+        ext = lid[len(PENDING):]
+        found = xendit.find_disbursements(ext)
+        if not found:
+            _kirim_logistik(row["id"], row["logistik_percobaan"])  # idempotency key sama: aman diulang
+            return
+        d = found[0]
+        if str(d.get("status", "")).upper() not in ("COMPLETED", "SUCCEEDED", "FAILED"):
+            with tx() as cur:
+                cur.execute("update escrow_transaksi set logistik_disbursement_id = %s where id = %s and logistik_disbursement_id = %s",
+                            (d["id"], row["id"], lid))
+            return
+    else:
+        d = xendit.get_disbursement(lid)
+    terapkan_logistik(row, d.get("status"), {"sumber": "rekonsiliasi", "status": d.get("status"),
+                                             "failure_code": d.get("failure_code")}, "web", "admin", d.get("id"))
+
+
 @router.post("/api/escrow/{ref}/rekonsiliasi", tags=["escrow"])
 def rekonsiliasi(ref: str, p: Pelaku = Depends(get_pelaku)):
     """Admin: tarik status terbaru dari Xendit bila callback terlewat (tunnel/backend mati)."""
@@ -753,6 +1185,7 @@ def rekonsiliasi(ref: str, p: Pelaku = Depends(get_pelaku)):
                                                          "failure_code": d.get("failure_code")}, "web", "admin")
         elif row["status"] == "DITERIMA":
             cairkan(row["id"])
+        _rekonsiliasi_logistik(_get_row(str(row["id"])))
     except xendit.XenditError as e:
         m.err(502, f"Status Xendit belum bisa diambil ({e.code}).")
     return detail(str(row["id"]), peran)
@@ -826,8 +1259,15 @@ async def webhook_disbursement(request: Request, x_callback_token: str = Header(
     body = raw.get("data") if isinstance(raw.get("data"), dict) else raw
     ext = str(body.get("reference_id") or body.get("external_id") or "")
     disb_id = str(body.get("id") or "")
-    row = _get_row(ext.rsplit("-", 1)[0]) if ext.count("-") >= 5 else None  # '<uuid>-<percobaan>'
-    if not row or not disb_id or not _aktif_cocok(row, disb_id, ext):
+    base, _, suffix = ext.rpartition("-")
+    row = _get_row(base) if ext.count("-") >= 5 else None  # '<uuid>-<percobaan>' (gabah) / '<uuid>-L<percobaan>' (logistik)
+    termin_logistik = suffix.startswith("L")
+    if row and termin_logistik:
+        aktif = row["logistik_disbursement_id"] or ""
+        if not disb_id or not aktif or aktif not in (disb_id, PENDING + ext):
+            log.warning("Callback disbursement logistik tidak dikenali/kedaluwarsa: external_id=%s id=%s", ext, disb_id)
+            return {"ok": False, "ignored": "unknown_or_stale_disbursement"}
+    elif not row or not disb_id or not _aktif_cocok(row, disb_id, ext):
         log.warning("Callback disbursement tidak dikenali/kedaluwarsa: external_id=%s id=%s", ext, disb_id)
         return {"ok": False, "ignored": "unknown_or_stale_disbursement"}
     status = str(body.get("status") or "")
@@ -841,6 +1281,10 @@ async def webhook_disbursement(request: Request, x_callback_token: str = Header(
             return {"ok": False, "ignored": "external_id_mismatch"}
         status = str(d.get("status") or "")
         body.setdefault("failure_code", d.get("failure_code"))
+    if termin_logistik:
+        changed = terapkan_logistik(row, status, {"callback": raw, "status_terverifikasi": status,
+                                                  "failure_code": body.get("failure_code")}, disbursement_id=disb_id)
+        return {"ok": True, "changed": changed}
     changed = terapkan_disbursement(row, status, {"callback": raw, "status_terverifikasi": status,
                                                   "failure_code": body.get("failure_code")}, disbursement_id=disb_id)
     return {"ok": True, "changed": changed}
@@ -876,9 +1320,14 @@ def _checkout_body(row: dict, notice: str = "") -> str:
             f'<div class="row"><span>Petani</span><b>{html.escape(row["petani_display"])}</b></div>'
             f'<div class="row"><span>Berat</span><b>{m.fmt_number(float(row["berat_kg"]))} kg</b></div>'
             f'<div class="row"><span>Harga</span><b>{m.rupiah(row["harga_per_kg"])}/kg</b></div>'
-            f'<div class="total">{m.rupiah(int(row["nilai"]))}</div>')
+            f'<div class="row"><span>Nilai gabah</span><b>{m.rupiah(int(row["nilai"]))}</b></div>'
+            + (f'<div class="row"><span>Logistik ({html.escape(armada_teks(row))}, ±{_km(row)} km)</span>'
+               f'<b>{m.rupiah(int(row["biaya_logistik"]))}</b></div>' if row.get("pengambilan") == "diantar" else
+               '<div class="row"><span>Pengambilan</span><b>Ambil sendiri</b></div>')
+            + f'<div class="row"><span>Fee aplikasi</span><b>{m.rupiah(int(row.get("fee") or 0))}</b></div>'
+            f'<div class="total">{m.rupiah(tagihan(row))}</div>')
     if row["status"] == "MENUNGGU_BAYAR":
-        return head + (f'<form method="post"><button type="submit">Bayar {m.rupiah(int(row["nilai"]))} (simulasi)</button></form>'
+        return head + (f'<form method="post"><button type="submit">Bayar {m.rupiah(tagihan(row))} (simulasi)</button></form>'
                        '<p class="muted">Dana ditahan di escrow dan baru diteruskan ke petani setelah Anda mengonfirmasi gabah diterima.</p>')
     msg = notice or f"Status transaksi: {STATUS_LABEL[row['status']]}."
     return head + f'<p class="btn ok">{html.escape(msg)}</p><a class="btn" href="{html.escape(web)}">Buka transaksi di web Temu Tani</a>'

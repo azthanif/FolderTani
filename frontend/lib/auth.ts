@@ -13,7 +13,8 @@ export interface SessionUser {
   name: string;
   region?: string; // kabupaten
   district?: string; // kecamatan
-  village?: string; // desa/kelurahan (tengkulak)
+  village?: string; // desa/kelurahan (tengkulak; petani diisi admin)
+  villageCode?: string; // kode Kemendagri 10 digit (master_desa), dasar estimasi jarak delivery
   /** Petani mengizinkan nomor HP dibagikan ke pembeli setelah sepakat. */
   shareContact?: boolean;
 }

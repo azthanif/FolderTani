@@ -72,3 +72,5 @@
 .profile-page .pf-link:hover { text-decoration: underline; }
 .pf-row { grid-template-columns: 1fr; }
 }
+
+.pf-hint{display:block;margin-top:-4px;font-size:12px;color:#6b7a70;line-height:1.5}

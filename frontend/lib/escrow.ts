@@ -4,7 +4,23 @@ export type EscrowStatus =
 
 export type EscrowAction =
   | "bayar" | "konfirmasi-kirim" | "konfirmasi-terima" | "lapor-masalah" | "cairkan-ulang" | "selesaikan-sengketa"
-  | "rekonsiliasi" | "buat-invoice";
+  | "rekonsiliasi" | "buat-invoice" | "pilih-ambil-sendiri" | "pilih-diantar" | "cairkan-ulang-logistik";
+
+/* ---- Delivery (PRD "Fitur Delivery: Estimasi Jarak & Biaya Angkut") ---- */
+export type Pengambilan = "ambil_sendiri" | "diantar";
+export const PENGAMBILAN_LABEL: Record<Pengambilan, string> = { ambil_sendiri: "Ambil sendiri", diantar: "Diantar" };
+
+export interface Armada { kode: string; nama: string; jumlah: number; kapasitas_ton: number; tarif_harian: number; tarif_per_km: number; biaya: number }
+export interface Rincian { nilai_gabah: number; biaya_logistik: number; fee: number }
+export interface Termin { ke: number; jenis: "logistik" | "gabah"; nilai: number; status?: "MENUNGGU" | "DIPROSES" | "CAIR" | "GAGAL"; cair_pada?: string | null }
+
+/** Respons POST /api/escrow/{id}/quote (pratinjau, belum dikunci). */
+export interface DeliveryQuote {
+  pengambilan: Pengambilan; jarak_km: number | null; armada: Armada[]; rincian: Rincian; total_tagihan: number;
+  termin_petani: Termin[]; peringatan: string[]; fee_persen: number; desa_asal: string | null; desa_tujuan: string | null;
+}
+
+export const TERMIN_LABEL: Record<string, string> = { MENUNGGU: "Menunggu", DIPROSES: "Diproses", CAIR: "Cair", GAGAL: "Tertunda" };
 
 export interface EscrowEvent { dari_status: EscrowStatus | null; ke_status: EscrowStatus; label: string; pelaku: string; kanal: string; dibuat_pada: string }
 
@@ -18,6 +34,10 @@ export interface Escrow {
   catatan_masalah?: string | null; kontak?: string;
   aksi_tersedia: EscrowAction[];
   riwayat?: EscrowEvent[];
+  // delivery & tagihan (null sebelum tengkulak memilih pengambilan)
+  pengambilan: Pengambilan | null; pengambilanLabel: string | null; dikunci: boolean;
+  jarak_km: number | null; armada: Armada[]; desa_asal: string | null; desa_tujuan: string | null;
+  rincian: Rincian; total_tagihan: number | null; termin_petani: Termin[]; peringatan: string[];
   // khusus admin
   invoice_id?: string | null; disbursement_id?: string | null; pencairan_percobaan?: number; pencairan_gagal_kode?: string | null;
   petani_phone?: string; tengkulak_phone?: string;

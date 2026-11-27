@@ -77,7 +77,9 @@ def wa(phone_key: str) -> dict:
     return {"X-Service-Token": SERVICE, "X-WA-Phone": PHONES[phone_key]}
 
 
-def deal(client, login, volume=2000, price=6500):
+def deal(client, login, volume=2000, price=6500, pengambilan="ambil_sendiri"):
+    """Deal di web lalu tengkulak memilih cara pengambilan (PRD delivery) agar invoice terbit.
+    pengambilan=None: berhenti sebelum memilih (escrow menunggu pilihan, belum ada invoice)."""
     P = login("petani")
     client.post("/api/stocks", headers=P, json={"volume": 6000, "harvest": "2026-11-09"})
     T = login("tengkulak")
@@ -86,6 +88,9 @@ def deal(client, login, volume=2000, price=6500):
     r = client.post(f"/api/offers/{oid}/accept", headers=P)
     assert r.status_code == 200, r.text
     trx = r.json()["state"]["transactions"][0]
+    if pengambilan:
+        r = client.post(f"/api/escrow/{trx['escrowId']}/pengambilan", headers=T, json={"pengambilan": pengambilan})
+        assert r.status_code == 200, r.text
     return P, T, oid, trx
 
 
@@ -114,7 +119,8 @@ def test_deal_creates_escrow_and_invoice(client, login, sql, gw):
     assert trx["escrowStatus"] == "MENUNGGU_BAYAR" and trx["escrowLabel"] == "Menunggu Pembayaran"
     eid = trx["escrowId"]
     inv = list(gw.invoices.values())[0]
-    assert inv["external_id"] == eid and inv["amount"] == 13_000_000 and inv["duration"] == 24 * 3600
+    # tagihan = nilai gabah + fee 0,5% (ambil sendiri, tanpa logistik)
+    assert inv["external_id"] == eid and inv["amount"] == 13_065_000 and inv["duration"] == 24 * 3600
     d = client.get(f"/api/escrow/{eid}", headers=T).json()
     assert d["nilai"] == 13_000_000 and d["harga_per_kg"] == 6500 and d["berat_kg"] == 2000
     assert d["aksi_tersedia"] == ["bayar"] and d["invoice_url"].endswith("/inv1")
@@ -151,6 +157,7 @@ def test_full_flow_switching_channels(client, login, sql, gw):
     ev = sql("select dari_status::text as d, ke_status::text as k, pelaku, kanal from escrow_event where escrow_id = %s order by id", (eid,))
     assert [(e["d"], e["k"], e["pelaku"], e["kanal"]) for e in ev] == [
         (None, "MENUNGGU_BAYAR", "sistem", "web"),
+        ("MENUNGGU_BAYAR", "MENUNGGU_BAYAR", "tengkulak", "web"),  # pilih pengambilan (biaya dikunci)
         ("MENUNGGU_BAYAR", "DIBAYAR", "xendit", "webhook"),
         ("DIBAYAR", "DIKIRIM", "petani", "whatsapp"),
         ("DIKIRIM", "DITERIMA", "tengkulak", "web"),
@@ -313,7 +320,8 @@ def test_wa_notifications_and_chat_session(client, login, sql, gw, monkeypatch):
     tk, pt = e164(PHONES["tengkulak"]), e164(PHONES["petani"])
     to_t = [t for p, t in texts if p == tk]
     assert "checkout-staging.xendit.co" in to_t[-1] and "Kontak WhatsApp petani" not in to_t[-1]
-    assert "Menunggu pembayaran" in [t for p, t in texts if p == pt][-1]
+    assert "Menunggu tengkulak memilih cara pengambilan" in [t for p, t in texts if p == pt][-1]
+    assert "Total tagihan: *Rp13.065.000*" in to_t[-1]
     pay(client, gw, eid)
     assert polls[-1][0] == pt and polls[-1][2][0] == "1. Gabah sudah dikirim"
     row = sql("select step, context from chat_sessions where phone = %s", (pt,))[0]
@@ -333,8 +341,11 @@ def test_notifications_go_to_n8n_when_configured(client, login, gw, monkeypatch)
     monkeypatch.setenv("N8N_ESCROW_WEBHOOK_TOKEN", "rahasia-keluar")
     monkeypatch.setattr(escrow, "_deliver_n8n", lambda url, body: sent.append(body) or True)
     _, _, _, trx = deal(client, login)
-    assert sent[-1]["event"] == "MENUNGGU_BAYAR" and sent[-1]["escrow_id"] == trx["escrowId"]
-    assert {m["chatId"] for m in sent[-1]["messages"]} == {e164(PHONES["tengkulak"])[1:] + "@c.us", e164(PHONES["petani"])[1:] + "@c.us"}
+    assert sent[0]["event"] == "MENUNGGU_BAYAR" and sent[0]["escrow_id"] == trx["escrowId"]
+    assert {m["chatId"] for m in sent[0]["messages"]} == {e164(PHONES["tengkulak"])[1:] + "@c.us", e164(PHONES["petani"])[1:] + "@c.us"}
+    assert sent[0]["messages"][0]["poll"]["options"][:2] == ["1. Ambil sendiri", "2. Diantar"]
+    # setelah memilih di web: tagihan hanya dikirim ke tengkulak
+    assert len(sent) == 2 and [m["chatId"] for m in sent[1]["messages"]] == [e164(PHONES["tengkulak"])[1:] + "@c.us"]
 
 
 def test_mock_mode_simulation(client, login, monkeypatch, sql, gw):

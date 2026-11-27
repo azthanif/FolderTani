@@ -51,7 +51,7 @@ export function AdminEscrow() {
   }, [load]);
 
   const c = (s: EscrowStatus) => counts[s] || 0;
-  const held = items.filter((e) => ["DIBAYAR", "DIKIRIM", "DITERIMA", "SENGKETA", "PENCAIRAN_GAGAL"].includes(e.status)).reduce((n, e) => n + e.nilai, 0);
+  const held = items.filter((e) => ["DIBAYAR", "DIKIRIM", "DITERIMA", "SENGKETA", "PENCAIRAN_GAGAL"].includes(e.status)).reduce((n, e) => n + (e.total_tagihan ?? e.nilai), 0);
   const q = query.trim().toLowerCase();
   const rows = items.filter((e) => !q || [e.kode, e.offerId, e.petani, e.tengkulak, e.kabupaten].join(" ").toLowerCase().includes(q));
 
@@ -94,7 +94,7 @@ export function AdminEscrow() {
           <table>
             <thead>
               <tr>
-                {["KODE", "PETANI", "TENGKULAK", "KABUPATEN", "BERAT", "NILAI", "STATUS", "DIPERBARUI", "AKSI"].map((h) => (
+                {["KODE", "PETANI", "TENGKULAK", "KABUPATEN", "BERAT", "TAGIHAN", "STATUS", "DIPERBARUI", "AKSI"].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
@@ -108,7 +108,12 @@ export function AdminEscrow() {
                     <td>{e.tengkulak}</td>
                     <td>{e.kabupaten}</td>
                     <td>{fmtNum(e.berat_kg)} kg</td>
-                    <td><strong>{formatRupiah(e.nilai)}</strong></td>
+                    <td>
+                      <strong>{formatRupiah(e.total_tagihan ?? e.nilai)}</strong>
+                      <small className="small-muted" style={{ display: "block", marginTop: 3 }}>
+                        {e.pengambilanLabel ? `${e.pengambilanLabel}${e.termin_petani?.some((t) => t.jenis === "logistik" && t.status === "GAGAL") ? " · logistik tertunda" : ""}` : "Belum pilih pengambilan"}
+                      </small>
+                    </td>
                     <td><EscrowPill status={e.status} label={e.statusLabel} /></td>
                     <td>{when(e.selesai_pada || e.diterima_pada || e.dikirim_pada || e.dibayar_pada || e.dibuat_pada)}</td>
                     <td>

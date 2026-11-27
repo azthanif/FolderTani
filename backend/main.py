@@ -22,6 +22,7 @@ from uuid import UUID
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -128,7 +129,9 @@ def buyer_label(phone: str, tengkulak: dict[str, dict]) -> str:
 @app.exception_handler(RequestValidationError)
 async def validation_handler(_: Request, exc: RequestValidationError):
     fields = ", ".join(str(e["loc"][-1]) for e in exc.errors())
-    return JSONResponse(status_code=422, content={"detail": f"Data belum valid ({fields}).", "errors": exc.errors()})
+    # jsonable_encoder: ctx error pydantic bisa berisi objek (ValueError, Decimal) yang tidak bisa di-JSON-kan langsung
+    errors = jsonable_encoder(exc.errors(), custom_encoder={Exception: str})
+    return JSONResponse(status_code=422, content={"detail": f"Data belum valid ({fields}).", "errors": errors})
 
 
 @app.exception_handler(DatabaseNotConfigured)
@@ -155,7 +158,7 @@ class Actor(BaseModel):
     consent: bool = False
 
 
-USER_COLS = ("id, phone, role, name, display_name, kabupaten, kecamatan, kelurahan, contact_sharing_consent, password_hash,"
+USER_COLS = ("id, phone, role, name, display_name, kabupaten, kecamatan, kelurahan, kode_desa, contact_sharing_consent, password_hash,"
              " status, review_note")
 
 
@@ -207,6 +210,7 @@ def _session(u: dict) -> dict:
         "user": {
             "id": str(u["id"]), "role": u["role"], "phone": auth.from_e164(u["phone"]), "name": u["name"],
             "region": u["kabupaten"] or "", "district": u["kecamatan"] or "", "village": u["kelurahan"] or "",
+            "villageCode": u.get("kode_desa") or "",
             "shareContact": u["contact_sharing_consent"],
         },
     }
@@ -661,6 +665,17 @@ def _valid_address(region: Optional[str], district: Optional[str], village: Opti
     return kab, kec["nama"], desa["nama"]
 
 
+def _kode_desa(kab: Optional[str], kec: Optional[str], kel: Optional[str]) -> Optional[str]:
+    """Kode Kemendagri 10 digit (tanpa titik) untuk nama baku kabupaten/kecamatan/desa; None bila tidak cocok."""
+    data = _wilayah()["kabupaten"].get(kab or "")
+    k = next((x for x in (data or {}).get("kecamatan", []) if x["nama"].casefold() == (kec or "").casefold()), None)
+    d = next((x for x in (k or {}).get("desa", []) if x["nama"].casefold() == (kel or "").casefold()), None)
+    return d["kode"].replace(".", "") if d else None
+
+
+KODE_DESA_SQL = "(select kode_desa from master_desa where kode_desa = %s)"  # null bila master_desa belum terisi
+
+
 def _notify(phone_e164: str, text: str) -> None:
     """Kirim WhatsApp bila WAHA aktif; kegagalan tidak membatalkan aksi admin."""
     if not wa.configured():
@@ -702,7 +717,8 @@ def get_wilayah():
     return {
         "source": data.get("source", ""),
         "kabupaten": [
-            {"nama": kab, "kecamatan": [{"nama": k["nama"], "desa": [{"nama": d["nama"], "jenis": d["jenis"]} for d in k["desa"]]}
+            {"nama": kab, "kecamatan": [{"nama": k["nama"], "desa": [{"nama": d["nama"], "jenis": d["jenis"], "kode": d["kode"].replace(".", "")}
+                                                                    for d in k["desa"]]}
                                          for k in data["kabupaten"][kab]["kecamatan"]]}
             for kab in REGIONS if kab in data["kabupaten"]
         ],
@@ -728,18 +744,19 @@ def register(body: RegisterIn):
         if existing:  # pernah ditolak: ajukan ulang dengan data baru
             cache.invalidate("user:")  # sesi aktif membaca ulang data akun
             cur.execute(
-                """update users set name = %s, display_name = %s, kabupaten = %s, kecamatan = %s, kelurahan = %s,
+                f"""update users set name = %s, display_name = %s, kabupaten = %s, kecamatan = %s, kelurahan = %s,
+                       kode_desa = {KODE_DESA_SQL},
                        password_hash = %s, status = 'pending', registered_via = 'web',
                        review_note = null, reviewed_at = null, reviewed_by = null
                    where id = %s""",
-                (body.name, body.name, kab, kec, kel, password_hash, existing["id"]),
+                (body.name, body.name, kab, kec, kel, _kode_desa(kab, kec, kel), password_hash, existing["id"]),
             )
             user_id = str(existing["id"])
         else:
             cur.execute(
-                "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, password_hash, status, registered_via)"
-                " values (%s, 'tengkulak', %s, %s, %s, %s, %s, %s, 'pending', 'web') returning id",
-                (phone, body.name, body.name, kab, kec, kel, password_hash),
+                "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, kode_desa, password_hash, status, registered_via)"
+                f" values (%s, 'tengkulak', %s, %s, %s, %s, %s, {KODE_DESA_SQL}, %s, 'pending', 'web') returning id",
+                (phone, body.name, body.name, kab, kec, kel, _kode_desa(kab, kec, kel), password_hash),
             )
             user_id = str(cur.fetchone()["id"])
     return {"status": "pending", "statusToken": auth.issue_signup_token(user_id, password_hash),
@@ -798,10 +815,15 @@ def update_profile(body: ProfileIn, actor: Actor = Depends(get_actor)):
             f"""update users set
                    display_name = case when display_name = name then %s else display_name end,
                    name = %s,
-                   kabupaten = coalesce(%s, kabupaten), kecamatan = coalesce(%s, kecamatan), kelurahan = coalesce(%s, kelurahan),
+                   kode_desa = case when %s::text is not null then {KODE_DESA_SQL}
+                                    when %s::text is not null and %s::text is distinct from kecamatan then null
+                                    else kode_desa end,
+                   kelurahan = case when %s::text is null and %s::text is not null and %s::text is distinct from kecamatan then null
+                                    else coalesce(%s, kelurahan) end,
+                   kabupaten = coalesce(%s, kabupaten), kecamatan = coalesce(%s, kecamatan),
                    contact_sharing_consent = case when role = 'petani' then coalesce(%s, contact_sharing_consent) else contact_sharing_consent end
                 where id = %s returning {USER_COLS}""",
-            (body.name, body.name, kab, kec, kel, body.shareContact, actor.user),
+            (body.name, body.name, kel, _kode_desa(kab, kec, kel), kec, kec, kel, kec, kec, kel, kab, kec, body.shareContact, actor.user),
         )
         user = cur.fetchone()
     return {**_session(user), "message": "Profil berhasil diperbarui."}
@@ -1050,10 +1072,11 @@ def admin_create_farmer(body: AdminFarmerIn, actor: Actor = Depends(get_actor)):
         if existing:
             err(409, f"Nomor HP sudah terdaftar atas nama {existing['name']} ({existing['role']}).")
         cur.execute(
-            "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, password_hash,"
+            "insert into users (phone, role, name, display_name, kabupaten, kecamatan, kelurahan, kode_desa, password_hash,"
             " status, registered_via, reviewed_at, reviewed_by, review_note)"
-            " values (%s, 'petani', %s, %s, %s, %s, %s, %s, 'approved', 'admin', now(), %s, 'ditambahkan admin') returning id",
-            (phone, body.name, body.name, kab, kec, kel, auth.hash_password(body.password) if body.password else None, actor.name),
+            f" values (%s, 'petani', %s, %s, %s, %s, %s, {KODE_DESA_SQL}, %s, 'approved', 'admin', now(), %s, 'ditambahkan admin') returning id",
+            (phone, body.name, body.name, kab, kec, kel, _kode_desa(kab, kec, kel),
+             auth.hash_password(body.password) if body.password else None, actor.name),
         )
         uid = cur.fetchone()["id"]
         cur.execute("insert into stocks (farmer_id, grain_type, quantity_kg) values (%s, 'GKP', 0) on conflict do nothing", (uid,))

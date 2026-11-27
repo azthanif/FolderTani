@@ -122,7 +122,7 @@ export function ProfileView() {
             </div>
           </label>
           {isFarmer ? (
-            <div className="pf-row">
+            <div className="pf-row pf-row-3">
               <label className="pf-field">
                 <span>Kabupaten</span>
                 <select className="pf-input" required value={region} onChange={(e) => setRegion(e.target.value)}>
@@ -137,7 +137,15 @@ export function ProfileView() {
                 <span>Kecamatan</span>
                 <input className="pf-input" required minLength={2} maxLength={60} value={district} onChange={(e) => setDistrict(e.target.value)} />
               </label>
+              <label className="pf-field">
+                <span>Desa/Kelurahan</span>
+                <input className="pf-input" readOnly value={user.village ? `${user.village}, Kab. ${user.region}` : "Belum tercatat (diisi admin)"}
+                  title="Dipakai untuk estimasi jarak pengiriman gabah. Hubungi admin untuk mengubah." />
+              </label>
             </div>
+          ) : null}
+          {isBuyer ? (
+            <small className="pf-hint">Desa/kelurahan dipakai untuk menghitung perkiraan jarak dan biaya angkut bila Anda memilih gabah diantar.</small>
           ) : null}
           {isBuyer ? (
             <div className="pf-row pf-row-3">
