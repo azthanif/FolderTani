@@ -1577,3 +1577,48 @@
 .dash .page-berita .filter-note{margin-left:0;flex-basis:100%;padding-top:2px}
 @media(max-width:950px){.dash .page-berita .cloud-stage{min-height:200px}}
 
+
+/* ---------- Escrow (detail transaksi) ---------- */
+.dash .metric-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.dash .escrow-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:18px 0 4px;position:relative}
+.dash .escrow-step{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;position:relative}
+.dash .escrow-step:not(:last-child):after{content:"";position:absolute;top:11px;left:calc(50% + 14px);right:calc(-50% + 14px);height:2px;background:#dce9de}
+.dash .escrow-step.done:not(:last-child):after{background:#74b587}
+.dash .escrow-step .dot{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;background:#f1f5f2;color:#7d8a81;border:2px solid #dce9de}
+.dash .escrow-step.done .dot{background:#74b587;border-color:#74b587;color:#fff}
+.dash .escrow-step.current .dot{background:#fff;border-color:#2f7d4f;color:#2f7d4f;box-shadow:0 0 0 4px #e3f1e7}
+.dash .escrow-step small{font-size:10.5px;color:#7d8a81;line-height:1.3}
+.dash .escrow-step.current small{color:#1f3b2b;font-weight:700}
+.dash .escrow-exception{margin-top:12px}
+.dash .escrow-exception.red{background:#fff4f2;border-color:#ffdcd8;color:#8e3b3c}
+.dash .escrow-exception.gray{background:#f5f6f5;color:#5d6a61}
+.dash .escrow-report{margin-top:12px}
+.dash .escrow-report textarea{width:100%;font:inherit;border:1px solid var(--line);border-radius:10px;padding:10px 12px;resize:vertical}
+@media(max-width:620px){.dash .metric-row{grid-template-columns:1fr}.dash .escrow-step small{font-size:9.5px}}
+.dash .escrow-actions .form-actions{margin-top:14px;justify-content:flex-start;flex-wrap:wrap}
+.dash .escrow-actions .form-actions:empty{display:none}
+.dash .escrow-todo{display:block;margin-top:4px;font-size:10.5px;font-weight:700;color:#b07800}
+
+/* ---------- Perbarui stok gabah (sisa per tanggal panen) ---------- */
+.dash .stock-edit-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.dash .stock-edit-head,.dash .stock-edit-row{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:16px;align-items:center;padding:12px 16px}
+.dash .stock-edit-head{background:#f5f8f6;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#6b7a70}
+.dash .stock-edit-head span:last-child{text-align:right}
+.dash .stock-edit-row{border-top:1px solid var(--line)}
+.dash .stock-edit-row label{display:flex;flex-direction:column;gap:3px;margin:0;cursor:pointer}
+.dash .stock-edit-row label strong{font-size:14px;color:#1f3b2b}
+.dash .stock-edit-row label small{font-size:12px;color:#7d8a81}
+.dash .stock-edit-row input{width:100%;text-align:right;font:inherit;font-size:15px;font-weight:600;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
+.dash .stock-edit-row input:focus{outline:none;border-color:#2f7d4f;box-shadow:0 0 0 3px #e3f1e7}
+@media(max-width:620px){.dash .stock-edit-head{display:none}.dash .stock-edit-row{grid-template-columns:1fr;gap:8px}.dash .stock-edit-row input{text-align:left}}
+
+/* ---------- Detail escrow: gaya mandiri agar sama di dashboard admin & peran ---------- */
+.dash .escrow-detail .metric-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.dash .escrow-detail .metric-small{padding:16px;background:#f7faf7;border-radius:12px;min-width:0}
+.dash .escrow-detail .metric-small small{display:block;color:#8c9e91;font-size:11px}
+.dash .escrow-detail .metric-small strong{display:block;font-family:var(--font-jakarta),system-ui,sans-serif;font-size:18px;letter-spacing:-.5px;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dash .escrow-detail .notice-card{padding:14px;background:#f5f9f4;border:1px solid #e8efe5;border-radius:12px;font-size:12px;color:#587061;line-height:1.6}
+.dash .escrow-detail .escrow-exception.red{background:#fff4f2;border-color:#ffdcd8;color:#8e3b3c}
+.dash .escrow-detail .escrow-exception.gray{background:#f5f6f5;border-color:#e6e9e6;color:#5d6a61}
+.dash .escrow-detail .divider{height:1px;background:var(--line);margin:18px 0}
+@media(max-width:620px){.dash .escrow-detail .metric-row{grid-template-columns:1fr}}

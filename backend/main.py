@@ -27,8 +27,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, pricing, wa, xlsx
-from .db import DatabaseNotConfigured, set_log_context, tx
+from . import auth, cache, escrow, pricing, wa, xlsx
+from .db import DatabaseNotConfigured, read, set_log_context, tx
 from .news import load_news, load_news_supabase
 from .store import BlobStore
 
@@ -66,6 +66,7 @@ if _origins:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
         expose_headers=["Content-Disposition"],
+        max_age=7200,  # browser menyimpan hasil preflight 2 jam (batas maksimum Chrome) -> OPTIONS tidak diulang tiap request
     )
 
 
@@ -169,14 +170,18 @@ def _bearer_user(authorization: str) -> Optional[dict]:
     data = auth.read_token(authorization[7:].strip())
     if not data or data.get("k"):  # token halaman tunggu pendaftaran bukan sesi login
         err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
-    with tx() as cur:
-        cur.execute(f"select {USER_COLS} from users where id = %s", (data["u"],))
-        u = cur.fetchone()
+    u = cache.get_or_set(f"user:{data['u']}", cache.auth_ttl(), lambda: _user_row(data["u"]))
     if not u or u["role"] != data.get("r") or not u["password_hash"] or auth.password_fingerprint(u["password_hash"]) != data.get("pv"):
         err(401, "Sesi tidak valid atau sudah berakhir. Silakan masuk kembali.")
     if u["status"] != "approved":
         err(401, "Akun belum aktif. Silakan masuk kembali setelah diverifikasi admin.")
     return u
+
+
+def _user_row(user_id: str) -> Optional[dict]:
+    with read() as cur:
+        cur.execute(f"select {USER_COLS} from users where id = %s", (user_id,))
+        return cur.fetchone()
 
 
 def get_actor(authorization: str = Header(default="", alias="Authorization")) -> Actor:
@@ -211,9 +216,36 @@ def _session(u: dict) -> dict:
 # Query bersama
 # ---------------------------------------------------------------------------
 def ai_reference(cur, kabupaten: Optional[str]) -> dict[str, int]:
-    """Harga wajar terbaru dari price_predictions (bulan berjalan atau sebelumnya); fallback simulasi."""
+    """Versi ber-cache dari _ai_reference (data prakiraan hanya berubah sekali sehari)."""
     if not kabupaten:
         return {}
+    return dict(cache.get_or_set(f"ai_ref:{pricing.today_wib()}:{kabupaten}", cache.data_ttl(),
+                                 lambda: _ai_reference(cur, kabupaten)))
+
+
+def _ai_reference(cur, kabupaten: Optional[str]) -> dict[str, int]:
+    """Harga wajar AI (Rp/kg GKP) untuk satu kabupaten.
+
+    Urutan sumber:
+      1. price_forecasts (LSTM harian): rata-rata prakiraan h+1..h+7 dari run terbaru yang belum basi
+         (<= MAX_FORECAST_AGE_DAYS hari). Definisi sama dengan "current" di pricing.load_forecasts (web).
+      2. price_predictions (tabel bulanan lama milik chatbot).
+      3. Simulasi pricing.AI_REFERENCE.
+    """
+    if not kabupaten:
+        return {}
+    cur.execute(
+        "select round(avg(f.price_per_kg))::int as price_per_kg, count(*)::int as n"
+        " from price_forecasts f"
+        " where f.kabupaten = %s and f.horizon between 1 and %s"
+        "   and f.run_date = (select max(run_date) from price_forecasts"
+        "                     where kabupaten = %s and run_date <= (now() at time zone 'Asia/Jakarta')::date"
+        "                       and run_date >= (now() at time zone 'Asia/Jakarta')::date - %s)",
+        (kabupaten, pricing.FORECAST_DAYS, kabupaten, pricing.MAX_FORECAST_AGE_DAYS),
+    )
+    row = cur.fetchone()
+    if row and row["n"] == pricing.FORECAST_DAYS and row["price_per_kg"]:
+        return {GRAIN: row["price_per_kg"]}
     cur.execute(
         "select price_per_kg from price_predictions where kabupaten = %s and grain_type = 'GKP'"
         " and period <= date_trunc('month', (now() at time zone 'Asia/Jakarta'))::date order by period desc, id desc limit 1",
@@ -317,16 +349,57 @@ def offer_view(o: dict, events: list[dict], buyer_id: str, ai_ref: Optional[int]
     return view
 
 
-def trx_view(o: dict, buyer_id: str, contact: Optional[str]) -> dict:
-    return {
+def trx_view(o: dict, buyer_id: str, contact: Optional[str], esc: Optional[dict] = None) -> dict:
+    view = {
         "id": f"TRX-{o['id']}", "offerId": o["code"], "buyerId": buyer_id, "farmerId": str(o["farmer_id"]),
         "stockId": f"STK-{o['stock_id']}", "volume": o["qty_kg"], "price": o["agreed_price"],
         "date": o["agreed_at"].astimezone(WIB).date().isoformat(), "contact": contact,
+        "escrowId": None, "escrowStatus": None, "escrowLabel": None,
     }
+    if esc:
+        view.update({"escrowId": str(esc["id"]), "escrowStatus": esc["status"], "escrowLabel": escrow.STATUS_LABEL[esc["status"]]})
+    return view
 
 
-def activity_feed(offers: list[dict], events: dict[int, list[dict]], logs: list[dict]) -> list[dict]:
-    feed = []
+def escrow_by_offer(cur, offers: list[dict]) -> dict[int, dict]:
+    ids = [o["id"] for o in offers if o["status"] == "AGREED"]
+    if not ids:
+        return {}
+    cur.execute("select id, offer_id, status::text as status from escrow_transaksi where offer_id = any(%s)", (ids,))
+    return {r["offer_id"]: r for r in cur.fetchall()}
+
+
+ESCROW_FEED = {  # ke_status -> (judul, catatan)
+    "MENUNGGU_BAYAR": ("Escrow dibuat", "Menunggu pembayaran tengkulak"),
+    "DIBAYAR": ("Pembayaran masuk escrow", "Dana aman di escrow, gabah bisa dikirim"),
+    "DIKIRIM": ("Gabah dikirim", "Menunggu konfirmasi penerimaan tengkulak"),
+    "DITERIMA": ("Gabah diterima", "Dana sedang dicairkan ke petani"),
+    "SELESAI": ("Dana escrow cair", "Transaksi selesai"),
+    "KEDALUWARSA": ("Tagihan escrow kedaluwarsa", "Tidak dibayar sampai batas waktu"),
+    "SENGKETA": ("Escrow ditinjau admin", "Tengkulak melaporkan masalah"),
+    "PENCAIRAN_GAGAL": ("Pencairan tertunda", "Admin sedang menangani"),
+}
+
+
+def escrow_feed(cur, where: str, param: str) -> list[dict]:
+    """Perubahan status escrow milik pengguna untuk Aktivitas Terkini (event pencairan internal tidak ditampilkan)."""
+    cur.execute(
+        f"""select v.id, v.ke_status::text as ke, v.pelaku, v.kanal, v.dibuat_pada, e.offer_id, e.nilai
+            from escrow_event v join escrow_transaksi e on e.id = v.escrow_id
+            where {where} = %s and v.dari_status is distinct from v.ke_status
+            order by v.dibuat_pada desc, v.id desc limit 15""",
+        (param,),
+    )
+    out = []
+    for v in cur.fetchall():
+        title, note = ESCROW_FEED[v["ke"]]
+        out.append({"id": f"ESC-EVT-{v['id']}", "at": iso(v["dibuat_pada"]), "title": f"{title} ESC-{v['offer_id']}",
+                    "note": f"{note} • {rupiah(int(v['nilai']))}", "_k": (v["dibuat_pada"], 2, v["id"])})
+    return out
+
+
+def activity_feed(offers: list[dict], events: dict[int, list[dict]], logs: list[dict], extra: Optional[list[dict]] = None) -> list[dict]:
+    feed = list(extra or [])
     for o in offers:
         for e in events[o["id"]]:
             if e["action"] == "initial":
@@ -359,7 +432,8 @@ def state_version(cur) -> int:
         """select extract(epoch from greatest(
               (select max(updated_at) from offers), (select max(updated_at) from stocks),
               (select max(created_at) from stock_logs), (select max(updated_at) from users),
-              (select max(created_at) from offer_events), 'epoch'::timestamptz)) * 1000 as v"""
+              (select max(created_at) from offer_events), (select max(diperbarui_pada) from escrow_transaksi),
+              'epoch'::timestamptz)) * 1000 as v"""
     )
     return int(cur.fetchone()["v"])
 
@@ -380,6 +454,7 @@ def snapshot(cur, actor: Actor) -> dict:
         tk = tengkulak_by_phone(cur, {o["buyer_phone"] for o in offers})
         ref = ai_reference(cur, actor.kabupaten)
         buyers = {buyer_key(o["buyer_phone"], tk): buyer_label(o["buyer_phone"], tk) for o in offers}
+        esc = escrow_by_offer(cur, offers)
         return {
             **base,
             "farmers": [{"id": actor.user, "name": actor.name, "region": actor.kabupaten, "village": actor.kecamatan}],
@@ -390,8 +465,9 @@ def snapshot(cur, actor: Actor) -> dict:
                           "harvest": x["harvest_date"].isoformat() if x["harvest_date"] else None,
                           "delta": x["delta_kg"], "total": x["total_kg"]} for x in logs],
             "offers": [offer_view(o, events[o["id"]], buyer_key(o["buyer_phone"], tk), o.get("ai") or ref.get(GRAIN)) for o in offers],
-            "transactions": [trx_view(o, buyer_key(o["buyer_phone"], tk), auth.from_e164(o["buyer_phone"])) for o in offers if o["status"] == "AGREED"],
-            "activities": activity_feed(offers, events, logs[:12]),
+            "transactions": [trx_view(o, buyer_key(o["buyer_phone"], tk), auth.from_e164(o["buyer_phone"]), esc.get(o["id"]))
+                             for o in offers if o["status"] == "AGREED"],
+            "activities": activity_feed(offers, events, logs[:12], escrow_feed(cur, "e.petani_id", actor.user)),
             "aiReference": ref,
         }
     if actor.role == "tengkulak":
@@ -399,6 +475,7 @@ def snapshot(cur, actor: Actor) -> dict:
         offered_stock = list({o["stock_id"] for o in offers})
         stocks = stock_rows(cur, "(s.quantity_kg > 0 or s.id = any(%s))", (offered_stock,))
         farmers = {str(s["farmer_id"]): s for s in stocks}
+        esc = escrow_by_offer(cur, offers)
         for o in offers:  # petani yang stoknya sudah habis tetapi pernah ditawar
             farmers.setdefault(str(o["farmer_id"]), {"display_name": o["farmer_display"], "kabupaten": o["farmer_kab"], "kecamatan": None})
         return {
@@ -409,15 +486,15 @@ def snapshot(cur, actor: Actor) -> dict:
             "stocks": [stock_view(s) for s in stocks],
             # aiRef (harga wajar AI) privat untuk petani: tidak pernah dikirim ke pembeli.
             "offers": [offer_view(o, events[o["id"]], actor.user, None) for o in offers],
-            "transactions": [trx_view(o, actor.user, auth.from_e164(o["farmer_phone"]) if o["farmer_consent"] else None)
+            "transactions": [trx_view(o, actor.user, auth.from_e164(o["farmer_phone"]) if o["farmer_consent"] else None, esc.get(o["id"]))
                              for o in offers if o["status"] == "AGREED"],
-            "activities": activity_feed(offers, events, []),
+            "activities": activity_feed(offers, events, [], escrow_feed(cur, "e.tengkulak_phone", actor.phone)),
         }
     err(403, "Snapshot peran hanya untuk petani atau tengkulak.")
 
 
 def result(actor: Actor, message: str, **extra) -> dict:
-    with tx() as cur:
+    with read() as cur:
         return {"state": snapshot(cur, actor), "message": message, **extra}
 
 
@@ -607,7 +684,7 @@ def _inactive_message(u: dict) -> str:
 @app.get("/api/health", tags=["umum"])
 def health():
     try:
-        with tx() as cur:
+        with read() as cur:
             cur.execute("select 1")
         database = "ok"
     except Exception:  # noqa: BLE001
@@ -649,6 +726,7 @@ def register(body: RegisterIn):
                 err(409, "Nomor ini sudah terdaftar melalui WhatsApp. Gunakan menu Lupa Password untuk membuat password.")
             err(409, "Nomor HP sudah terdaftar. Silakan masuk.")
         if existing:  # pernah ditolak: ajukan ulang dengan data baru
+            cache.invalidate("user:")  # sesi aktif membaca ulang data akun
             cur.execute(
                 """update users set name = %s, display_name = %s, kabupaten = %s, kecamatan = %s, kelurahan = %s,
                        password_hash = %s, status = 'pending', registered_via = 'web',
@@ -674,7 +752,7 @@ def register_status(token: str = Query(min_length=10, max_length=600)):
     data = auth.read_token(token)
     if not data or data.get("k") != "signup":
         err(401, "Tautan status pendaftaran tidak berlaku. Silakan coba masuk atau daftar ulang.")
-    with tx() as cur:
+    with read() as cur:
         cur.execute("select name, status, review_note, password_hash from users where id = %s", (data["u"],))
         u = cur.fetchone()
     if not u or not u["password_hash"] or auth.password_fingerprint(u["password_hash"]) != data.get("pv"):
@@ -702,7 +780,7 @@ def login(body: LoginIn):
 
 @app.get("/api/auth/me", tags=["akun"])
 def me(actor: Actor = Depends(get_actor)):
-    with tx() as cur:
+    with read() as cur:
         cur.execute(f"select {USER_COLS} from users where id = %s", (actor.user,))
         return _session(cur.fetchone())["user"]
 
@@ -715,6 +793,7 @@ def update_profile(body: ProfileIn, actor: Actor = Depends(get_actor)):
     elif actor.role == "tengkulak" and (body.region or body.district or body.village):
         kab, kec, kel = _valid_address(body.region, body.district, body.village)
     with tx() as cur:
+        cache.invalidate("user:")  # sesi aktif membaca ulang data akun
         cur.execute(
             f"""update users set
                    display_name = case when display_name = name then %s else display_name end,
@@ -808,6 +887,7 @@ def _consume_otp(phone: str, purpose: str, code: str) -> None:
 
 def _set_password(user_id: str, password: str) -> dict:
     with tx() as cur:
+        cache.invalidate("user:")  # sesi aktif membaca ulang data akun
         cur.execute(f"update users set password_hash = %s where id = %s returning {USER_COLS}", (auth.hash_password(password), user_id))
         return cur.fetchone()
 
@@ -857,10 +937,13 @@ def get_prices(wilayah: Optional[str] = Query(default=None), actor: Actor = Depe
         if wilayah and wilayah not in REGIONS:
             err(404, "Wilayah tidak tersedia.")
         regions = [wilayah] if wilayah else list(REGIONS)
-    with tx() as cur:
-        current = {r: ai_reference(cur, r).get(GRAIN) for r in REGIONS}
-        forecasts = pricing.load_forecasts(cur, regions)
-    payload = pricing.price_payload(regions, current, forecasts)
+    def build() -> dict:
+        with read() as cur:
+            current = {r: ai_reference(cur, r).get(GRAIN) for r in REGIONS}
+            forecasts = pricing.load_forecasts(cur, regions)
+        return pricing.price_payload(regions, current, forecasts)
+
+    payload = dict(cache.get_or_set(f"prices:{pricing.today_wib()}:{','.join(regions)}", cache.data_ttl(), build))
     payload["lockedArea"] = actor.kabupaten if actor.role == "petani" else None
     return payload
 
@@ -880,7 +963,9 @@ def get_news(
         if not url or not key:
             err(503, "Sumber berita Supabase belum dikonfigurasi di server.")
         try:
-            items = load_news_supabase(url, key, dari, sampai, [w.title() for w in want_list])
+            items = cache.get_or_set(f"news:{dari}:{sampai}:{','.join(sorted(w.title() for w in want_list))}",
+                                     cache.data_ttl(),
+                                     lambda: load_news_supabase(url, key, dari, sampai, [w.title() for w in want_list]))
         except Exception:  # noqa: BLE001 - jangan bocorkan detail koneksi ke klien
             log.exception("Gagal membaca berita dari Supabase")
             err(503, "Berita belum dapat dimuat dari database.")
@@ -933,7 +1018,7 @@ def admin_list_users(
     if status:
         where.append("u.status = %s")
         params.append(status)
-    with tx() as cur:
+    with read() as cur:
         cur.execute(
             f"{ACCOUNT_SELECT} where {' and '.join(where)}"
             " order by (u.status = 'pending') desc, u.created_at desc",
@@ -1008,7 +1093,7 @@ def admin_export_users(
     if status:
         where.append("u.status = %s")
         params.append(status)
-    with tx() as cur:
+    with read() as cur:
         cur.execute(f"{ACCOUNT_SELECT} where {' and '.join(where)} order by u.role, u.name", tuple(params))
         rows = cur.fetchall()
     needle = q.strip().casefold()
@@ -1057,6 +1142,7 @@ def admin_verify_user(user_id: UUID, body: VerifyAccountIn, actor: Actor = Depen
         if u["status"] == target:
             err(409, "Status akun sudah " + ("aktif." if target == "approved" else "ditolak."))
         # reviewed_by bertipe teks di database: simpan nama admin (skema yang juga dipakai chatbot).
+        cache.invalidate("user:")  # sesi aktif membaca ulang data akun
         cur.execute(
             """update users set status = %s, review_note = %s, reviewed_at = now(), reviewed_by = %s
                where id = %s""",
@@ -1095,6 +1181,7 @@ def admin_delete_user(user_id: UUID, actor: Actor = Depends(get_actor)):
             err(409, f"{u['name']} punya riwayat penawaran/kesepakatan, jadi akunnya tidak bisa dihapus agar riwayat transaksi tetap utuh."
                      + (" Tolak akunnya saja bila tidak ingin ia masuk lagi." if u["role"] == "tengkulak" else ""))
         cur.execute("delete from otp_codes where phone = %s", (u["phone"],))
+        cache.invalidate("user:")  # sesi aktif membaca ulang data akun
         cur.execute("delete from users where id = %s", (u["id"],))
     log.info("Akun %s (%s) dihapus oleh admin %s", u["id"], u["role"], actor.user)
     return {"message": f"Akun {u['name']} berhasil dihapus."}
@@ -1106,7 +1193,7 @@ def admin_delete_user(user_id: UUID, actor: Actor = Depends(get_actor)):
 @app.get("/api/admin/dashboard", tags=["admin"])
 def get_admin_dashboard(actor: Actor = Depends(get_actor)):
     require(actor, "admin")
-    with tx() as cur:
+    with read() as cur:
         stocks = stock_rows(cur, "true", ())
         offers, events = offer_rows(cur, "true", ())
         tk = tengkulak_by_phone(cur, {o["buyer_phone"] for o in offers})
@@ -1177,14 +1264,14 @@ def get_admin_dashboard(actor: Actor = Depends(get_actor)):
 # ---------------------------------------------------------------------------
 @app.get("/api/state", tags=["peran"])
 def get_state(actor: Actor = Depends(get_actor)):
-    with tx() as cur:
+    with read() as cur:
         return snapshot(cur, actor)
 
 
 @app.get("/api/state/version", tags=["peran"])
 def get_state_version():
     """Endpoint ringan untuk polling sinkronisasi (perubahan dari web maupun chatbot WA)."""
-    with tx() as cur:
+    with read() as cur:
         return {"version": state_version(cur)}
 
 
@@ -1456,8 +1543,21 @@ def _accept(actor: Actor, code: str, who: str, message: str) -> dict:
         if res.get("reason") == "insufficient_stock":
             err(409, "Stok sudah berkurang. Penawaran tidak dapat disetujui.")
         err(409, "Status penawaran sudah berubah.")
-    _push_offer_notifications(o["id"], "agreed")
+    _start_escrow(o["id"])
     return result(actor, message, id=f"TRX-{o['id']}")
+
+
+def _start_escrow(offer_id: int) -> None:
+    """Deal tercapai di web: buat escrow + invoice, lalu kabari kedua pihak (tagihan ke tengkulak).
+    Bila escrow gagal dibuat, kirim notifikasi kesepakatan lama agar kedua pihak tetap tahu."""
+    try:
+        row, baru = escrow.buat_escrow(offer_id, "sistem", "web")
+        if baru:
+            escrow.kabari(str(row["id"]))
+        return
+    except Exception:  # noqa: BLE001
+        log.exception("Escrow untuk penawaran %s gagal dibuat", offer_id)
+    _push_offer_notifications(offer_id, "agreed")
 
 
 @app.post("/api/offers/{offer_id}/accept", tags=["petani"])
@@ -1556,6 +1656,9 @@ async def put_chatbot_state(request: Request):
 def delete_chatbot_state():
     chatbot_store.clear()
     return {"ok": True}
+
+
+app.include_router(escrow.router)  # sebelum catch-all di bawah
 
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE"], include_in_schema=False)

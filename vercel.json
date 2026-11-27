@@ -1,6 +1,9 @@
 {
   "$schema": "https://vercel.sh",
   "framework": null,
+  "regions": [
+    "hnd1"
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",

@@ -28,11 +28,13 @@ function RoleShell({ children }: { children: ReactNode }) {
   if (db) {
     const S = selectors(db, isFarmer);
     const pending = S.myOffers().filter((o) => (isFarmer ? o.status === "Menunggu Petani" : o.status === "Penawaran Balik")).length;
+    // Escrow yang menunggu tindakan pengguna: petani kirim gabah; tengkulak bayar atau konfirmasi terima.
+    const escrowTodo = S.myTransactions().filter((t) => (isFarmer ? t.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(t.escrowStatus || ""))).length;
     nav = PAGE_DEFS[role].map(([id, icon, label]) => ({
       href: id === "overview" ? base : `${base}/${id}`,
       icon,
       label,
-      count: id === "penawaran" && pending ? pending : undefined,
+      count: id === "penawaran" && pending ? pending : id === "transaksi" && escrowTodo ? escrowTodo : undefined,
     }));
     const f = S.myFarmer();
     const b = S.myBuyer();

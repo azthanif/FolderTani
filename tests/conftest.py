@@ -53,6 +53,10 @@ def database_url():
     for _ in range(50):
         try:
             with psycopg.connect(url, autocommit=True) as conn:
+                # Role bawaan Supabase yang dirujuk migrasi (mis. 005 grant ke authenticated/service_role).
+                for role in ("anon", "authenticated", "service_role"):
+                    conn.execute(f"do $$ begin if not exists (select 1 from pg_roles where rolname = '{role}')"
+                                 f" then create role {role} nologin; end if; end $$")
                 for f in MIGRATIONS:
                     conn.execute(Path(f).read_text())
             break
@@ -85,12 +89,16 @@ def client(database_url, monkeypatch, tmp_path):
     import psycopg
     from fastapi.testclient import TestClient
 
-    from backend import auth, db, main
+    from backend import auth, cache, db, main
 
     pw = auth.hash_password(PASSWORD)
     e = auth.to_e164
     with psycopg.connect(database_url, autocommit=True) as conn:
+        # escrow_event menolak TRUNCATE (append-only); mode replica mematikan trigger khusus untuk reset data tes.
+        conn.execute("set session_replication_role = replica")
+        conn.execute("truncate escrow_event, escrow_transaksi, akun_pencairan_petani")
         conn.execute("truncate otp_codes, stock_logs, stock_batches, offer_events, offers, requests, stocks, price_predictions, price_forecasts, price_observations, gee_features_daily, users restart identity cascade")
+        conn.execute("set session_replication_role = default")
         conn.execute(
             """insert into users (phone, role, name, display_name, kabupaten, kecamatan, password_hash, contact_sharing_consent, status) values
                (%s,'admin','Admin Temu Tani','Admin Temu Tani',null,null,%s,false,'approved'),
@@ -107,6 +115,7 @@ def client(database_url, monkeypatch, tmp_path):
             " ('Garut','GKP', date_trunc('month', now())::date, 6900, 'tes'), ('Cianjur','GKP', date_trunc('month', now())::date, 6950, 'tes')"
         )
     db.close_pool()
+    cache.clear()
     with TestClient(main.app) as c:
         yield c
     db.close_pool()

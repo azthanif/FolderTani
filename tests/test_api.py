@@ -381,7 +381,7 @@ def test_full_negotiation_flow(client, login, sql):
     # request dibuat otomatis sesuai skema chatbot
     req = sql("select r.buyer_phone, r.kabupaten, r.need_kg, r.offered_kg from requests r join offers o on o.request_id = r.id where o.code = %s", (oid,))[0]
     assert (req["buyer_phone"], req["kabupaten"], req["need_kg"], req["offered_kg"]) == (e164(PHONES["tengkulak"]), "Garut", 3000, 3000)
-    # petani melihat penawaran + harga AI dari price_predictions
+    # petani melihat penawaran + harga AI dari price_predictions (belum ada price_forecasts)
     s = client.get("/api/state", headers=P).json()
     assert s["aiReference"] == {"GKP": 6900}
     o = s["offers"][0]
@@ -609,3 +609,89 @@ def test_berita_default_reads_pipeline_csv(client):
             if e["entity"] in ("MON", "QTY"):      # angka tidak lagi terpecah ("Rp5" + "000")
                 assert re.search(r"\d", e["word"]) or re.search(r"(?i)ribu|juta|miliar", e["word"])
                 assert not re.search(r"\d[.,]$", src[:e["start"]]) and not re.match(r"[.,]\d", src[e["end"]:])
+
+
+def _insert_forecast(sql, kab: str, days_ago: int, prices: list[int]):
+    """Satu run prakiraan h0..h7 dengan tanggal asal = hari ini WIB - days_ago."""
+    sql("insert into price_forecasts (kabupaten, run_date, target_date, horizon, price_per_kg, model_version,"
+        " is_simulation, price_source) select %s, d, d + h, h, (%s::int[])[h + 1], 'test', false, 'asli'"
+        " from (select (now() at time zone 'Asia/Jakarta')::date - %s as d) x, generate_series(0, 7) h",
+        (kab, prices, days_ago))
+
+
+def test_ai_reference_uses_latest_forecast(client, login, sql):
+    """Harga wajar = rata-rata prakiraan h+1..h+7 run terbaru (sama dengan web), bukan price_predictions."""
+    P = login("petani")
+    _insert_forecast(sql, "Garut", 1, [7000, 7100, 7100, 7100, 7100, 7100, 7100, 7100])
+    _insert_forecast(sql, "Garut", 0, [7300, 7200, 7210, 7220, 7230, 7240, 7250, 7260])
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 7230}
+
+
+def test_ai_reference_falls_back_when_forecast_stale(client, login, sql):
+    """Prakiraan lebih tua dari MAX_FORECAST_AGE_DAYS dianggap basi: kembali ke price_predictions."""
+    P = login("petani")
+    _insert_forecast(sql, "Garut", 10, [8000] * 8)
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 6900}
+
+
+def test_prices_and_ai_reference_are_cached(client, login, sql):
+    """Prakiraan dibaca ulang paling lambat tiap TEMUTANI_CACHE_TTL detik (pipeline hanya menulis sekali sehari)."""
+    from backend import cache
+
+    P = login("petani")
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 6900}
+    _insert_forecast(sql, "Garut", 0, [7300, 7200, 7210, 7220, 7230, 7240, 7250, 7260])
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 6900}  # masih dari cache
+    cache.clear()
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 7230}
+    first = client.get("/api/prices", headers=P).json()
+    assert first["lockedArea"] == "Garut"
+    assert client.get("/api/prices", headers=P).json() == first
+
+
+def test_cache_can_be_disabled(client, login, sql, monkeypatch):
+    monkeypatch.setenv("TEMUTANI_CACHE_TTL", "0")
+    P = login("petani")
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 6900}
+    _insert_forecast(sql, "Garut", 0, [7300, 7200, 7210, 7220, 7230, 7240, 7250, 7260])
+    assert client.get("/api/state", headers=P).json()["aiReference"] == {"GKP": 7230}
+
+
+def test_password_change_revokes_cached_session(client, login):
+    """Cache data akun dibuang saat password diganti: token lama langsung ditolak."""
+    H = login("petani")
+    assert client.get("/api/auth/me", headers=H).status_code == 200  # baris user masuk cache
+    r = client.post("/api/auth/password/change", headers=H, json={"currentPassword": PASSWORD, "password": "PasswordBaru123"})
+    assert r.status_code == 200, r.text
+    assert client.get("/api/auth/me", headers=H).status_code == 401
+
+
+def test_read_connections_return_to_pool_in_transaction_mode(client):
+    from backend import db
+
+    with db.read() as cur:
+        cur.execute("select 1")
+    with db.get_pool().connection() as conn:
+        assert conn.autocommit is False
+
+
+def test_cors_preflight_is_cacheable(database_url, monkeypatch):
+    """Preflight CORS boleh disimpan browser 2 jam (header Access-Control-Max-Age)."""
+    import importlib
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("TEMUTANI_CORS_ORIGINS", "https://contoh.vercel.app")
+    from backend import main
+
+    try:
+        m = importlib.reload(main)
+        r = TestClient(m.app).options("/api/prices", headers={
+            "Origin": "https://contoh.vercel.app", "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization"})
+        assert r.status_code == 200
+        assert r.headers["access-control-max-age"] == "7200"
+    finally:
+        monkeypatch.delenv("TEMUTANI_CORS_ORIGINS")
+        importlib.reload(main)

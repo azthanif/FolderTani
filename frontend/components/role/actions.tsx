@@ -6,12 +6,13 @@ import type { FormEvent } from "react";
 import { showAlert, showConfirm } from "@/lib/dialog";
 import { Icon } from "@/components/Icon";
 import { useUI } from "@/components/UIProvider";
+import { EscrowDetail, EscrowPill } from "@/components/escrow/EscrowDetail";
 import { useRole } from "./RoleDataProvider";
 import { availability, Badge, Btn, fmtTime, number, prettyDate, rupiah, selectors, totalPrice } from "./common";
 import type { Offer, RoleState, Stock } from "./types";
 
 export function useRoleActions() {
-  const { isFarmer, getDb, mutate, navigate, base } = useRole();
+  const { isFarmer, getDb, mutate, navigate, base, reload } = useRole();
   const { openModal, closeModal, toast } = useUI();
   const sel = () => selectors(getDb() as RoleState, isFarmer);
   const me = () => (getDb() as RoleState).actor.user; // ID pengguna yang sedang login
@@ -381,6 +382,22 @@ export function useRoleActions() {
           </div>
         </>
       );
+    const trx = o.status === "Disepakati" ? (getDb() as RoleState).transactions.find((t) => t.offerId === o.id) : undefined;
+    if (trx?.escrowId) {
+      const todo = isFarmer ? trx.escrowStatus === "DIBAYAR" : ["MENUNGGU_BAYAR", "DIKIRIM"].includes(trx.escrowStatus || "");
+      actions = (
+        <>
+          <div className="divider" />
+          <div className={todo ? "notice-positive" : "notice-card"}>
+            Status pembayaran: <EscrowPill status={trx.escrowStatus} label={trx.escrowLabel} />{" "}
+            {todo ? (isFarmer ? "Dana sudah di escrow, silakan kirim gabah lalu konfirmasi." : trx.escrowStatus === "MENUNGGU_BAYAR" ? "Silakan bayar ke escrow." : "Gabah sudah dikirim, silakan konfirmasi penerimaan.") : ""}
+          </div>
+          <div className="form-actions">
+            <Btn cl="primary" onClick={() => trxDetail(trx.id)}>{todo ? "Lanjutkan pembayaran & konfirmasi" : "Lihat transaksi & pembayaran"}</Btn>
+          </div>
+        </>
+      );
+    }
     if (!isFarmer && o.status === "Menunggu Petani")
       actions = (
         <>
@@ -435,6 +452,14 @@ export function useRoleActions() {
     const s = S.stock(t.stockId), far = S.farmer(t.farmerId), buy = S.buyer(t.buyerId);
     const other = isFarmer ? buy?.label : far?.name;
     const wa = t.contact ? "https://wa.me/62" + t.contact.replace(/^0/, "") : null;
+    if (t.escrowId) {
+      openModal(
+        "Transaksi " + t.id,
+        `${s?.type || "GKP"} • ${s?.region || ""} • Pembayaran lewat escrow Temu Tani`,
+        <EscrowDetail key={t.escrowId} id={t.escrowId} role={isFarmer ? "petani" : "tengkulak"} onToast={toast} onChanged={reload} />,
+      );
+      return;
+    }
     openModal(
       "Detail Kesepakatan " + t.id,
       `${s?.type} • ${s?.region} • Kesepakatan harga`,
@@ -474,21 +499,32 @@ export function useRoleActions() {
     const db = getDb();
     if (!db) return;
     const S = selectors(db, isFarmer);
+    const tx = S.myTransactions();
+    const esc = (st: string[]) => tx.filter((t) => st.includes(t.escrowStatus || "")).length;
     openModal(
       "Notifikasi",
       "Ringkasan aktivitas yang memerlukan perhatian",
       <div className="card-stack">
         {isFarmer ? (
           <>
+            <div className="notice-card">{esc(["DIBAYAR"])} transaksi sudah dibayar ke escrow: gabah perlu dikirim lalu dikonfirmasi.</div>
+            <div className="notice-card">{esc(["MENUNGGU_BAYAR"])} transaksi menunggu pembayaran tengkulak.</div>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Menunggu Petani").length} penawaran menunggu keputusan Anda.</div>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Penawaran Balik").length} penawaran sedang dinegosiasikan.</div>
           </>
         ) : (
           <>
+            <div className="notice-card">{esc(["MENUNGGU_BAYAR"])} transaksi perlu Anda bayar ke escrow.</div>
+            <div className="notice-card">{esc(["DIKIRIM"])} transaksi: gabah sudah dikirim petani, perlu konfirmasi penerimaan.</div>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Penawaran Balik").length} harga balik petani menunggu respons.</div>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Menunggu Petani").length} penawaran menunggu respons petani.</div>
           </>
         )}
+        {tx.some((t) => t.escrowStatus) ? (
+          <div className="form-actions">
+            <button type="button" className="btn primary" onClick={() => navigate("transaksi")}>Buka Riwayat Kesepakatan</button>
+          </div>
+        ) : null}
       </div>,
     );
   }

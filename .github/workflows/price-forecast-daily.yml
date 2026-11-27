@@ -6,7 +6,7 @@ name: Prakiraan harga harian
 
 on:
   schedule:
-    - cron: "0 22 * * *"   # 05:00 WIB; broadcast jam 07:00 WIB (00:00 UTC), buffer 2 jam
+    - cron: "17 21 * * *"   # 04:17 WIB, sama dengan cron eksternal (workflow_dispatch)
   workflow_dispatch:
     inputs:
       date:
