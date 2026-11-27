@@ -346,7 +346,7 @@ def test_mock_mode_simulation(client, login, monkeypatch, sql, gw):
         _, T, _, trx = deal(client, login)
         eid = trx["escrowId"]
         d = client.get(f"/api/escrow/{eid}", headers=T).json()
-        assert "simulasi=1" in d["invoice_url"]
+        assert "/api/escrow/checkout/" in d["invoice_url"]
         A = login("admin")
         assert client.post(f"/api/escrow/{eid}/simulasi", headers=T, json={"event": "PAID"}).status_code == 403
         assert client.post(f"/api/escrow/{eid}/simulasi", headers=A, json={"event": "PAID"}).json()["status"] == "DIBAYAR"
@@ -431,3 +431,38 @@ def test_n8n_webhook_requires_separate_token(client, login, gw, monkeypatch):
     monkeypatch.setattr(escrow, "_deliver_n8n", lambda url, body: sent.append(body) or True)
     deal(client, login)
     assert sent == []  # tanpa rahasia keluar: kirim langsung via WAHA (cadangan)
+
+
+def test_mock_checkout_page_and_auto_disbursement(client, login, monkeypatch, sql, gw):
+    """Mode simulasi: tautan bayar = halaman checkout backend tanpa login (token), pencairan selesai otomatis."""
+    from backend import xendit
+    import importlib
+    monkeypatch.setenv("TEMUTANI_PAYMENT_MOCK", "1")
+    importlib.reload(xendit)
+    try:
+        sql("delete from akun_pencairan_petani")  # simulasi tidak butuh akun pencairan
+        P, T, _, trx = deal(client, login)
+        eid = trx["escrowId"]
+        url = client.get(f"/api/escrow/{eid}", headers=T).json()["invoice_url"]
+        assert f"/api/escrow/checkout/{eid}?t=" in url
+        path = url[url.index("/api/"):]
+        page = client.get(path)
+        assert page.status_code == 200 and "MODE SIMULASI" in page.text and "21.300.000" not in page.text
+        assert client.get(f"/api/escrow/checkout/{eid}?t=salah").status_code == 404
+        assert client.post(f"/api/escrow/checkout/{eid}?t=salah").status_code == 404
+        r = client.post(path)
+        assert r.status_code == 200 and "Pembayaran berhasil" in r.text
+        assert client.get(f"/api/escrow/{eid}", headers=T).json()["status"] == "DIBAYAR"
+        assert "Pembayaran berhasil" not in client.post(path).text  # bayar ulang tidak mengubah apa pun
+        client.post(f"/api/escrow/{eid}/konfirmasi-kirim", headers=P)
+        client.post(f"/api/escrow/{eid}/konfirmasi-terima", headers=T)
+        assert client.get(f"/api/escrow/{eid}", headers=P).json()["status"] == "SELESAI"
+    finally:
+        monkeypatch.delenv("TEMUTANI_PAYMENT_MOCK")
+        importlib.reload(xendit)
+
+
+def test_checkout_disabled_without_mock(client, login, gw):
+    _, T, _, trx = deal(client, login)
+    from backend import escrow
+    assert client.get(escrow.checkout_url(trx["escrowId"]).split("api.temutani.web.id")[1]).status_code == 404

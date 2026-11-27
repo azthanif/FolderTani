@@ -21,7 +21,9 @@ Env tambahan:
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
+import html
 import json
 import logging
 import os
@@ -32,6 +34,7 @@ from typing import Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator
 
 from . import auth, wa, xendit
@@ -88,6 +91,25 @@ def invoice_hours() -> int:
 
 def kode(row: dict) -> str:
     return f"ESC-{row['offer_id']}"
+
+
+# ---- Mode simulasi: halaman checkout pengganti halaman bayar Xendit -----------------
+def _checkout_token(escrow_id) -> str:
+    return hmac.new(auth._SECRET, f"checkout:{escrow_id}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def checkout_url(escrow_id) -> str:
+    base = os.getenv("TEMUTANI_API_URL", "https://api.temutani.web.id").rstrip("/")
+    return f"{base}/api/escrow/checkout/{escrow_id}?t={_checkout_token(escrow_id)}"
+
+
+def invoice_url(row: dict) -> Optional[str]:
+    """Tautan bayar. Mode simulasi: halaman checkout backend (tanpa login, dilindungi token)."""
+    if not row["invoice_url"] and not row["invoice_id"]:
+        return None
+    if xendit.mock_mode() and str(row["invoice_id"] or "").startswith("mock-"):
+        return checkout_url(row["id"])
+    return row["invoice_url"]
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +175,7 @@ def aksi_tersedia(row: dict, peran: Optional[str]) -> list[str]:
     s = row["status"]
     out: list[str] = []
     if peran == "tengkulak":
-        if s == "MENUNGGU_BAYAR" and row["invoice_url"]:
+        if s == "MENUNGGU_BAYAR" and invoice_url(row):
             out.append("bayar")
         if s == "DIKIRIM":
             out += ["konfirmasi-terima", "lapor-masalah"]
@@ -167,7 +189,7 @@ def aksi_tersedia(row: dict, peran: Optional[str]) -> list[str]:
             out.append("selesaikan-sengketa")
         if s in ("MENUNGGU_BAYAR", "DITERIMA"):
             out.append("rekonsiliasi")
-    if peran in ("tengkulak", "admin") and s == "MENUNGGU_BAYAR" and not row["invoice_url"]:
+    if peran in ("tengkulak", "admin") and s == "MENUNGGU_BAYAR" and not invoice_url(row):
         out.append("buat-invoice")
     return out
 
@@ -210,7 +232,7 @@ def view(row: dict, peran: Optional[str], riwayat: Optional[list[dict]] = None) 
         "aksi_tersedia": aksi_tersedia(row, peran),
     }
     if peran in ("tengkulak", "admin"):
-        out["invoice_url"] = row["invoice_url"]
+        out["invoice_url"] = invoice_url(row)
     if peran == "admin":
         out.update({"invoice_id": row["invoice_id"], "disbursement_id": row["disbursement_id"],
                     "pencairan_percobaan": row["pencairan_percobaan"], "pencairan_gagal_kode": row["pencairan_gagal_kode"],
@@ -368,6 +390,8 @@ def _kirim_disbursement(escrow_id, percobaan: int) -> None:
                     " left join akun_pencairan_petani a on a.petani_id = e.petani_id where e.id = %s", (escrow_id,))
         info = cur.fetchone()
     gagal_kode, disb, tidak_pasti = None, None, False
+    if not info["kode_bank"] and xendit.mock_mode():
+        info = {**info, "kode_bank": "BCA", "nama_pemilik": "Petani (simulasi)", "nomor_akun": "0000000000"}
     if not info["kode_bank"]:
         gagal_kode = "AKUN_PENCAIRAN_BELUM_ADA"
     elif not xendit.configured():
@@ -392,16 +416,20 @@ def _kirim_disbursement(escrow_id, percobaan: int) -> None:
             if cur.fetchone():
                 _event(cur, escrow_id, "DITERIMA", "DITERIMA", "sistem", "sistem",
                        {"disbursement_id": disb["id"], "external_id": ext, "percobaan": percobaan})
-            return
-        if tidak_pasti or disb is not None:
+        elif tidak_pasti or disb is not None:
             _event(cur, escrow_id, "DITERIMA", "DITERIMA", "sistem", "sistem",
                    {"disbursement": "status_belum_pasti", "external_id": ext, "percobaan": percobaan})
             log.warning("Disbursement %s belum pasti; tunggu callback atau rekonsiliasi admin", ext)
-            return
-        ok = transisi(cur, escrow_id, "DITERIMA", "PENCAIRAN_GAGAL", "sistem", "sistem", {"kode": gagal_kode, "external_id": ext},
-                      {"pencairan_gagal_kode": gagal_kode, "disbursement_id": None}, guard={"disbursement_id": marker})
+        else:
+            ok = transisi(cur, escrow_id, "DITERIMA", "PENCAIRAN_GAGAL", "sistem", "sistem", {"kode": gagal_kode, "external_id": ext},
+                          {"pencairan_gagal_kode": gagal_kode, "disbursement_id": None}, guard={"disbursement_id": marker})
     if ok:
         kabari(str(escrow_id))
+    elif disb and disb.get("id") and xendit.mock_mode():
+        # Simulasi: disbursement langsung berhasil, seperti callback COMPLETED di test mode Xendit.
+        row = _get_row(str(escrow_id))
+        if row and row["disbursement_id"] == disb["id"]:
+            terapkan_disbursement(row, "COMPLETED", {"sumber": "simulasi", "status": "COMPLETED"}, "webhook", "xendit")
 
 
 # ---------------------------------------------------------------------------
@@ -422,7 +450,7 @@ def pesan(row: dict) -> list[dict]:
     out: list[dict] = []
     if s == "MENUNGGU_BAYAR":
         exp = f"\nBatas bayar: *{m.id_date(row['invoice_kedaluwarsa_pada'])} {m.id_time(row['invoice_kedaluwarsa_pada'])} WIB*" if row["invoice_kedaluwarsa_pada"] else ""
-        bayar = (f"💳 Bayar ke escrow lewat tautan ini:\n{row['invoice_url']}{exp}" if row["invoice_url"]
+        bayar = (f"💳 Bayar ke escrow lewat tautan ini:\n{invoice_url(row)}{exp}" if invoice_url(row)
                  else f"Tautan pembayaran sedang disiapkan. Cek di web: {web_t}")
         out.append({"phone": T, "text": f"✅ *Harga disepakati dengan {row['petani_display']}!*\n\n{info}\n\n{bayar}\n\n"
                                         "Dana Anda ditahan aman di escrow Temu Tani dan baru diteruskan ke petani setelah Anda "
@@ -685,7 +713,7 @@ def buat_invoice_ulang(ref: str, p: Pelaku = Depends(get_pelaku)):
     if row["status"] != "MENUNGGU_BAYAR":
         m.err(409, f"Status transaksi sudah berubah ({STATUS_LABEL[row['status']]}).")
     row = buat_invoice(row)
-    if not row["invoice_url"]:
+    if not invoice_url(row):
         m.err(502, "Tautan pembayaran belum bisa dibuat. Coba lagi beberapa saat lagi.")
     return detail(str(row["id"]), peran)
 
@@ -809,3 +837,57 @@ async def webhook_disbursement(request: Request, x_callback_token: str = Header(
     changed = terapkan_disbursement(row, status, {"callback": body, "status_terverifikasi": status,
                                                   "failure_code": body.get("failure_code")}, disbursement_id=disb_id)
     return {"ok": True, "changed": changed}
+
+
+def _checkout_page(title: str, body: str) -> HTMLResponse:
+    return HTMLResponse(f"""<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{html.escape(title)}</title><style>
+body{{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f3f6f4;color:#1f3b2b;display:grid;place-items:center;min-height:100vh}}
+.card{{background:#fff;border-radius:16px;box-shadow:0 8px 30px #0001;padding:28px;width:min(420px,92vw)}}
+.tag{{display:inline-block;font-size:12px;font-weight:700;background:#fff4d6;color:#8a6200;border-radius:99px;padding:4px 10px}}
+h1{{font-size:20px;margin:10px 0 4px}} .muted{{color:#6b7a70;font-size:13px}} .row{{display:flex;justify-content:space-between;margin:10px 0;font-size:14px}}
+.total{{font-size:26px;font-weight:800;margin:14px 0}} button,.btn{{display:block;width:100%;text-align:center;border:0;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;text-decoration:none}}
+button{{background:#2f7d4f;color:#fff}} .btn{{background:#eef4f0;color:#1f3b2b;margin-top:10px}} .ok{{background:#e3f1e7;color:#1f6b3d}}
+</style></head><body><div class="card">{body}</div></body></html>""")
+
+
+def _checkout_row(escrow_id: str, t: str) -> dict:
+    m = _m()
+    if not xendit.mock_mode():
+        m.err(404, "Endpoint API tidak ditemukan.")
+    row = _get_row(escrow_id)
+    if not row or not hmac.compare_digest(_checkout_token(row["id"]), t or ""):
+        m.err(404, "Tautan pembayaran tidak valid.")
+    return row
+
+
+def _checkout_body(row: dict, notice: str = "") -> str:
+    m = _m()
+    web = f"{m.WEB_URL}/tengkulak/transaksi?escrow={row['id']}"
+    head = (f'<span class="tag">MODE SIMULASI (tanpa uang sungguhan)</span><h1>Bayar escrow {kode(row)}</h1>'
+            f'<div class="muted">Temu Tani • {html.escape(row["offer_code"])} • {html.escape(row["kabupaten"] or "")}</div>'
+            f'<div class="row"><span>Petani</span><b>{html.escape(row["petani_display"])}</b></div>'
+            f'<div class="row"><span>Berat</span><b>{m.fmt_number(float(row["berat_kg"]))} kg</b></div>'
+            f'<div class="row"><span>Harga</span><b>{m.rupiah(row["harga_per_kg"])}/kg</b></div>'
+            f'<div class="total">{m.rupiah(int(row["nilai"]))}</div>')
+    if row["status"] == "MENUNGGU_BAYAR":
+        return head + (f'<form method="post"><button type="submit">Bayar {m.rupiah(int(row["nilai"]))} (simulasi)</button></form>'
+                       '<p class="muted">Dana ditahan di escrow dan baru diteruskan ke petani setelah Anda mengonfirmasi gabah diterima.</p>')
+    msg = notice or f"Status transaksi: {STATUS_LABEL[row['status']]}."
+    return head + f'<p class="btn ok">{html.escape(msg)}</p><a class="btn" href="{html.escape(web)}">Buka transaksi di web Temu Tani</a>'
+
+
+@router.get("/api/escrow/checkout/{escrow_id}", include_in_schema=False)
+def checkout_page(escrow_id: str, t: str = ""):
+    row = _checkout_row(escrow_id, t)
+    return _checkout_page(f"Bayar {kode(row)}", _checkout_body(row))
+
+
+@router.post("/api/escrow/checkout/{escrow_id}", include_in_schema=False)
+def checkout_pay(escrow_id: str, t: str = ""):
+    """Mode simulasi: meniru tengkulak membayar di halaman Xendit lalu callback invoice PAID."""
+    row = _checkout_row(escrow_id, t)
+    changed = terapkan_invoice(row, "PAID", {"sumber": "checkout_simulasi", "status": "PAID"}, "webhook", "xendit")
+    row = _get_row(str(row["id"]))
+    notice = "Pembayaran berhasil. Dana aman di escrow; petani sudah diberi tahu." if changed else ""
+    return _checkout_page(f"Bayar {kode(row)}", _checkout_body(row, notice))
