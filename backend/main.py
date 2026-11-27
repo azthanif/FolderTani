@@ -535,7 +535,7 @@ class ProfileIn(BaseModel):
     name: str = Field(min_length=3, max_length=80)
     region: Optional[str] = Field(default=None, max_length=60)
     district: Optional[str] = Field(default=None, max_length=60)
-    village: Optional[str] = Field(default=None, max_length=80)  # tengkulak
+    village: Optional[str] = Field(default=None, max_length=80)  # desa/kelurahan (tengkulak & petani)
     shareContact: Optional[bool] = None
 
     @field_validator("name", "region", "district", "village")
@@ -806,8 +806,11 @@ def me(actor: Actor = Depends(get_actor)):
 @app.put("/api/auth/profile", tags=["akun"])
 def update_profile(body: ProfileIn, actor: Actor = Depends(get_actor)):
     kab = kec = kel = None
-    if actor.role == "petani":
-        kab, kec = _valid_region(body.region, body.district)
+    if actor.role == "petani" and body.village:
+        # Petani kini memilih alamat lengkap sendiri dari data Kepmendagri, sama seperti tengkulak.
+        kab, kec, kel = _valid_address(body.region, body.district, body.village)
+    elif actor.role == "petani":
+        kab, kec = _valid_region(body.region, body.district)  # klien lama tanpa desa/kelurahan
     elif actor.role == "tengkulak" and (body.region or body.district or body.village):
         kab, kec, kel = _valid_address(body.region, body.district, body.village)
     with tx() as cur:

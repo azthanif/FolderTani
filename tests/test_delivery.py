@@ -352,3 +352,7 @@ def test_farmer_changing_kecamatan_clears_desa(client, login, sql, lokasi):
     assert r.json()["user"]["villageCode"] == KODE_PETANI and r.json()["user"]["village"] == "Sukagalih"  # kecamatan sama: tetap
     r = client.put("/api/auth/profile", headers=P, json={"name": "Pak Asep Hidayat", "region": "Garut", "district": "Leles"})
     assert r.json()["user"]["villageCode"] == "" and r.json()["user"]["village"] == ""
+    # petani memilih desa sendiri dari data Kepmendagri (sama seperti tengkulak)
+    r = client.put("/api/auth/profile", headers=P, json={"name": "Pak Asep Hidayat", "region": "Garut", "district": "Tarogong Kidul", "village": "Sukagalih"})
+    assert r.status_code == 200 and r.json()["user"]["villageCode"] == KODE_PETANI and r.json()["user"]["village"] == "Sukagalih"
+    assert client.put("/api/auth/profile", headers=P, json={"name": "Pak Asep Hidayat", "region": "Garut", "district": "Leles", "village": "Sukagalih"}).status_code == 400

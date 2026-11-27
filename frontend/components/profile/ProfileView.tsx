@@ -11,7 +11,7 @@ import { Icon } from "@/components/Icon";
 import { useUI } from "@/components/UIProvider";
 import { api, ApiError } from "@/lib/api";
 import { initials } from "@/lib/format";
-import { changePassword, getSession, isStrongPassword, REGIONS, setSession, updateProfile, type SessionUser } from "@/lib/auth";
+import { changePassword, getSession, isStrongPassword, setSession, updateProfile, type SessionUser } from "@/lib/auth";
 import "@/styles/auth.css";
 import "@/styles/profile.css";
 
@@ -23,8 +23,6 @@ export function ProfileView() {
   const { toast } = useUI();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [name, setName] = useState("");
-  const [region, setRegion] = useState("");
-  const [district, setDistrict] = useState("");
   const [address, setAddress] = useState<Address>({ region: "", district: "", village: "" });
   const [saving, setSaving] = useState(false);
   const [profileErr, setProfileErr] = useState("");
@@ -38,8 +36,6 @@ export function ProfileView() {
   function fill(u: SessionUser) {
     setUser(u);
     setName(u.name);
-    setRegion(u.region || "");
-    setDistrict(u.district || "");
     setAddress({ region: u.region || "", district: u.district || "", village: u.village || "" });
   }
 
@@ -67,7 +63,7 @@ export function ProfileView() {
     try {
       // shareContact dikirim apa adanya agar pengaturan lama tidak berubah.
       const r = await updateProfile(
-        isFarmer ? { name, region, district, shareContact: !!user?.shareContact } : isBuyer ? { name, ...address } : { name },
+        isFarmer ? { name, ...address, shareContact: !!user?.shareContact } : isBuyer ? { name, ...address } : { name },
       );
       fill(r.user);
       window.dispatchEvent(new Event(PROFILE_EVENT));
@@ -121,36 +117,17 @@ export function ProfileView() {
               <Icon name="edit" size={16} />
             </div>
           </label>
-          {isFarmer ? (
-            <div className="pf-row pf-row-3">
-              <label className="pf-field">
-                <span>Kabupaten</span>
-                <select className="pf-input" required value={region} onChange={(e) => setRegion(e.target.value)}>
-                  {REGIONS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="pf-field">
-                <span>Kecamatan</span>
-                <input className="pf-input" required minLength={2} maxLength={60} value={district} onChange={(e) => setDistrict(e.target.value)} />
-              </label>
-              <label className="pf-field">
-                <span>Desa/Kelurahan</span>
-                <input className="pf-input" readOnly value={user.village ? `${user.village}, Kab. ${user.region}` : "Belum tercatat (diisi admin)"}
-                  title="Dipakai untuk estimasi jarak pengiriman gabah. Hubungi admin untuk mengubah." />
-              </label>
-            </div>
-          ) : null}
-          {isBuyer ? (
-            <small className="pf-hint">Desa/kelurahan dipakai untuk menghitung perkiraan jarak dan biaya angkut bila Anda memilih gabah diantar.</small>
-          ) : null}
-          {isBuyer ? (
-            <div className="pf-row pf-row-3">
-              <AddressFields value={address} onChange={setAddress} fieldClass="pf-field" selectClass="pf-input" idPrefix="profil" />
-            </div>
+          {isFarmer || isBuyer ? (
+            <>
+              <small className="pf-hint">
+                {isFarmer
+                  ? "Desa/kelurahan dipakai untuk menghitung perkiraan jarak dan biaya angkut saat pembeli memilih gabah diantar."
+                  : "Desa/kelurahan dipakai untuk menghitung perkiraan jarak dan biaya angkut bila Anda memilih gabah diantar."}
+              </small>
+              <div className="pf-row pf-row-3">
+                <AddressFields value={address} onChange={setAddress} fieldClass="pf-field" selectClass="pf-input" idPrefix="profil" />
+              </div>
+            </>
           ) : null}
           {profileErr ? <div className="auth-error" role="alert">{profileErr}</div> : null}
           <div>
