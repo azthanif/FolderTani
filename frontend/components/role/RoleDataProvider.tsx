@@ -175,6 +175,10 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
         const fresh = await api<RoleState>("/state", actor);
         // Abaikan bila ada aksi pengguna selama permintaan berlangsung, atau data sudah lebih baru.
         if (!alive || busy.current || seq !== mutationSeq.current || (dbRef.current && fresh.version <= dbRef.current.version)) return;
+        // Status escrow berubah dari kanal lain (WhatsApp, pembayaran, pihak lawan): beri tahu pengguna.
+        const before = new Map((dbRef.current?.transactions || []).map((t) => [t.id, t.escrowStatus]));
+        const changed = fresh.transactions.filter((t) => t.escrowStatus && before.has(t.id) && before.get(t.id) !== t.escrowStatus);
+        if (changed.length) toast(changed.map((t) => `${t.offerId.replace("OFF", "ESC")}: ${t.escrowLabel}`).join(" • "));
         setDb(fresh);
       } catch {
         /* server sementara tidak terjangkau: coba lagi nanti */
@@ -192,7 +196,7 @@ export function RoleDataProvider({ role, children }: { role: RoleKind; children:
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", syncFromServer);
     };
-  }, [actor, setDb, session]);
+  }, [actor, setDb, session, toast]);
 
   const reload = useCallback(() => {
     load().catch(() => undefined);

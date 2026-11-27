@@ -369,8 +369,37 @@ def escrow_by_offer(cur, offers: list[dict]) -> dict[int, dict]:
     return {r["offer_id"]: r for r in cur.fetchall()}
 
 
-def activity_feed(offers: list[dict], events: dict[int, list[dict]], logs: list[dict]) -> list[dict]:
-    feed = []
+ESCROW_FEED = {  # ke_status -> (judul, catatan)
+    "MENUNGGU_BAYAR": ("Escrow dibuat", "Menunggu pembayaran tengkulak"),
+    "DIBAYAR": ("Pembayaran masuk escrow", "Dana aman di escrow, gabah bisa dikirim"),
+    "DIKIRIM": ("Gabah dikirim", "Menunggu konfirmasi penerimaan tengkulak"),
+    "DITERIMA": ("Gabah diterima", "Dana sedang dicairkan ke petani"),
+    "SELESAI": ("Dana escrow cair", "Transaksi selesai"),
+    "KEDALUWARSA": ("Tagihan escrow kedaluwarsa", "Tidak dibayar sampai batas waktu"),
+    "SENGKETA": ("Escrow ditinjau admin", "Tengkulak melaporkan masalah"),
+    "PENCAIRAN_GAGAL": ("Pencairan tertunda", "Admin sedang menangani"),
+}
+
+
+def escrow_feed(cur, where: str, param: str) -> list[dict]:
+    """Perubahan status escrow milik pengguna untuk Aktivitas Terkini (event pencairan internal tidak ditampilkan)."""
+    cur.execute(
+        f"""select v.id, v.ke_status::text as ke, v.pelaku, v.kanal, v.dibuat_pada, e.offer_id, e.nilai
+            from escrow_event v join escrow_transaksi e on e.id = v.escrow_id
+            where {where} = %s and v.dari_status is distinct from v.ke_status
+            order by v.dibuat_pada desc, v.id desc limit 15""",
+        (param,),
+    )
+    out = []
+    for v in cur.fetchall():
+        title, note = ESCROW_FEED[v["ke"]]
+        out.append({"id": f"ESC-EVT-{v['id']}", "at": iso(v["dibuat_pada"]), "title": f"{title} ESC-{v['offer_id']}",
+                    "note": f"{note} • {rupiah(int(v['nilai']))}", "_k": (v["dibuat_pada"], 2, v["id"])})
+    return out
+
+
+def activity_feed(offers: list[dict], events: dict[int, list[dict]], logs: list[dict], extra: Optional[list[dict]] = None) -> list[dict]:
+    feed = list(extra or [])
     for o in offers:
         for e in events[o["id"]]:
             if e["action"] == "initial":
@@ -438,7 +467,7 @@ def snapshot(cur, actor: Actor) -> dict:
             "offers": [offer_view(o, events[o["id"]], buyer_key(o["buyer_phone"], tk), o.get("ai") or ref.get(GRAIN)) for o in offers],
             "transactions": [trx_view(o, buyer_key(o["buyer_phone"], tk), auth.from_e164(o["buyer_phone"]), esc.get(o["id"]))
                              for o in offers if o["status"] == "AGREED"],
-            "activities": activity_feed(offers, events, logs[:12]),
+            "activities": activity_feed(offers, events, logs[:12], escrow_feed(cur, "e.petani_id", actor.user)),
             "aiReference": ref,
         }
     if actor.role == "tengkulak":
@@ -459,7 +488,7 @@ def snapshot(cur, actor: Actor) -> dict:
             "offers": [offer_view(o, events[o["id"]], actor.user, None) for o in offers],
             "transactions": [trx_view(o, actor.user, auth.from_e164(o["farmer_phone"]) if o["farmer_consent"] else None, esc.get(o["id"]))
                              for o in offers if o["status"] == "AGREED"],
-            "activities": activity_feed(offers, events, []),
+            "activities": activity_feed(offers, events, [], escrow_feed(cur, "e.tengkulak_phone", actor.phone)),
         }
     err(403, "Snapshot peran hanya untuk petani atau tengkulak.")
 

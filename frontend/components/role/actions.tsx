@@ -483,21 +483,32 @@ export function useRoleActions() {
     const db = getDb();
     if (!db) return;
     const S = selectors(db, isFarmer);
+    const tx = S.myTransactions();
+    const esc = (st: string[]) => tx.filter((t) => st.includes(t.escrowStatus || "")).length;
     openModal(
       "Notifikasi",
       "Ringkasan aktivitas yang memerlukan perhatian",
       <div className="card-stack">
         {isFarmer ? (
           <>
+            <div className="notice-card">{esc(["DIBAYAR"])} transaksi sudah dibayar ke escrow: gabah perlu dikirim lalu dikonfirmasi.</div>
+            <div className="notice-card">{esc(["MENUNGGU_BAYAR"])} transaksi menunggu pembayaran tengkulak.</div>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Menunggu Petani").length} penawaran menunggu keputusan Anda.</div>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Penawaran Balik").length} penawaran sedang dinegosiasikan.</div>
           </>
         ) : (
           <>
+            <div className="notice-card">{esc(["MENUNGGU_BAYAR"])} transaksi perlu Anda bayar ke escrow.</div>
+            <div className="notice-card">{esc(["DIKIRIM"])} transaksi: gabah sudah dikirim petani, perlu konfirmasi penerimaan.</div>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Penawaran Balik").length} harga balik petani menunggu respons.</div>
             <div className="notice-card">{S.myOffers().filter((o) => o.status === "Menunggu Petani").length} penawaran menunggu respons petani.</div>
           </>
         )}
+        {tx.some((t) => t.escrowStatus) ? (
+          <div className="form-actions">
+            <button type="button" className="btn primary" onClick={() => navigate("transaksi")}>Buka Riwayat Kesepakatan</button>
+          </div>
+        ) : null}
       </div>,
     );
   }

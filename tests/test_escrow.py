@@ -466,3 +466,27 @@ def test_checkout_disabled_without_mock(client, login, gw):
     _, T, _, trx = deal(client, login)
     from backend import escrow
     assert client.get(escrow.checkout_url(trx["escrowId"]).split("api.temutani.web.id")[1]).status_code == 404
+
+
+def test_escrow_changes_appear_in_activity_feed(client, login, gw):
+    P, T, _, trx = deal(client, login)
+    eid = trx["escrowId"]
+    pay(client, gw, eid)
+    acts_p = client.get("/api/state", headers=P).json()["activities"]
+    acts_t = client.get("/api/state", headers=T).json()["activities"]
+    k = trx["offerId"].replace("OFF", "ESC")
+    assert acts_p[0]["title"] == f"Pembayaran masuk escrow {k}" and "13.000.000" in acts_p[0]["note"]
+    assert acts_t[0]["title"] == f"Pembayaran masuk escrow {k}"
+    assert any(a["title"] == f"Escrow dibuat {k}" for a in acts_t)
+    assert client.get("/api/state", headers=login("tengkulak2")).json()["activities"] == []
+
+
+def test_n8n_payload_carries_waha_session(client, login, gw, monkeypatch):
+    from backend import escrow
+    sent = []
+    monkeypatch.setenv("N8N_ESCROW_WEBHOOK_URL", "https://n8n.example/webhook/escrow")
+    monkeypatch.setenv("N8N_ESCROW_WEBHOOK_TOKEN", "x")
+    monkeypatch.setenv("WAHA_SESSION", "session_abc")
+    monkeypatch.setattr(escrow, "_deliver_n8n", lambda url, body: sent.append(body) or True)
+    deal(client, login)
+    assert sent[-1]["session"] == "session_abc"

@@ -517,6 +517,7 @@ def kabari(ref: str, kecuali: Optional[str] = None) -> None:
                     m._set_chat_step(cur, x["phone"], x["step"], x.get("context") or {})
         url = os.getenv("N8N_ESCROW_WEBHOOK_URL", "").strip()
         body = {"event": row["status"], "escrow_id": str(row["id"]), "kode": kode(row),
+                "session": os.getenv("WAHA_SESSION", "").strip(),  # nama sesi WAHA yang sama dengan backend
                 "messages": [{"phone": x["phone"], "chatId": wa.chat_id(x["phone"]), "text": x["text"], "poll": x.get("poll")} for x in msgs]}
         if url and os.getenv("N8N_ESCROW_WEBHOOK_TOKEN", "").strip() and _deliver_n8n(url, body):
             return

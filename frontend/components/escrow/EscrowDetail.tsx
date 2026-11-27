@@ -125,6 +125,50 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
         </div>
       ) : null}
 
+      {/* Aksi ditaruh di atas agar langsung terlihat tanpa scroll */}
+      <div className="escrow-actions">
+      {report !== null ? (
+          <form
+            className="escrow-report"
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              if (report.trim().length < 3) return onToast("Tuliskan masalahnya minimal 3 karakter.");
+              run("lapor-masalah", { catatan: report });
+            }}
+          >
+            <div className="field">
+              <label htmlFor="escrowIssue">Apa masalahnya?</label>
+              <textarea id="escrowIssue" rows={3} maxLength={500} value={report} onChange={(x) => setReport(x.target.value)}
+                placeholder="Contoh: berat kurang 300 kg dari kesepakatan" required />
+            </div>
+            <div className="form-actions">
+              <button type="button" className="btn" onClick={() => setReport(null)}>Batal</button>
+              <button type="submit" className="btn danger" disabled={busy}>Kirim laporan</button>
+            </div>
+          </form>
+        ) : (
+          <div className="form-actions">
+            {contactWa && role !== "admin" ? (
+              <a className="btn" href={contactWa} target="_blank" rel="noopener noreferrer"><Icon name="phone" size={15} /> Hubungi {other}</a>
+            ) : null}
+            {e.aksi_tersedia.map((a) => {
+              if (a === "lapor-masalah") return <button key={a} type="button" className="btn" disabled={busy} onClick={() => setReport("")}>Laporkan masalah</button>;
+              const label: Record<EscrowAction, string> = {
+                bayar: "Bayar sekarang", "konfirmasi-kirim": "Konfirmasi gabah dikirim", "konfirmasi-terima": "Konfirmasi gabah diterima",
+                "lapor-masalah": "Laporkan masalah", "cairkan-ulang": "Cairkan ulang", "selesaikan-sengketa": "Teruskan dana ke petani",
+                rekonsiliasi: "Tarik status dari Xendit", "buat-invoice": "Buat tautan pembayaran",
+              };
+              const primary = !["rekonsiliasi"].includes(a);
+              return (
+                <button key={a} type="button" className={`btn${primary ? " primary" : ""}`} disabled={busy} onClick={() => run(a)}>
+                  {a === "bayar" ? <Icon name="wallet" size={15} /> : null} {label[a]}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="divider" />
       <div className="modal-grid">
         <div className="modal-item"><label>Kode escrow</label><strong>{e.kode}</strong></div>
@@ -174,46 +218,6 @@ export function EscrowDetail({ id, role, onChanged, onToast }: { id: string; rol
         {["KEDALUWARSA", "SENGKETA", "PENCAIRAN_GAGAL"].includes(e.status) && "Konfirmasi yang sama juga bisa dilakukan lewat chatbot WhatsApp Temu Tani."}
       </div>
 
-      {report !== null ? (
-        <form
-          className="escrow-report"
-          onSubmit={(ev) => {
-            ev.preventDefault();
-            if (report.trim().length < 3) return onToast("Tuliskan masalahnya minimal 3 karakter.");
-            run("lapor-masalah", { catatan: report });
-          }}
-        >
-          <div className="field">
-            <label htmlFor="escrowIssue">Apa masalahnya?</label>
-            <textarea id="escrowIssue" rows={3} maxLength={500} value={report} onChange={(x) => setReport(x.target.value)}
-              placeholder="Contoh: berat kurang 300 kg dari kesepakatan" required />
-          </div>
-          <div className="form-actions">
-            <button type="button" className="btn" onClick={() => setReport(null)}>Batal</button>
-            <button type="submit" className="btn danger" disabled={busy}>Kirim laporan</button>
-          </div>
-        </form>
-      ) : (
-        <div className="form-actions">
-          {contactWa && role !== "admin" ? (
-            <a className="btn" href={contactWa} target="_blank" rel="noopener noreferrer"><Icon name="phone" size={15} /> Hubungi {other}</a>
-          ) : null}
-          {e.aksi_tersedia.map((a) => {
-            if (a === "lapor-masalah") return <button key={a} type="button" className="btn" disabled={busy} onClick={() => setReport("")}>Laporkan masalah</button>;
-            const label: Record<EscrowAction, string> = {
-              bayar: "Bayar sekarang", "konfirmasi-kirim": "Konfirmasi gabah dikirim", "konfirmasi-terima": "Konfirmasi gabah diterima",
-              "lapor-masalah": "Laporkan masalah", "cairkan-ulang": "Cairkan ulang", "selesaikan-sengketa": "Teruskan dana ke petani",
-              rekonsiliasi: "Tarik status dari Xendit", "buat-invoice": "Buat tautan pembayaran",
-            };
-            const primary = !["rekonsiliasi"].includes(a);
-            return (
-              <button key={a} type="button" className={`btn${primary ? " primary" : ""}`} disabled={busy} onClick={() => run(a)}>
-                {a === "bayar" ? <Icon name="wallet" size={15} /> : null} {label[a]}
-              </button>
-            );
-          })}
-        </div>
-      )}
     </>
   );
 }
